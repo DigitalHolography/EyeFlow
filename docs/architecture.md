@@ -174,10 +174,14 @@ for pipeline-owned product/dependency declarations.
   when `spatial_gradient_moment0` is selected directly.
 - `blood_volume_rate` composes either gradient-derived edges or mask-derived
   geometry with velocity products according to its enabled option families.
-- `displacement_map` is a separate registration analysis. It currently emits
-  per-vessel magnitude videos and retains temporary dense-field paths in run
-  state; the topology-based segment helper is not part of its runner. Do not
-  assume a waveform dependency merely because it uses the same inputs.
+- `displacement_map` is the early, dependency-free registration analysis. It
+  emits per-vessel magnitude videos and retains temporary dense-field paths in
+  run state. The separately selectable `displacement_profiles` pipeline runs
+  later, after topology and cardiac timing are ready, and publishes beat-resolved
+  profiles and metrics. Its disabled-by-default `segment_maps` option adds the
+  larger dense per-segment maps without delaying registration startup. Persisted
+  selections from the former `displacement_map.profiles` option migrate to the
+  new target and retain their segment-map selection.
 
 See [pipeline context](../src/pipelines/AGENTS.md) and
 [calculation context](../src/calculations/AGENTS.md) before scientific changes.

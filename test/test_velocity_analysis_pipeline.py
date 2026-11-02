@@ -92,6 +92,51 @@ def test_longitudinal_velocity_profiles_require_a_profile_consumer(
     assert analyze.call_args.kwargs["compute_longitudinal_profiles"] is (
         expected and scheduled
     )
+    assert analyze.call_args.kwargs["compute_transverse_profiles"] is (
+        expected and scheduled
+    )
+
+
+@pytest.mark.parametrize(
+    ("blood_volume_rate_options", "expected"),
+    [
+        ((), False),
+        (("masked_edges",), False),
+        (("gradient_edges",), True),
+        (("gradient_edges", "masked_edges"), True),
+    ],
+)
+def test_only_gradient_edge_flow_requires_transverse_velocity_profiles(
+    blood_volume_rate_options, expected,
+):
+    source = SimpleNamespace(
+        source=SimpleNamespace(
+            segmentation=SimpleNamespace(
+                vessels=SimpleNamespace(artery="artery_mask", vein="vein_mask"),
+                optic_disc="optic_disc",
+            ),
+        ),
+        profile_settings="settings",
+        provenance={"beat_index_base": 0},
+    )
+    ctx = _context(
+        {
+            "velocity_analysis": ("segments",),
+            "blood_volume_rate": blood_volume_rate_options,
+        },
+        scheduled={"velocity_analysis", "blood_volume_rate"},
+    )
+    ctx.output = SimpleNamespace(available=False)
+    with patch.object(
+        analysis_builder,
+        "analyze_velocity_segment_profiles",
+        return_value={"artery": "artery", "vein": "vein"},
+    ) as analyze:
+        analysis_builder._segment_velocity_inputs(
+            "velocity_map", source, "rings", ctx, cycle_boundary_indexes=(0, 5, 10),
+        )
+    assert analyze.call_args.kwargs["compute_transverse_profiles"] is expected
+    assert analyze.call_args.kwargs["compute_longitudinal_profiles"] is False
 
 
 class VelocityAnalysisPipelineTests(unittest.TestCase):

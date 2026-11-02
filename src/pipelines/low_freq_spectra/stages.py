@@ -22,8 +22,19 @@ def _packed(value, ctx):
 
 def _source(ctx):
     ctx.require_inputs("hd")
-    spectra = ctx.inputs.hd.as_holodoppler().optional_spectograms_dataset()
+    try:
+        spectra = ctx.inputs.hd.as_holodoppler().optional_spectograms_dataset()
+    except (TypeError, ValueError) as exc:
+        Logger.log_error(
+            "Low-frequency spectra rejected the HD /spectrograms input: "
+            f"{exc}"
+        )
+        raise
     if spectra is None:
+        Logger.log_warning(
+            "Skipping low-frequency spectra: HD /spectrograms is missing or "
+            "uses the unsupported legacy-group layout."
+        )
         ctx.dag.skip("HD /spectrograms video is unavailable.")
     ctx.dag.handoff("source", {"bin_count": spectra.shape[1]})
 
@@ -49,7 +60,16 @@ def _calibration(ctx):
 
 def _spatial(ctx):
     spectra = ctx.inputs.hd.as_holodoppler().optional_spectograms_dataset()
-    ctx.dag.handoff("spatial", preprocess_spectrograms(spectra, optional_capillary_zones(ctx)))
+    try:
+        values = preprocess_spectrograms(spectra, optional_capillary_zones(ctx))
+    except (KeyError, TypeError, ValueError) as exc:
+        Logger.log_error(
+            "Low-frequency spatial spectra failed; check the HD spectrogram "
+            "layout and DopplerView segmentation inputs: "
+            f"{exc}"
+        )
+        raise
+    ctx.dag.handoff("spatial", values)
 
 
 def _beats(ctx):

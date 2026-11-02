@@ -59,9 +59,9 @@ def _pack_vessel_profiles(
     velocity_attrs: dict[str, object] | None = None,
 ) -> dict[str, object]:
     profile = segments.profile
-    if profile.longitudinal is None:
+    if profile.transverse is None or profile.longitudinal is None:
         raise RuntimeError(
-            "Longitudinal profiles were not requested for velocity profile export."
+            "Cross-section profiles were not requested for velocity profile export."
         )
     valid_segments = np.asarray(profile.topology.valid_segments, dtype=bool)
     transverse_masked = np.asarray(

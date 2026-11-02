@@ -10,6 +10,11 @@ import numpy as np
 from input_output.readers.nodes import is_group
 
 from app_settings import app_version
+from ..schema.doppler_view import (
+    DV_EYE_LATERALITY_CONFIDENCE_PATH,
+    DV_EYE_LATERALITY_PATH,
+)
+from ..schema.eyeflow_output import EyeFlowOutputPaths
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
 from .h5 import open_h5, resolve_dataset_target, set_attr_safe
 from .h5_storage import _MIN_COMPRESSION_BYTES
@@ -61,6 +66,7 @@ def _initialize_app_versions(
         with _source_handle(doppler_vision_source_h5, doppler_vision_source_file) as source_h5:
             source_versions = source_h5.get("app_versions")
             versions = _read_app_versions(source_versions)
+            _copy_doppler_vision_laterality(h5file, source_h5)
 
     versions["EF_version"] = _project_version()
     if "app_versions" in h5file:
@@ -70,6 +76,25 @@ def _initialize_app_versions(
         data=json.dumps(versions),
         dtype=h5py.string_dtype(encoding="utf-8"),
     )
+
+
+def _copy_doppler_vision_laterality(h5file: h5py.File, source_h5: h5py.File) -> None:
+    segmentation = EyeFlowOutputPaths.active().segmentation
+    paths = (
+        (DV_EYE_LATERALITY_PATH, segmentation.laterality.eye_laterality),
+        (
+            DV_EYE_LATERALITY_CONFIDENCE_PATH,
+            segmentation.laterality.eye_laterality_confidence,
+        ),
+    )
+    for source_path, output_path in paths:
+        source = source_h5.get(source_path)
+        if source is None:
+            continue
+        output_group, output_name = resolve_dataset_target(h5file, output_path)
+        if output_name in output_group:
+            del output_group[output_name]
+        _copy_source_object(source, output_group, output_name)
 
 
 @contextmanager

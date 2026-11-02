@@ -317,6 +317,49 @@ def test_bad_spectra_fail_only_the_shared_pipeline(tmp_path, spectra):
             assert "ProcessingSpectrograms" not in output
 
 
+def test_invalid_spectral_source_logs_before_failing() -> None:
+    from pipelines.low_freq_spectra.stages import _source
+
+    source = SimpleNamespace(
+        optional_spectograms_dataset=lambda: (_ for _ in ()).throw(
+            ValueError("invalid spectral rank")
+        )
+    )
+    ctx = SimpleNamespace(
+        require_inputs=lambda *_: None,
+        inputs=SimpleNamespace(
+            hd=SimpleNamespace(as_holodoppler=lambda: source)
+        ),
+    )
+    with (
+        patch("pipelines.low_freq_spectra.stages.Logger.log_error") as error_log,
+        pytest.raises(ValueError, match="invalid spectral rank"),
+    ):
+        _source(ctx)
+    assert "rejected the HD /spectrograms input" in error_log.call_args.args[0]
+
+
+def test_invalid_dopplerview_support_logs_before_spatial_failure() -> None:
+    from pipelines.low_freq_spectra.stages import _spatial
+
+    source = SimpleNamespace(optional_spectograms_dataset=lambda: object())
+    ctx = SimpleNamespace(
+        inputs=SimpleNamespace(
+            hd=SimpleNamespace(as_holodoppler=lambda: source)
+        ),
+    )
+    with (
+        patch(
+            "pipelines.low_freq_spectra.stages.optional_capillary_zones",
+            side_effect=ValueError("invalid DopplerView mask"),
+        ),
+        patch("pipelines.low_freq_spectra.stages.Logger.log_error") as error_log,
+        pytest.raises(ValueError, match="invalid DopplerView mask"),
+    ):
+        _spatial(ctx)
+    assert "DopplerView segmentation inputs" in error_log.call_args.args[0]
+
+
 def test_automatic_companions_close_dependencies_and_do_not_become_targets():
     descriptors = [
         _descriptor("second", lambda ctx: None, auto_run_after="first"),

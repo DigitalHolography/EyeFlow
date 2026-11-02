@@ -16,6 +16,7 @@ def process_fixture(ctx):
     def source(ctx):
         values = ctx.inputs.hd.dataset("moment0")[:]
         assert not values.flags.writeable
+        ctx.log("Process fixture source is ready.")
         marker = ctx.inputs.hd.h5.h5file.attrs.get("marker")
         if marker:
             Path(marker + "-started").write_text("started")

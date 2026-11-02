@@ -1,8 +1,8 @@
 """Dense retinal displacement-map pipeline."""
 
-from pipeline_engine.imports import pipeline
+from pipeline_engine.imports import PipelineOption, pipeline
 
-from .runner import run_displacement_map
+from .runner import run_displacement_map, run_displacement_profiles
 
 
 @pipeline(
@@ -11,11 +11,12 @@ from .runner import run_displacement_map
         "Estimate dense retinal displacement from a HoloDoppler moment sequence "
         "inside a DopplerView vessel mask."
     ),
-    requires=["numpy", "h5py", "cv2", "SimpleITK", "tqdm"],
+    requires=["numpy", "h5py", "cv2", "SimpleITK", "scipy"],
     dag_produces=["displacement_map"],
     input_slot="both",
     execution_mode="process",
     native_parallelism=True,
+    memory_mb=512.0,
     run_once=True,
 )
 def run(ctx):
@@ -24,4 +25,32 @@ def run(ctx):
     return run_displacement_map(ctx)
 
 
-__all__ = ["run"]
+@pipeline(
+    name="displacement_profiles",
+    description=(
+        "Measure topology-aligned, beat-resolved displacement profiles and "
+        "optional dense per-segment maps."
+    ),
+    requires=["numpy", "scipy", "cv2"],
+    dag_requires=["displacement_map", "prepared_topology", "velocity_workflows"],
+    dag_produces=["displacement_profiles"],
+    options=[
+        PipelineOption(
+            "segment_maps",
+            "Per-segment displacement maps",
+            "Dense per-beat local displacement maps for every vessel segment.",
+            default_enabled=False,
+        ),
+    ],
+    input_slot="both",
+    execution_mode="process",
+    memory_mb=512.0,
+    run_once=True,
+)
+def run_profiles(ctx):
+    """Run the later analysis after fields, topology, and timing are ready."""
+
+    return run_displacement_profiles(ctx)
+
+
+__all__ = ["run", "run_profiles"]

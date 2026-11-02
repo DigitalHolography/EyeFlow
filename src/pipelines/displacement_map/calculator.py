@@ -15,16 +15,12 @@ from input_output.readers.frame_sequences import FrameReplay, FrameSequence, loa
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from input_output.writers.sidecars import write_json_file
 from input_output.writers.png import write_cv_png_file
+from utils.logger import Logger
 
 try:
     import cv2
 except ImportError:
     cv2 = None
-
-try:
-    from tqdm import tqdm
-except ImportError:
-    tqdm = None
 
 from .constants import PDE_REGISTRATION_METHODS
 from .parameters import MotionMapConfig, PhotometricConfig
@@ -47,11 +43,10 @@ def create_retinal_motion_map(
     magnitude_video_path: Path | None = None,
     h5_source: h5py.Dataset | None = None,
     frame_replay: FrameReplay | None = None,
+    log_label: str = "Displacement",
 ) -> dict[str, Path]:
     if cv2 is None:
         raise RuntimeError("OpenCV is required to create a displacement map.")
-    if tqdm is None:
-        raise RuntimeError("tqdm is required to create a displacement map.")
     require_registration_backend(args.registration_method)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -108,8 +103,11 @@ def create_retinal_motion_map(
         else sequence.cached_for_replay(args.max_frames, args.output_dir)
     )
     with frame_context as replay:
-        print("Calcul de la référence moyenne...")
-        reference_raw, actual_reference_count = compute_mean_reference(replay, args.max_frames)
+        reference_raw, actual_reference_count = compute_mean_reference(
+            replay,
+            args.max_frames,
+            on_progress=_FrameProgress(f"{log_label}: mean reference", frame_capacity),
+        )
         frame_capacity = min(frame_capacity, actual_reference_count)
         confidence = photometric_confidence(reference_raw, valid_analysis, photometric_config)
         registration_weight = analysis_soft * confidence
@@ -159,9 +157,9 @@ def create_retinal_motion_map(
             magnitude[analysis_mask == 0] = 0.0
             caches.append(field, magnitude)
 
-        progress = tqdm(total=frame_capacity, desc="Registration magnitude", unit="frame")
+        progress = _FrameProgress(f"{log_label}: registration", frame_capacity)
         try:
-            for frame in replay.iter_frames(frame_capacity):
+            for frame_index, frame in enumerate(replay.iter_frames(frame_capacity), start=1):
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
                 moving = structural_registration_signal(
                     gray, photometric_config, valid_analysis, args.structure_edge_weight
@@ -190,12 +188,11 @@ def create_retinal_motion_map(
                 for median_field in median_buffer.push(raw_field):
                     append_temporally_filtered(median_field)
 
-                progress.update(1)
+                progress(frame_index, frame_capacity)
 
             for median_field in median_buffer.finish():
                 append_temporally_filtered(median_field)
         finally:
-            progress.close()
             caches.flush()
 
     output_video = magnitude_video_path or (args.output_dir / "displacement_magnitude.avi")
@@ -212,6 +209,9 @@ def create_retinal_motion_map(
         fixed_maximum=args.fixed_max_px,
         gamma=args.gamma,
         visualization_sigma=args.visualization_sigma,
+        on_progress=_FrameProgress(
+            f"{log_label}: magnitude video", caches.count
+        ),
     )
 
     metadata = {
@@ -289,11 +289,6 @@ def create_retinal_motion_map(
     write_json_file(args.output_dir / "metadata.json", metadata)
     caches.close()
 
-    print(f"Vidéo créée : {output_video}")
-    print(f"Magnitude numérique créée : {args.output_dir / 'displacement_magnitude.npy'}")
-    if args.save_field:
-        print(f"Champ dense créé : {args.output_dir / 'displacement_field.npy'}")
-    print("La stabilisation d'entrée n'a pas été recalculée ni modifiée.")
     outputs = {
         "output_dir": args.output_dir,
         "magnitude_video": output_video,
@@ -303,3 +298,30 @@ def create_retinal_motion_map(
     if args.save_field:
         outputs["displacement_field"] = args.output_dir / "displacement_field.npy"
     return outputs
+
+
+class _FrameProgress:
+    """Emit a small number of app-log updates for frame-based work."""
+
+    def __init__(self, label: str, total: int, *, interval_percent: int = 20):
+        self.label = str(label)
+        self.total = max(0, int(total))
+        self.interval_percent = int(interval_percent)
+        self._next_percent = self.interval_percent
+        Logger.log_info(f"{self.label} started ({self.total} frames).")
+
+    def __call__(self, completed: int, total: int) -> None:
+        total = max(0, int(total))
+        completed = max(0, min(int(completed), total))
+        if total == 0:
+            return
+        percent = min(100, int(completed * 100 / total))
+        if percent < self._next_percent and completed < total:
+            return
+        Logger.log_info(
+            f"{self.label}: {percent}% ({completed}/{total} frames)."
+        )
+        self._next_percent = min(
+            101,
+            (percent // self.interval_percent + 1) * self.interval_percent,
+        )

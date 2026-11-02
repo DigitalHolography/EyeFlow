@@ -20,6 +20,7 @@ class InvocationSpec:
     settings: dict
     initial_result: str
     threads: int
+    memory_bytes: int = 64 * 2**20
     memory_account: object = None
     acknowledgements: object = None
     native_parallelism: bool = False
@@ -55,7 +56,7 @@ def run_worker(spec, events):
         directory=Path(spec.directory) / "products", budget=spec.memory_account
     )
     scratch = RunArrayStorage(
-        Path(spec.directory), memory_budget_bytes=spec.memory_account.memory_limit
+        Path(spec.directory), memory_budget_bytes=spec.memory_bytes
     )
     scratch.budget = spec.memory_account
     files = {
@@ -70,7 +71,7 @@ def run_worker(spec, events):
         layout=replace(spec.output_manager.layout, _root_dir=Path(spec.directory) / "artifacts"),
     )
     ownership = ArtifactOwnership()
-    messages = []
+    published_artifact_root = spec.output_manager.layout.ef_dir.resolve()
 
     def snapshot():
         return dump_result(
@@ -83,7 +84,6 @@ def run_worker(spec, events):
                 },
                 "artifacts": ownership.paths,
                 "manager": manager,
-                "messages": messages,
             },
             storage,
         )
@@ -96,6 +96,17 @@ def run_worker(spec, events):
         # Queue.put only feeds a process-local buffer. Do not enter native
         # calculation (which can crash) until this event is fully received.
         spec.acknowledgements.get()
+
+    def forward_log(message):
+        staged_artifact_root = manager.layout.ef_dir.resolve()
+        send(
+            "LogMessage",
+            detail={
+                "message": str(message).replace(
+                    str(staged_artifact_root), str(published_artifact_root)
+                )
+            },
+        )
 
     token = _SINK.set(send)
     error = None
@@ -116,7 +127,7 @@ def run_worker(spec, events):
             }
         )
         with (
-            Logger.capture_messages(messages.append),
+            Logger.capture_messages(forward_log),
             artifact_transaction(ArtifactScope(ownership, manager.layout.ef_dir)),
         ):
             _run_pipeline_descriptor(

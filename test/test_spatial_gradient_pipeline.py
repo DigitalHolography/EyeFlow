@@ -55,9 +55,22 @@ class SpatialGradientPipelineTests(unittest.TestCase):
     def test_displacement_map_has_no_cardiac_cycle_or_waveform_dependency(self) -> None:
         pipelines.load_pipeline_catalog()
 
-        plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(["displacement_map"])
+        dag = PipelineDAG(PIPELINE_REGISTRY.values())
+        plan = dag.resolve_targets(["displacement_map"])
 
         self.assertEqual(("displacement_map",), plan.names)
+
+        profile_plan = dag.resolve_targets(["displacement_profiles"])
+        self.assertIn("velocity", profile_plan.names)
+        self.assertIn("topology_core", profile_plan.names)
+        self.assertLess(
+            profile_plan.names.index("displacement_map"),
+            profile_plan.names.index("displacement_profiles"),
+        )
+        self.assertLess(
+            profile_plan.names.index("topology_core"),
+            profile_plan.names.index("displacement_profiles"),
+        )
 
     def test_runner_publishes_outputs_only_when_directly_targeted(self) -> None:
         gradient_segments = SimpleNamespace(

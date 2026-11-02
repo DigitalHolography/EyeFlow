@@ -74,10 +74,17 @@ class VesselSegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
+class LateralitySegmentationOutputPaths:
+    eye_laterality: str
+    eye_laterality_confidence: str
+
+
+@dataclass(frozen=True)
 class SegmentationOutputPaths:
     optic_disc: OpticDiscSegmentationOutputPaths
     artery: VesselSegmentationOutputPaths
     vein: VesselSegmentationOutputPaths
+    laterality: LateralitySegmentationOutputPaths
     pixel_pitch_m: str
     gaps: str
     gaps_legacy: str
@@ -145,7 +152,9 @@ class EyeFlowOutputPaths:
     artery_velocity_profiles: VelocityProfileOutputPaths
     vein_velocity_profiles: VelocityProfileOutputPaths
     cardiac_cycle: CardiacCycleOutputPaths
-    displacement_map: str
+    displacement_map_root: str
+    displacement_profiles_root: str
+    displacement_metrics_root: str
     spatial_gradient_profiles_root: str
     spatial_gradient_metrics_root: str
     velocity_profile_analysis_root: str
@@ -207,6 +216,12 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             segment_mask_area=f"{root}/Vein/SegmentMaskArea/value",
             lumen_diameter=f"{root}/Vein/LumenDiameter/value",
             delta_radius=f"{root}/Vein/DeltaRadius/value",
+        ),
+        laterality=LateralitySegmentationOutputPaths(
+            eye_laterality=f"{root}/Laterality/EyeLaterality",
+            eye_laterality_confidence=(
+                f"{root}/Laterality/EyeLateralityConfidence"
+            ),
         ),
         pixel_pitch_m="Meta/PixelPitch_m",
         gaps=f"{root}/Gaps/Mask",
@@ -361,7 +376,9 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         fft_root="ProcessingMoments/VelocityProfilesFFT/Vein",
     ),
     cardiac_cycle=CARDIAC_CYCLE_OUTPUT,
-    displacement_map="ProcessingMoments/DisplacementMap",
+    displacement_map_root="ProcessingWidth/Displacement/Map",
+    displacement_profiles_root="ProcessingWidth/Displacement/Profiles",
+    displacement_metrics_root="ProcessingWidth/Displacement/Metrics",
     spatial_gradient_profiles_root="ProcessingMoments/SpatialGradientProfiles",
     spatial_gradient_metrics_root="ProcessingMoments/SpatialGradientMetrics",
     velocity_profile_analysis_root="ProcessingMoments/VelocityProfileAnalysis",

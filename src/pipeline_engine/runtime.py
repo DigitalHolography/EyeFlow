@@ -41,7 +41,7 @@ from .dag import PipelineDAG
 from .errors import format_pipeline_exception
 from .storage import ProductStorage
 from .output_model import OutputModel
-from .resources import ResourceBudget, current_resources
+from .resources import ResourceBudget, current_resources, pipeline_memory_bytes
 from .input_service import InputService
 from .scheduler import CoordinatorScheduler
 import multiprocessing
@@ -545,7 +545,7 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     emit("StageStarted", stage=pipeline.name)
     budget = current_resources()
     allowance = min(4, max(1, budget.cpu_limit - budget.cpu_used)) if budget else 1
-    memory = min(64 * 2**20, budget.memory_limit // 4) if budget else 0
+    memory = pipeline_memory_bytes(pipeline_desc, budget) if budget else 0
     with budget.compute(allowance, memory) if budget else nullcontext():
         result = pipeline.run(ctx)
     from .graphs import PipelineGraph, GraphExecution

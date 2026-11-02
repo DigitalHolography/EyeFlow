@@ -66,6 +66,10 @@ def pack_gradient_edge_outputs(
     for vessel_name, velocity, gradient, paths in vessels:
         _validate_profile_segment_alignment(vessel_name, velocity, gradient)
         velocity_profile = velocity.profile
+        if velocity_profile.transverse is None:
+            raise RuntimeError(
+                "Gradient-edge blood-volume rate requires transverse velocity profiles."
+            )
         profile = profile_dataset(
             np.asarray(velocity_profile.transverse.masked, dtype=np.float32),
             cycle_boundary_indexes,

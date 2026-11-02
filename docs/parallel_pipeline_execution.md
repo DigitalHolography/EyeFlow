@@ -9,8 +9,10 @@ publication. GUI and CLI continue to enter through `run_service`.
 Declarations may opt into `@pipeline(..., execution_mode="process")`; the default
 is `"coordinator"`. Process entry points must be importable module-level registered
 pipelines. Dependency-ready work starts without a barrier between graph levels.
-Displacement is the first production process pipeline and runs once, outside
-velocity workflow fan-out. Small waveform metrics stay sequential. Workflow
+Base displacement registration is the first production process pipeline and
+runs once, outside velocity workflow fan-out. Its profile/map analysis is a
+second run-once process that waits for registration, topology, and shared timing.
+Small waveform metrics stay sequential. Workflow
 variant descendants currently retain coordinator execution, even if marked as
 process work; variant scheduling and state isolation keep their established
 semantics during this first rollout.
@@ -74,11 +76,16 @@ The event protocol is:
 
 ```text
 WorkerStarted
+LogMessage
 StageStarted
 ProductCommit
 StageFinished / StageFailed / StageSkipped
 InvocationFinished
 ```
+
+Log messages are acknowledged and forwarded by the result-receiver thread as
+they arrive, so process progress remains visible while the coordinator is inside
+another long calculation. They are not buffered into the final result snapshot.
 
 A product commit references a closed local snapshot containing stable products,
 state changes, owned artifacts and the stage summary. The result receiver
@@ -93,8 +100,10 @@ The existing intra-pipeline DAG API continues to distinguish required products,
 optional products and successful-stage dependencies. A failed stage does not
 cancel consumers of products it already committed. Other nodes and exports
 continue. Displacement prepares one replay and then has separate artery/vein
-nodes: a missing or failed vessel does not erase the other vessel's AVI or field
-state. Legacy pipelines are initially one transactional stage. Existing
+nodes: a missing or failed vessel is skipped, does not erase the other vessel's
+AVI or field state, and does not block later profile analysis when at least one
+field remains. The registration pipeline fails when neither vessel succeeds.
+Legacy pipelines are initially one transactional stage. Existing
 inter-pipeline dependencies still require whole-pipeline success.
 
 ## Resources
@@ -116,14 +125,23 @@ Worker-owned
 reservations are reclaimed after a crashed process exits. Large retained arrays
 spill locally. Internal Python pools respect the invocation allowance, while
 native libraries are configured to avoid multiplying Python worker counts.
-Process declarations may use `native_parallelism=True` (displacement does): their
+Process declarations may use `native_parallelism=True` (base displacement does): their
 native libraries receive the allowance and Python pools are capped to one. Other
-workers give the allowance to Python pools and keep native libraries at one.
+workers, including displacement profile/map analysis, give the allowance to
+Python pools and keep native libraries at one. Retained displacement profile and
+map arrays use run scratch, spilling to local `.npy` storage when RAM admission
+cannot reserve them.
+Both displacement processes declare a 512 MiB bounded working allowance at
+admission. When the run budget cannot grant it in full, admission retains
+consumer headroom and displacement profile chunking uses the granted allowance.
+The memory ledger uses the larger of explicit reservations and observed
+process-tree RSS above the run baseline, so opaque native allocations are no
+longer treated as free memory when admitting more work.
 Export admission uses the same budget, with separate dispatch and publication
 threads. Artifact barriers release compute reservations while waiting.
 
 These are admission limits and allocation accounting, not an OS-enforced hard
-limit on arbitrary native-library allocations or mapped file pages. A monitor
+limit on future native-library allocations or mapped file pages. A monitor
 tracks process-tree RSS quietly; one observed peak RAM summary is logged when
 the batch finishes. Scheduling delays are logged as events. The initial process
 and renderer working-memory reservations are estimates

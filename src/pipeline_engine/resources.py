@@ -22,22 +22,43 @@ _RESERVATION = ContextVar("eyeflow_compute_reservation", default=None)
 class MemoryAccount:
     categories = ("transient", "retained", "input", "transfer")
 
-    def __init__(self, limit, counters, owned=None):
+    def __init__(
+        self,
+        limit,
+        counters,
+        owned=None,
+        *,
+        observed_rss=None,
+        baseline_rss=0,
+    ):
         self.memory_limit, self.counters = limit, counters
         self.owned = owned
+        self._observed_rss = observed_rss
+        self._baseline_rss = int(baseline_rss)
 
     @property
     def used(self):
         with self.counters.get_lock():
             return dict(zip(self.categories, self.counters[:]))
 
+    def maximum_reservation(self, category="transient"):
+        """Return capacity after persistent categories, excluding active peers."""
+        index = self.categories.index(category)
+        with self.counters.get_lock():
+            other_categories = sum(self.counters[:]) - self.counters[index]
+        return max(0, self.memory_limit - other_categories)
+
     def reserve_memory(self, size, category="retained"):
+        if size == 0:
+            return True
         with self.counters.get_lock():
             limit = self.memory_limit
             if category in {"retained", "input"}:
                 # Retained products must leave room for their next consumer.
                 limit -= min(64 * 2**20, self.memory_limit // 4)
-            if size < 0 or sum(self.counters[:]) + size > limit:
+            accounted = sum(self.counters[:])
+            observed = self._observed_increment()
+            if size < 0 or max(accounted, observed) + size > limit:
                 return False
             if size > psutil.virtual_memory().available * 0.5:
                 return False
@@ -45,6 +66,13 @@ class MemoryAccount:
             if self.owned is not None:
                 self.owned[self.categories.index(category)] += size
             return True
+
+    def _observed_increment(self):
+        if self._observed_rss is None:
+            return 0
+        with self._observed_rss.get_lock():
+            rss = int(self._observed_rss.value)
+        return max(0, rss - self._baseline_rss)
 
     def release_memory(self, size, category="retained"):
         with self.counters.get_lock():
@@ -61,6 +89,24 @@ class MemoryAccount:
                 for index, amount in enumerate(self.owned):
                     self.counters[index] -= amount
                     self.owned[index] = 0
+
+
+def pipeline_memory_bytes(pipeline, budget) -> int:
+    """Convert declared MiB to an attainable transient reservation.
+
+    Persistent retained/input/transfer data reduce the maximum request. Active
+    transient reservations are deliberately excluded here: normal admission
+    waits for those peers instead of silently shrinking a heavy calculation.
+    """
+    requested = int(float(pipeline.memory_mb) * 1024**2)
+    capacity = budget.maximum_reservation("transient")
+    headroom = min(64 * 2**20, capacity // 4)
+    if capacity >= requested + headroom:
+        return requested
+    # A budget exactly equal to the declaration still contains small retained
+    # metadata and process overhead. Keep bounded consumer headroom instead of
+    # creating an admission request that can never succeed.
+    return max(0, capacity - headroom)
 
 
 def usable_cpus():
@@ -119,16 +165,21 @@ class ResourceBudget(MemoryAccount):
         self.memory_limit = int(
             memory_bytes if memory_bytes is not None else psutil.virtual_memory().available * 0.5
         )
+        self._process = psutil.Process()
+        baseline_rss = self._process.memory_info().rss
+        mp_context = multiprocessing.get_context("spawn")
+        observed_rss = mp_context.Value("q", baseline_rss)
         MemoryAccount.__init__(
             self,
             self.memory_limit,
-            multiprocessing.get_context("spawn").Array("q", len(self.categories)),
+            mp_context.Array("q", len(self.categories)),
+            observed_rss=observed_rss,
+            baseline_rss=baseline_rss,
         )
         self.cpu_used = 0
         self.peak_rss = 0
         self._condition = Condition()
         self._sample_time = 0.0
-        self._process = psutil.Process()
         self._process.cpu_percent()
         self._processes = {self._process.pid: self._process}
         self._external_load = load
@@ -189,6 +240,8 @@ class ResourceBudget(MemoryAccount):
                 pass
         self.peak_rss = max(self.peak_rss, rss)
         self.observed_rss = rss
+        with self._observed_rss.get_lock():
+            self._observed_rss.value = rss
         external = max(0.0, psutil.cpu_percent() / 100 - own_cpu / self.cpus)
         self._external_load = 0.8 * self._external_load + 0.2 * external
         self._dynamic_cpu = max(
@@ -200,6 +253,8 @@ class ResourceBudget(MemoryAccount):
             self.memory_limit,
             self.counters,
             multiprocessing.get_context("spawn").Array("q", len(self.categories), lock=False),
+            observed_rss=self._observed_rss,
+            baseline_rss=self._baseline_rss,
         )
 
     def try_acquire(self, threads, memory=0):

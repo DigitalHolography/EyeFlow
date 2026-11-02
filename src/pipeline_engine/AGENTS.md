@@ -63,8 +63,9 @@ output or `RunFailure`, and checks cancellation only between files.
 The runtime centrally opens HD/DV sources and stages requested datasets once
 into local read-only `.npy` storage through `input_service.py`. It assembles an
 in-memory `OutputModel`, retaining large immutable payloads in local scratch.
-`scheduler.py` dispatches dependency-ready opt-in process pipelines; displacement
-is the first production process pipeline. Small metrics and variant descendants
+`scheduler.py` dispatches dependency-ready opt-in process pipelines; base
+displacement registration is the first production process pipeline and its
+profile/map process waits for topology and shared timing. Small metrics and variant descendants
 retain coordinator execution. `worker.py` sends acknowledged stage snapshots
 and final results over the bounded queue defined in `protocol.py`.
 

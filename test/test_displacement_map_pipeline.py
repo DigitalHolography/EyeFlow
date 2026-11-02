@@ -259,11 +259,18 @@ class DisplacementMapRunnerTests(unittest.TestCase):
             replay_ids = []
 
             def fake_motion_map(
-                config, *, analysis_mask_array, magnitude_video_path, h5_source, frame_replay,
+                config,
+                *,
+                analysis_mask_array,
+                magnitude_video_path,
+                h5_source,
+                frame_replay,
+                log_label,
             ):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)
                 self.assertEqual("/moment0", h5_source.name)
+                self.assertIn(config.output_dir.name, log_label)
                 replay_ids.append(id(frame_replay))
                 if np.array_equal(analysis_mask_array, artery.astype(bool)):
                     field_value = 1.0
@@ -287,6 +294,10 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     "pipelines.displacement_map.runner.create_retinal_motion_map",
                     side_effect=fake_motion_map,
                 ),
+                patch(
+                    "pipelines.displacement_map.runner.create_temporary_directory",
+                    side_effect=lambda **_kwargs: tempfile.TemporaryDirectory(dir=root),
+                ),
             ):
                 ctx = PipelineContext(
                     work_h5=output_h5,
@@ -298,6 +309,8 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                 run_displacement_map(ctx)
                 self.assertEqual(1, len(set(replay_ids)))
                 self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
+                self.assertNotIn("Processing/Displacement", output_h5)
+                self.assertNotIn("ProcessingWidth/Displacement", output_h5)
                 artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
                 self.assertIsInstance(artifacts, DisplacementMapArtifacts)
                 try:
@@ -324,12 +337,13 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                 self.assertEqual(b"fake avi", video_path.read_bytes())
 
 
-def test_magnitude_avi_renders_masked_frames(tmp_path: Path) -> None:
+def test_magnitude_avi_renders_masked_frames(tmp_path: Path, capsys) -> None:
     magnitudes = np.zeros((2, 16, 16), dtype=np.float32)
     magnitudes[:, :, 8:] = 2.0
     mask = np.ones((16, 16), dtype=bool)
     mask[:8, :] = False
     target = tmp_path / "displacement_magnitude.avi"
+    progress = []
 
     display_range = write_magnitude_avi(
         target,
@@ -343,9 +357,12 @@ def test_magnitude_avi_renders_masked_frames(tmp_path: Path) -> None:
         fixed_maximum=3.0,
         gamma=1.0,
         visualization_sigma=0.0,
+        on_progress=lambda completed, total: progress.append((completed, total)),
     )
 
     assert display_range == (0.0, 2.0)
+    assert progress == [(1, 2), (2, 2)]
+    assert capsys.readouterr() == ("", "")
     contents = target.read_bytes()
     assert contents[:4] == b"RIFF"
     assert contents[8:12] == b"AVI "

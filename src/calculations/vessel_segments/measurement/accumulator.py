@@ -25,6 +25,7 @@ class SegmentProfileAccumulator:
         *,
         frame_count: int,
         retain_segment_maps: bool,
+        compute_transverse_profiles: bool = True,
         compute_longitudinal_profiles: bool = True,
     ) -> None:
         self.topology = topology
@@ -39,7 +40,11 @@ class SegmentProfileAccumulator:
             return np.full(shape, np.nan, dtype=np.float32)
 
         self.segment_signal = filled(signal_shape)
-        self.transverse = MaskedArrays(filled(profile_shape), filled(profile_shape))
+        self.transverse = (
+            MaskedArrays(filled(profile_shape), filled(profile_shape))
+            if compute_transverse_profiles
+            else None
+        )
         self.longitudinal = (
             MaskedArrays(filled(profile_shape), filled(profile_shape))
             if compute_longitudinal_profiles
@@ -87,23 +92,24 @@ class SegmentProfileAccumulator:
             self._masked_count[index],
         )
 
-        transverse_unmasked = transverse_profiles(rotated)
         transverse_masked = transverse_profiles(rotated_masked)
-        transverse_masked_for_output = (
-            transverse_profiles(rotated, profile_mask)
-            if not np.array_equal(profile_mask, rotated_mask)
-            else transverse_masked
-        )
         frame_slice = segment.frame_slice
         self.segment_signal[index][frame_slice] = _to_numpy(
             _profile_mean(transverse_masked)
         )
-        self.transverse.unmasked[index][frame_slice] = _to_numpy(
-            transverse_unmasked
-        )
-        self.transverse.masked[index][frame_slice] = _to_numpy(
-            transverse_masked_for_output
-        )
+        if self.transverse is not None:
+            transverse_unmasked = transverse_profiles(rotated)
+            transverse_masked_for_output = (
+                transverse_profiles(rotated, profile_mask)
+                if not np.array_equal(profile_mask, rotated_mask)
+                else transverse_masked
+            )
+            self.transverse.unmasked[index][frame_slice] = _to_numpy(
+                transverse_unmasked
+            )
+            self.transverse.masked[index][frame_slice] = _to_numpy(
+                transverse_masked_for_output
+            )
         if self.longitudinal is not None:
             self.longitudinal.unmasked[index][frame_slice] = _to_numpy(
                 longitudinal_profiles(rotated)

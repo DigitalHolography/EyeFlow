@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from utils.logger import Logger
 
+from .resources import pipeline_memory_bytes
 from .transfer import dump_result, load_result
 from .worker import InvocationSpec, run_worker
 
@@ -107,7 +108,18 @@ class CoordinatorScheduler:
                 event = self.events.get(timeout=0.1)
             except Empty:
                 continue
-            self._incoming.put(event)
+            if event.kind == "LogMessage":
+                # Log callbacks (including the GUI queue callback) are safe from
+                # this receiver thread. Forward them here so a long coordinator
+                # calculation cannot delay process-worker progress messages.
+                try:
+                    Logger.log(event.detail.get("message", ""))
+                except Exception:
+                    # A presentation callback must not strand the acknowledged
+                    # worker protocol or stop scientific processing.
+                    pass
+            else:
+                self._incoming.put(event)
             self._acks[event.invocation].put(True)
 
     def _dependencies(self, pipeline):
@@ -119,7 +131,9 @@ class CoordinatorScheduler:
         # fan-out stays in the established coordinator path for this rollout.
         self.budget.refresh()
         threads = max(1, min(4, getattr(self.budget, "_dynamic_cpu", self.budget.cpu_limit) // 2))
-        memory = min(64 * 2**20, self.budget.memory_limit // 4)
+        memory = pipeline_memory_bytes(pipeline, self.budget)
+        if memory <= 0:
+            return False
         if not self.budget.try_acquire(threads, memory):
             return False
         try:
@@ -172,8 +186,9 @@ class CoordinatorScheduler:
             self.settings,
             initial,
             threads,
-            account,
-            acknowledgements,
+            memory_bytes=memory,
+            memory_account=account,
+            acknowledgements=acknowledgements,
             native_parallelism=pipeline.native_parallelism,
         )
         process = self.context.Process(
@@ -231,8 +246,6 @@ class CoordinatorScheduler:
         self.state.update(
             published_paths(result["state"], staged_root, self.manager.layout.ef_dir.resolve())
         )
-        for message in result.get("messages", ()):
-            Logger.log(message.replace(str(staged_root), str(self.manager.layout.ef_dir.resolve())))
         for path in result["artifacts"]:
             source = Path(path).resolve()
             if not source.is_relative_to(staged_root):

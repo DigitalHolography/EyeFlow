@@ -911,6 +911,17 @@ velocity-analysis variant. Existing filename lookup remains a fallback. The
 primary file is `h5/<stem>_EF.h5`.
 Displacement magnitude videos use MJPEG AVI files under
 `avi/displacement_maps/`, with one file for each selected vessel mask.
+The separately selectable `displacement_profiles` pipeline writes beat-resolved
+products under `/ProcessingWidth/Displacement/Profiles` and derived peak/area
+products under `/ProcessingWidth/Displacement/Metrics`. Its disabled-by-default
+`segment_maps` option additionally writes
+`/ProcessingWidth/Displacement/Map/<RegistrationMethod>/<Vessel>/PerSegment` with
+axes `(x, y, time, beat, branch, radius, displacement_orientation)` and local
+components `local_x`, `local_y`. Moments cardiac timing is preferred, with
+frequency-band timing used only when valid moments timing is unavailable. No
+displacement HDF5 family is written when `displacement_profiles` is not selected.
+Retained profile and map arrays use the run scratch allocator and spill to local
+storage when the shared RAM budget cannot admit them.
 
 All artifact basenames start with `<stem>_`, including PNG, EPS, AVI, MP4,
 PDF, auxiliary HDF5, and archive outputs. The shared artifact naming helper
@@ -934,6 +945,8 @@ families are:
 - `/ProcessingMoments/SpatialGradientMetrics` for a directly selected spatial-gradient
   target, and `/ProcessingMoments/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
+- `/Segmentation/Laterality/{EyeLaterality,EyeLateralityConfidence}` for the
+  corresponding DopplerView laterality datasets when present;
 - `/Segmentation/Gaps/Legacy` for the original vessel/disc/cutoff support,
   `/Segmentation/Gaps/GapsFromM0ff` for dark regions of the enhanced HD temporal
   median after vessel dilation, and `/Segmentation/Gaps/Mask` for the intersection

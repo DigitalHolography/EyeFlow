@@ -43,7 +43,7 @@ availability rather than unrelated import crashes.
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
 | `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `velocity_analysis` |
 | `pdf_report` | Report assembly after waveform and shape outputs |
-| `displacement_map` | Separate image-registration path producing magnitude videos and run-local dense-field artifacts |
+| `displacement_map` / `displacement_profiles` | Early independent image registration producing magnitude videos and run-local dense fields; later shared-timing profiles/metrics with separately gated per-segment maps |
 
 The declarations in each package are authoritative if this table drifts.
 

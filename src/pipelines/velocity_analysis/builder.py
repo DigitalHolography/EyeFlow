@@ -315,9 +315,10 @@ def _segment_velocity_inputs(
             pipeline="velocity_analysis",
         )
     )
-    # All three options export cross-section profiles, including longitudinal
-    # profiles. Other segment consumers only need signals, means, or maps.
-    compute_longitudinal_profiles = bool(
+    # All three options export both cross-section profile directions. Gradient-
+    # edge blood-volume rate additionally consumes transverse velocity profiles;
+    # other segment consumers only need signals, means, or maps.
+    compute_profile_outputs = bool(
         velocity_analysis_scheduled
         and any(
             ctx.option_enabled(option, pipeline="velocity_analysis")
@@ -328,6 +329,14 @@ def _segment_velocity_inputs(
             )
         )
     )
+    compute_transverse_profiles = bool(
+        compute_profile_outputs
+        or (
+            ctx.pipeline_scheduled("blood_volume_rate")
+            and ctx.option_enabled("gradient_edges", pipeline="blood_volume_rate")
+        )
+    )
+    compute_longitudinal_profiles = compute_profile_outputs
     with _logged_stage("segment velocity extraction"):
         results = analyze_velocity_segment_profiles(
             velocity_map,
@@ -340,6 +349,7 @@ def _segment_velocity_inputs(
             source_data.profile_settings,
             prepared_topologies=prepared_topologies,
             retain_velocity_maps=retain_velocity_maps,
+            compute_transverse_profiles=compute_transverse_profiles,
             compute_longitudinal_profiles=compute_longitudinal_profiles,
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,
