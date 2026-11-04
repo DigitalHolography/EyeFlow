@@ -4,7 +4,7 @@ import pickle
 from pathlib import Path
 
 import numpy as np
-from joblib.externals import cloudpickle
+import cloudpickle
 
 from .input_service import InputNode
 
