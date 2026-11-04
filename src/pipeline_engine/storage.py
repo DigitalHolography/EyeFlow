@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import weakref
+import mmap
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
@@ -11,6 +12,7 @@ from uuid import uuid4
 
 import numpy as np
 from scratch_location import temporary_directory
+from .metrics import ExecutionMetrics
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,7 @@ class ProductStorage:
         self.directory = Path(self.temporary.name if self.temporary else directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.budget = budget
+        self.metrics = ExecutionMetrics()
         self._resident = {}
         self._resident_lock = RLock()
         self._closed = False
@@ -72,7 +75,7 @@ class ProductStorage:
         array = np.asarray(value)
         # Object/string payloads remain small metadata; numeric arrays spill.
         numeric = array.dtype.kind in "biufcSU"
-        if numeric and array.nbytes >= 64 * 1024:
+        if numeric and (array.nbytes >= 64 * 1024 or isinstance(value, np.memmap)):
             return self.store_array(array)
         if self.budget and not self.budget.reserve_memory(array.nbytes, category):
             if numeric:
@@ -80,18 +83,25 @@ class ProductStorage:
             return self.store_value(array)
         with self._resident_lock:
             self._resident[category] = self._resident.get(category, 0) + array.nbytes
-        result = array.copy()
+        result = (array.copy() if array.dtype.hasobject else
+                  np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape))
+        self.metrics.add("array_copies", 1)
+        self.metrics.add("array_copied_bytes", array.nbytes)
         result.flags.writeable = False
         weakref.finalize(result, self._release_resident, array.nbytes, category)
         return result
 
     def store_value(self, value):
-        import pickle
+        import cloudpickle
 
         path = self.path(".pickle")
         with path.open("wb") as stream:
-            pickle.dump(value, stream, protocol=5)
-        return ValueReference(str(path), tuple(value.shape), value.dtype)
+            cloudpickle.dump(value, stream, protocol=5)
+        self.metrics.add("value_serializations", 1)
+        self.metrics.add("value_bytes", path.stat().st_size)
+        shape = getattr(value, "shape", None)
+        return ValueReference(str(path), tuple(shape) if shape is not None else None,
+                              getattr(value, "dtype", None))
 
     def _release_resident(self, size, category):
         with self._resident_lock:
@@ -101,15 +111,22 @@ class ProductStorage:
                     self.budget.release_memory(size, category)
 
     def store_array(self, array):
-        immutable = _is_immutable_array(array)
-        if immutable:
+        if isinstance(array, np.ndarray) and not array.flags.writeable:
             with self._array_lock:
-                cached = self._immutable_arrays.get(id(array))
-                if cached is not None and cached[0]() is array:
-                    return cached[1]
+                current = array
+                while isinstance(current, np.ndarray):
+                    cached = self._immutable_arrays.get(id(current))
+                    if (cached is not None and cached[0]() is current
+                            and current.shape == array.shape and current.dtype == array.dtype
+                            and current.strides == array.strides
+                            and current.ctypes.data == array.ctypes.data):
+                        return cached[1]
+                    current = current.base
+        if _is_immutable_array(array):
+            with self._array_lock:
                 reference = self._write_array(array)
                 self._remember_array(array, reference)
-                return reference
+            return reference
         return self._write_array(array)
 
     def _remember_array(self, array, reference):
@@ -139,6 +156,10 @@ class ProductStorage:
             else:
                 output[...] = array
             output.flush()
+            self.metrics.add("array_copies", 1)
+            self.metrics.add("array_copied_bytes", array.nbytes)
+            self.metrics.add("npy_writes", 1)
+            self.metrics.add("npy_bytes", path.stat().st_size)
         except BaseException:
             if output is not None:
                 output._mmap.close()
@@ -189,7 +210,13 @@ def _is_immutable_array(array):
             return False
         current = current.base
     if current is None:
-        return True
+        # An owning ndarray can re-enable writes later. Only immutable backing
+        # (bytes or a managed read-only map) establishes reusable ownership.
+        return False
+    if isinstance(current, mmap.mmap):
+        # A second writer can mutate an arbitrary file's read-only mapping.
+        # Managed maps are reused through the ownership cache above instead.
+        return False
     try:
         return memoryview(current).readonly
     except TypeError:

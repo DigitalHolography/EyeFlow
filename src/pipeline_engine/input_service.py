@@ -239,6 +239,7 @@ class InputService:
                 if key not in self.cache:
                     self.cache[key] = self._stage(self.sources[slot][path])
                     self.source_reads[key] = self.source_reads.get(key, 0) + 1
+                    self.storage.metrics.add("source_reads", 1)
                 response = self.cache[key], None
             except Exception as exc:  # noqa: BLE001 - return source failures to the requesting invocation
                 response = None, f"Could not stage {slot}:{path}: {exc}"

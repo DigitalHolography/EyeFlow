@@ -1,8 +1,10 @@
 """Dense retinal displacement-map pipeline."""
 
 from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine.product_exchange import ProductRequirement
 
 from .runner import run_displacement_map, run_displacement_profiles
+from .graph import displacement_graph, displacement_profiles_graph
 
 
 @pipeline(
@@ -17,6 +19,7 @@ from .runner import run_displacement_map, run_displacement_profiles
     execution_mode="process",
     native_parallelism=True,
     run_once=True,
+    graph_factory=displacement_graph,
 )
 def run(ctx):
     """Entrypoint called by the pipeline runtime."""
@@ -31,7 +34,10 @@ def run(ctx):
         "optional dense per-segment maps."
     ),
     requires=["numpy", "scipy", "cv2"],
-    dag_requires=["displacement_map", "prepared_topology", "velocity_workflows"],
+    dag_requires=["prepared_topology", "velocity_workflows"],
+    product_requires=[ProductRequirement(alias="registration", producer_pipeline="displacement_map",
+                                         product="registered_fields", variant="shared")],
+    graph_factory=displacement_profiles_graph,
     dag_produces=["displacement_profiles"],
     options=[
         PipelineOption(

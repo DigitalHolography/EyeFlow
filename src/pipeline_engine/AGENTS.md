@@ -19,7 +19,10 @@ task crosses front-end or I/O boundaries.
 | `input_access.py` | Context-aware timing and attribute conveniences for pipeline runners |
 | `runtime.py`, `invocation.py` | Per-input workflow coordination / one descriptor's execution and checkpoints |
 | `scheduler.py` | Dependency readiness, artifact barriers and progress order |
-| `process_executor.py`, `worker.py`, `protocol.py` | Worker lifetime, transactional result acceptance and acknowledged messages |
+| `process_executor.py`, `worker.py`, `protocol.py` | Worker lifetime, incremental transport and receipt acknowledgments |
+| `stage_graph/` | Immutable local definitions, dedicated planner, stage executor, logical products, artifact readiness, scope and journal |
+| `product_exchange/` | Qualified product identity, registry and authoritative coordinator acceptance |
+| `src/data_manager/` | Stable structured product handles and physical ownership over `ProductStorage` |
 | `input_service.py`, `storage.py`, `transfer.py` | Lazy source replay, immutable payloads and local-file transport |
 | `output_model.py`, `finalization.py` | Output tree/journals and retained payload ownership through publication |
 | `resources.py`, `src/runtime_limits.py` | Batch admission/memory accounting and process/thread allowances |

@@ -8,7 +8,7 @@ import numpy as np
 
 from input_output.output_manager import OutputType
 from pipeline_engine.base import PIPELINE_REGISTRY, pipeline
-from pipeline_engine.graphs import PipelineGraph, PipelineNode, PipelineProduct
+from pipeline_engine.stage_graph import StageGraph, StageSpec, ProductSpec
 
 
 @pipeline("process_fixture", execution_mode="process", run_once=True)
@@ -39,16 +39,16 @@ def process_fixture(ctx):
             os._exit(23)
         raise ValueError("optional stage failed")
 
-    return PipelineGraph(
+    return StageGraph(
         (
-            PipelineNode(
-                "source", source, outputs=(PipelineProduct("video", path="Worker/video"),)
+            StageSpec(
+                "source", source, products=(ProductSpec("video", path="Worker/video"),)
             ),
-            PipelineNode("optional", optional_failure, requires=("video",)),
-            PipelineNode(
+            StageSpec("optional", optional_failure, requires=("video",)),
+            StageSpec(
                 "independent",
                 independent,
-                outputs=(PipelineProduct("independent", path="Worker/independent"),),
+                products=(ProductSpec("independent", path="Worker/independent"),),
             ),
         )
     )
@@ -69,10 +69,10 @@ def stage_completion_fixture(ctx):
     def crash(ctx):
         os._exit(23)
 
-    return PipelineGraph((
-        PipelineNode("stage_completion_fixture", publish,
-                     outputs=(PipelineProduct("value", path="Stage/value"),)),
-        PipelineNode("crash", crash, after=("stage_completion_fixture",)),
+    return StageGraph((
+        StageSpec("stage_completion_fixture", publish,
+                     products=(ProductSpec("value", path="Stage/value"),)),
+        StageSpec("crash", crash, after=("stage_completion_fixture",)),
     ))
 
 

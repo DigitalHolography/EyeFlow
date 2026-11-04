@@ -5,6 +5,7 @@ import shutil
 from contextlib import nullcontext
 from pathlib import Path
 from uuid import uuid4
+from time import perf_counter
 
 import h5py
 
@@ -37,6 +38,7 @@ def copy_output_node(model, source, target, name=None):
 
 def publish_output_model(model):
     """Serialize locally, then atomically replace the destination filename."""
+    started = perf_counter()
     final = Path(model.filename)
     local = model.storage.path(".h5")
     incoming = final.with_name(f".ef-{uuid4().hex[:16]}.h5")
@@ -64,8 +66,10 @@ def publish_output_model(model):
                     )
                 _write_attributes(node, record)
         final.parent.mkdir(parents=True, exist_ok=True)
+        model.storage.metrics.add("h5_serialization_seconds", perf_counter() - started)
         shutil.copyfile(local, incoming)
         os.replace(incoming, final)
     finally:
+        model.storage.metrics.add("final_publication_seconds", perf_counter() - started)
         incoming.unlink(missing_ok=True)
         local.unlink(missing_ok=True)

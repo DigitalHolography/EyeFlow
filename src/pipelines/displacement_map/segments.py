@@ -53,7 +53,8 @@ def analyze_displacement_vessels(
             topology = topologies[vessel]
         except KeyError as exc:
             raise ValueError(f"No prepared topology is available for {vessel!r}.") from exc
-        displacement_map = np.load(path, mmap_mode="r")
+        owns_mapping = not isinstance(path, np.ndarray)
+        displacement_map = np.load(path, mmap_mode="r") if owns_mapping else path
         try:
             results[vessel] = analyze_displacement_segments(
                 displacement_map,
@@ -64,7 +65,7 @@ def analyze_displacement_vessels(
             )
         finally:
             memory_map = getattr(displacement_map, "_mmap", None)
-            if memory_map is not None:
+            if memory_map is not None and owns_mapping:
                 memory_map.close()
     return results
 

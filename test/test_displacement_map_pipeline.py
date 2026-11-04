@@ -23,15 +23,18 @@ from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import HolodopplerSource
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from pipeline_engine import PipelineContext
+from pipeline_engine.storage import ProductStorage
+from pipeline_engine.output_model import OutputModel
+from pipeline_engine.invocation import _pipeline_checkpoint
+from pipeline_engine.stage_graph.executor import StageGraphExecutor
+from data_manager import DataManager
 from pipelines.displacement_map import registration
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
-    DISPLACEMENT_MAP_STATE,
     LABELED_VESSELS_PATH,
     MAGNITUDE_VIDEO_FILENAME,
     VEIN_MASK_PATH,
     VESSEL_MASK_PATH,
-    DisplacementMapArtifacts,
     DisplacementMapPipelineConfig,
     resolve_retina_mask,
     resolve_retina_masks,
@@ -289,41 +292,32 @@ class DisplacementMapRunnerTests(unittest.TestCase):
             with (
                 h5py.File(hd_path, "r") as hd,
                 h5py.File(dv_path, "r") as dv,
-                h5py.File(output_h5_path, "w") as output_h5,
+                ProductStorage() as product_storage,
                 patch(
                     "pipelines.displacement_map.runner.create_retinal_motion_map",
                     side_effect=fake_motion_map,
                 ),
-                patch(
-                    "pipelines.displacement_map.runner.create_temporary_directory",
-                    side_effect=lambda **_kwargs: tempfile.TemporaryDirectory(dir=root),
-                ),
             ):
+                output_h5 = OutputModel(product_storage, output_h5_path)
+                accepted = {}
                 ctx = PipelineContext(
                     work_h5=output_h5,
+                    on_product_commit=lambda stage, name, handle: accepted.update({name: handle}),
                     holodoppler_h5=hd,
                     doppler_vision_h5=dv,
                     output_manager=manager,
                     pipeline_name="displacement_map",
                 )
-                run_displacement_map(ctx)
+                with _pipeline_checkpoint(output_h5, ctx.state.raw, manager) as checkpoint:
+                    StageGraphExecutor(run_displacement_map(ctx), ctx, checkpoint, _pipeline_checkpoint).run()
                 self.assertEqual(1, len(set(replay_ids)))
                 self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
                 self.assertNotIn("Processing/Displacement", output_h5)
                 self.assertNotIn("ProcessingWidth/Displacement", output_h5)
-                artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
-                self.assertIsInstance(artifacts, DisplacementMapArtifacts)
-                try:
-                    np.testing.assert_array_equal(
-                        np.load(artifacts.field_paths_by_vessel["artery"]),
-                        1.0,
-                    )
-                    np.testing.assert_array_equal(
-                        np.load(artifacts.field_paths_by_vessel["vein"]),
-                        2.0,
-                    )
-                finally:
-                    artifacts.cleanup()
+                registration_product = DataManager(product_storage).read(accepted["registered_fields"])
+                self.assertEqual(registration_product["registration_method"], DisplacementMapPipelineConfig().registration_method)
+                np.testing.assert_array_equal(registration_product["fields"]["artery"], 1.0)
+                np.testing.assert_array_equal(registration_product["fields"]["vein"], 2.0)
 
             for vessel in ("artery", "vein"):
                 video_path = manager.path_for(

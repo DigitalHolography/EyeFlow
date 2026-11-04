@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
+from uuid import uuid4
 
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
@@ -43,6 +44,21 @@ from .scheduler import CoordinatorScheduler
 from .process_executor import ProcessExecutor
 from .protocol import InvocationSettings
 from .finalization import PendingOutput
+from .product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry
+from .product_exchange.acceptance import ProductAcceptance
+
+
+def _bind_product_requirements(registry, descriptors, identity, seen):
+    """Declare qualified demands, including named variants not yet produced."""
+    if identity in seen:
+        return
+    seen.add(identity)
+    descriptor = descriptors[identity.pipeline]
+    for requirement in descriptor.product_requires:
+        product_id = requirement.resolve(identity)
+        registry.declare(product_id)
+        registry.add_dependent(product_id, identity)
+        _bind_product_requirements(registry, descriptors, product_id.producer, seen)
 
 
 class PipelineRunError(RuntimeError):
@@ -198,10 +214,28 @@ def _execute_input(
     pipeline_skips: dict[str, str] = {}
 
     pipeline_count = len(pipelines)
+    run_id = uuid4().hex
+    registry = ProductExchangeRegistry()
+    for descriptor in pipelines:
+        identity = PipelineInvocationId(run_id, descriptor.name)
+        registry.register_invocation(identity)
+        graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()))
+        if graph is not None:
+            for stage in graph.stages:
+                for product in stage.products:
+                    if product.exposed:
+                        registry.declare(ProductId(identity, product.id))
+    descriptors_by_name = {descriptor.name: descriptor for descriptor in pipelines}
+    bound = set()
+    for descriptor in pipelines:
+        _bind_product_requirements(registry, descriptors_by_name, PipelineInvocationId(run_id, descriptor.name), bound)
+    acceptance = ProductAcceptance(model=work_h5, state=context_vars,
+        destination=output_manager.layout.ef_dir, inputs=files, registry=registry)
     executor = ProcessExecutor(
         context=multiprocessing.get_context("spawn"), input_service=input_service,
         inputs=files, model=work_h5, manager=output_manager, budget=current_resources(),
         state=context_vars,
+        acceptance=acceptance, registry=registry, run_id=run_id,
         settings=InvocationSettings(
             configs={"hd": hd_config, "dv": dv_config},
             pipeline_options=dict(pipeline_options),
@@ -220,6 +254,7 @@ def _execute_input(
         dag=dag, options=pipeline_options,
         executor=executor, statuses=shared_status, failures=pipeline_failures, skips=pipeline_skips,
         on_start=on_pipeline_start, on_success=on_pipeline_success, on_progress=on_progress,
+        registry=registry,
     )
     for pipeline_index, pipeline_desc in scheduler.coordinator_jobs():
         # Only consumers of artifacts wait; ordinary calculations keep running.
@@ -251,9 +286,12 @@ def _execute_input(
             "on_pipeline_success": None,
             "on_progress": None,
             "background_artifacts": background_artifacts,
+            "product_inputs": executor.product_inputs(pipeline_desc) if pipeline_desc.name not in variant_dependents else {},
+            "on_product_commit": lambda stage, product, handle, descriptor=pipeline_desc:
+                acceptance.accept_local(executor.invocation_id(descriptor), stage, product, handle),
         }
         name = pipeline_desc.name
-        dependencies = dag.dependencies_of(name, pipeline_options=pipeline_options)
+        dependencies = dag.dependencies_of(name, pipeline_options=pipeline_options, include_products=False)
         succeeded = False
         if name in variant_dependents and execution_variants:
             if pipeline_desc.produces_execution_variants:
@@ -292,6 +330,9 @@ def _execute_input(
                     "output_manager": output_manager.for_artifact_namespace(
                         variant.artifact_namespace
                     ),
+                    "product_inputs": executor.product_inputs(pipeline_desc, variant.name),
+                    "on_product_commit": lambda stage, product, handle, descriptor=pipeline_desc, variant_name=variant.name:
+                        acceptance.accept_local(executor.invocation_id(descriptor, variant_name), stage, product, handle),
                 }
                 try:
                     _run_pipeline_descriptor(pipeline_desc, **branch_arguments)
@@ -303,6 +344,7 @@ def _execute_input(
                 else:
                     statuses[name] = "succeeded"
                     succeeded = True
+                acceptance.finalize(executor.invocation_id(pipeline_desc, variant.name), pipeline_failures.get(label))
         else:
             # Prefer a complete workflow for unrelated shared pipelines.
             if execution_variants and not pipeline_desc.run_once:
@@ -342,6 +384,26 @@ def _execute_input(
                     )
                 execution_variants = list(emitted_variants)
                 variant_failures.update(emitted_failures)
+                # Variant identities are now known. Declarations remain the same
+                # factories used by execution; only invocation qualification changes.
+                for descriptor in pipelines:
+                    if descriptor.name not in variant_dependents:
+                        continue
+                    registry.remove_placeholder(executor.invocation_id(descriptor))
+                    graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()))
+                    for variant in execution_variants:
+                        identity = executor.invocation_id(descriptor, variant.name)
+                        registry.register_invocation(identity)
+                        if graph is not None:
+                            for stage in graph.stages:
+                                for product in stage.products:
+                                    if product.exposed:
+                                        registry.declare(ProductId(identity, product.id))
+                for descriptor in pipelines:
+                    if descriptor.name in variant_dependents:
+                        for identity in registry.invocations_for(descriptor.name):
+                            _bind_product_requirements(registry, descriptors_by_name, identity, set())
+            acceptance.finalize(executor.invocation_id(pipeline_desc), pipeline_failures.get(name) or pipeline_skips.get(name))
         background_artifacts.collect()
         _write_artifact_status(work_h5, background_artifacts)
         _write_execution_variant_status(

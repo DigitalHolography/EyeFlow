@@ -31,10 +31,12 @@ def dump_result(value, storage):
     path = storage.path(".pickle")
     with path.open("wb") as stream:
         Pickler(stream, protocol=5).dump(value)
+    storage.metrics.add("serializations", 1)
+    storage.metrics.add("manifest_bytes", path.stat().st_size)
     return str(path)
 
 
-def load_result(path, storage, inputs):
+def load_result(path, storage, inputs, *, owner_root=None):
     references = {}
 
     class Unpickler(pickle.Unpickler):
@@ -44,6 +46,8 @@ def load_result(path, storage, inputs):
                 if key not in references:
                     references[key] = inputs[identity[1]][identity[2]]
             elif identity[0] == "array":
+                from data_manager import DataManager
+                DataManager(storage, owner_id=owner_root).validate_storage(identity[1])
                 key = "array", identity[1].path
                 if key not in references:
                     references[key] = storage.read(identity[1])

@@ -212,12 +212,17 @@ class OutputModel(OutputGroup):
         self.filename = str(filename)
         self.records = {"": Record()}
         self._checkpoints = []
+        self._versions = {"": 0}
+        self._generation = 0
 
     def _touch(self, path):
         for checkpoint in self._checkpoints:
             if path not in checkpoint.before:
                 old = self.records.get(path)
                 checkpoint.before[path] = old.snapshot() if old is not None else None
+                checkpoint.versions[path] = self._versions.get(path)
+        self._generation += 1
+        self._versions[path] = self._generation
 
     def flush(self):
         pass
@@ -296,6 +301,27 @@ class OutputModel(OutputGroup):
                     records[path] = old.snapshot()
         return records
 
+    def committed_delta(self, cursor):
+        """Return only changed accepted records and an invocation-owned cursor."""
+        versions = dict(self._versions)
+        overrides = {}
+        for checkpoint in reversed(self._checkpoints):
+            for path, old in checkpoint.before.items():
+                version = checkpoint.versions[path]
+                if old is None:
+                    versions.pop(path, None)
+                else:
+                    versions[path] = version
+                overrides[path] = old
+        records = {
+            path: overrides.get(path, self.records.get(path)).snapshot()
+            for path, version in versions.items() if cursor.get(path) != version
+        }
+        # The root transports this invocation's diagnostics even for an empty
+        # numerical delta; it never contains another invocation's worker tree.
+        records.setdefault("", overrides.get("", self.records[""]).snapshot())
+        return records, versions
+
     def publish(self):
         """Publish through the shared I/O policy (also used by standalone callers)."""
         from input_output.writers.h5_publication import publish_output_model
@@ -307,6 +333,7 @@ class ProductCheckpoint:
     def __init__(self, model):
         self.model = model
         self.before = {}
+        self.versions = {}
 
     def commit(self, paths=()):
         committed = {""}
@@ -315,10 +342,13 @@ class ProductCheckpoint:
             committed.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
         for path in committed:
             self.before.pop(path, None)
+            self.versions.pop(path, None)
 
     def rollback(self):
         for path, old in self.before.items():
             if old is None:
                 self.model.records.pop(path, None)
+                self.model._versions.pop(path, None)
             else:
                 self.model.records[path] = old
+                self.model._versions[path] = self.versions[path]

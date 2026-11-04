@@ -48,6 +48,9 @@ def _run_pipeline_descriptor(
     background_artifacts: BackgroundArtifacts | None = None,
     computation_cache: dict[object, object] | None = None,
     velocity_workflow_selection: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    product_inputs: Mapping[str, object] | None = None,
+    on_product_commit=None,
+    product_owner_id=None,
 ) -> tuple[tuple[ExecutionVariant, ...], dict[str, str]]:
     pipeline = pipeline_desc.instantiate()
     label = (
@@ -79,8 +82,10 @@ def _run_pipeline_descriptor(
         velocity_workflow_selection=velocity_workflow_selection,
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
         background_artifacts=background_artifacts,
+        product_inputs=product_inputs,
+        on_product_commit=on_product_commit,
+        product_owner_id=product_owner_id,
     )
-    ctx._graph_runtime_available = True
     try:
         with _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts) as checkpoint:
             # Consumers may create intermediate images they use immediately.
@@ -111,10 +116,11 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     budget = current_resources()
     with budget.compute() if budget else nullcontext():
         result = pipeline.run(ctx)
-    from .graphs import PipelineGraph, GraphExecution
+    from .stage_graph import StageGraph
+    from .stage_graph.executor import StageGraphExecutor
 
-    if isinstance(result, PipelineGraph):
-        GraphExecution(result, ctx, checkpoint, _pipeline_checkpoint).run()
+    if isinstance(result, StageGraph):
+        StageGraphExecutor(result, ctx, checkpoint, _pipeline_checkpoint).run()
         result = None
     if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
         raise ValueError(

@@ -4,6 +4,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from .product_exchange.identity import PipelineInvocationId
 
 _SINK = ContextVar("eyeflow_worker_events", default=None)
 
@@ -11,7 +12,7 @@ _SINK = ContextVar("eyeflow_worker_events", default=None)
 @dataclass(frozen=True)
 class WorkerEvent:
     kind: Literal[
-        "WorkerStarted", "StageStarted", "ProductCommit", "StageFinished",
+        "WorkerStarted", "GraphStarted", "StageStarted", "ProductCommit", "StageFinished",
         "StageFailed", "StageSkipped", "InvocationFinished", "LogMessage",
     ]
     invocation: str
@@ -20,6 +21,24 @@ class WorkerEvent:
     error: str | None = None
     product: str | None = None
     message: str | None = None
+    commit_id: str | None = None
+    invocation_id: PipelineInvocationId | None = None
+    handle: object = None
+    emitted_at: float | None = None
+    journal: dict | None = None
+
+
+@dataclass(frozen=True)
+class ProductAcceptedEvent(WorkerEvent):
+    """A locally committed product; global availability still needs acceptance."""
+
+
+@dataclass(frozen=True)
+class TransportReceipt:
+    """Receipt is deliberately not an authoritative acceptance acknowledgment."""
+
+    commit_id: str | None
+    phase: Literal["received"] = "received"
 
 
 @dataclass(frozen=True)
@@ -59,6 +78,9 @@ class InvocationSpec:
     memory_account: object
     acknowledgements: object
     native_parallelism: bool = False
+    invocation_id: PipelineInvocationId | None = None
+    product_inputs: dict | None = None
+    owner_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +92,10 @@ class InvocationResult:
     artifacts: tuple[Path, ...]
     artifact_root: Path
     messages: tuple[str, ...] = ()
+    invocation_id: PipelineInvocationId | None = None
+    commit_id: str | None = None
+    products: tuple = ()
+    metrics: dict | None = None
 
 
 def emit(kind, *, stage=None, **detail):

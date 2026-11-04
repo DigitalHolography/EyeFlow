@@ -1,12 +1,13 @@
 """Choose dependency-ready work; process transport belongs to ProcessExecutor."""
 
 from utils.logger import Logger
+from .product_exchange import ProductStatus
 
 
 class CoordinatorScheduler:
     def __init__(
         self, *, pipelines, dag, options, executor, statuses, failures, skips,
-        on_start=None, on_success=None, on_progress=None,
+        on_start=None, on_success=None, on_progress=None, registry=None,
     ):
         self.pending = list(pipelines)
         self.dag, self.options, self.executor = dag, options, executor
@@ -15,9 +16,22 @@ class CoordinatorScheduler:
         self.completed = set()
         self.total = len(pipelines)
         self.started = 0
+        self.registry = registry
 
     def _dependencies(self, pipeline):
-        return self.dag.dependencies_of(pipeline.name, pipeline_options=self.options)
+        return self.dag.dependencies_of(pipeline.name, pipeline_options=self.options, include_products=False)
+
+    def _products_ready(self, pipeline):
+        if not pipeline.product_requires:
+            return True
+        identities = self.registry.invocations_for(pipeline.name)
+        return bool(identities) and all(
+            self.registry.status(requirement.resolve(identity)) != ProductStatus.PENDING
+            for identity in identities for requirement in pipeline.product_requires)
+
+    def _finalize(self, pipeline, error=None):
+        for identity in self.registry.invocations_for(pipeline.name):
+            self.registry.finalize_producer(identity, error or "Producer did not supply product.")
 
     def _notify_start(self, pipeline):
         self.started += 1
@@ -46,12 +60,15 @@ class CoordinatorScheduler:
             dependencies = self._dependencies(pipeline)
             if not set(dependencies) <= self.completed:
                 continue
+            if not self._products_ready(pipeline):
+                continue
             blocked = [name for name in dependencies if self.statuses.get(name) != "succeeded"]
             if blocked:
                 self.pending.remove(pipeline)
                 self.statuses[pipeline.name] = "skipped"
                 self.skips[pipeline.name] = "Unavailable dependencies: " + ", ".join(blocked)
                 self.completed.add(pipeline.name)
+                self._finalize(pipeline, self.skips[pipeline.name])
                 self._notify_start(pipeline)
                 self._notify_completion()
                 continue
@@ -61,6 +78,7 @@ class CoordinatorScheduler:
                 self.statuses[pipeline.name] = "failed"
                 self.failures[pipeline.name] = str(exc)
                 self.completed.add(pipeline.name)
+                self._finalize(pipeline, str(exc))
                 self.pending.remove(pipeline)
                 self._notify_start(pipeline)
                 self._notify_completion()
@@ -81,7 +99,7 @@ class CoordinatorScheduler:
                 continue
             if pipeline.wait_for_artifacts and numerical_pending:
                 continue
-            if set(self._dependencies(pipeline)) <= self.completed:
+            if set(self._dependencies(pipeline)) <= self.completed and self._products_ready(pipeline):
                 return pipeline
         return None
 
@@ -97,6 +115,7 @@ class CoordinatorScheduler:
                 self.started += 1
                 yield self.started, selected
                 self.completed.add(selected.name)
+                self._finalize(selected, self.failures.get(selected.name) or self.skips.get(selected.name))
             elif self.executor.running:
                 self._collect(wait=True)
             elif self.pending:

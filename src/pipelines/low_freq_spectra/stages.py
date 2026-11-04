@@ -3,7 +3,6 @@
 from functools import partial
 
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.imports import PipelineGraph, PipelineNode, PipelineProduct
 from pipelines.topology_core.runner import optional_capillary_zones
 from pipelines.velocity import velocity_workflows
 from utils.logger import Logger
@@ -108,16 +107,3 @@ def _figures(ctx):
         )
     else:
         export_spectrogram_figures(ctx.output, dt_seconds=dt)
-
-
-def spectral_graph():
-    product = lambda name: (PipelineProduct(name, pack=_packed),)
-    return PipelineGraph((
-        PipelineNode("source", _source, outputs=(PipelineProduct("source"),)),
-        PipelineNode("sampling", _sampling, requires=("source",), outputs=product("sampling")),
-        PipelineNode("calibration", _calibration, requires=("source", "sampling"), outputs=product("calibration")),
-        PipelineNode("spatial", _spatial, requires=("source",), outputs=product("spatial")),
-        PipelineNode("beats", _beats, requires=("spatial",), optional_requires=("calibration",), outputs=product("beats")),
-        PipelineNode("qc", _qc, requires=("spatial",), optional_requires=("beats",), outputs=product("qc")),
-        PipelineNode("figures", _figures, requires=("spatial",), optional_requires=("calibration", "beats", "qc"), artifact=True),
-    ))

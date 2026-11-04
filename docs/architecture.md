@@ -123,8 +123,10 @@ navigation aid.
 ## Runtime ownership
 
 `runtime` owns each input's sources, workflow state and accepted output model.
-`scheduler` chooses ready work; `process_executor` owns opt-in workers and accepts
-their results. Both execution modes use the same invocation/checkpoint code.
+`scheduler` chooses ready work; `process_executor` owns opt-in workers and receipt.
+`product_exchange/acceptance.py` accepts incremental commits on the coordinator
+thread and `ProductExchangeRegistry` owns cross-pipeline readiness. Both execution
+modes use the same invocation/checkpoint and executable stage-graph code.
 Inputs replay from read-only local storage. `PendingOutput` retains result
 payloads until exports and final HDF5 publication finish, including when completion
 overlaps the next input. Reports read the accepted model before publication.
@@ -163,8 +165,8 @@ defines pipeline-owned products and dependencies.
 - `blood_volume_rate` composes either gradient-derived edges or mask-derived
   geometry with velocity products according to its enabled option families.
 - `displacement_map` is the early, dependency-free registration analysis. It
-  emits per-vessel magnitude videos and retains temporary dense-field paths in
-  run state. The separately selectable `displacement_profiles` pipeline runs
+  emits per-vessel magnitude videos and an exposed `registered_fields` product
+  backed by run-owned immutable storage. The separately selectable `displacement_profiles` pipeline runs
   later, after topology and cardiac timing are ready, and publishes beat-resolved
   profiles and metrics. Its disabled-by-default `segment_maps` option adds the
   larger dense per-segment maps without delaying registration startup. Persisted

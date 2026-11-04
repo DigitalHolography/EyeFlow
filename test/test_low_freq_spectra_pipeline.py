@@ -286,7 +286,7 @@ def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):
 @pytest.mark.parametrize("spectra", ["missing", "legacy_group"])
 def test_optional_source_skips_all_spectral_processing(tmp_path, spectra):
     spec = _spec(tmp_path, spectra=spectra)
-    with patch("pipelines.low_freq_spectra.runner.preprocess_spectrograms") as preprocess:
+    with patch("pipelines.low_freq_spectra.stages.preprocess_spectrograms") as preprocess:
         result = execute_run(spec)
     assert result.succeeded, result.failures
     preprocess.assert_not_called()

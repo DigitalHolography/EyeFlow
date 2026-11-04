@@ -41,6 +41,8 @@ def registerPipeline(
     wait_for_artifacts: bool = False,
     execution_mode: str = "coordinator",
     native_parallelism: bool = False,
+    graph_factory: Callable | None = None,
+    product_requires: Iterable | None = None,
 ):
     def decorator(cls):
         cls.name = name
@@ -82,6 +84,8 @@ def registerPipeline(
             wait_for_artifacts=bool(wait_for_artifacts),
             execution_mode=execution_mode,
             native_parallelism=bool(native_parallelism),
+            graph_factory=graph_factory,
+            product_requires=tuple(product_requires or ()),
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -107,6 +111,8 @@ def pipeline(
     wait_for_artifacts: bool = False,
     execution_mode: str = "coordinator",
     native_parallelism: bool = False,
+    graph_factory: Callable | None = None,
+    product_requires: Iterable | None = None,
 ):
     """Register a function pipeline.
 
@@ -142,6 +148,8 @@ def pipeline(
             wait_for_artifacts=bool(wait_for_artifacts),
             execution_mode=execution_mode,
             native_parallelism=bool(native_parallelism),
+            graph_factory=graph_factory,
+            product_requires=tuple(product_requires or ()),
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -334,6 +342,12 @@ class PipelineDescriptor:
     wait_for_artifacts: bool = False
     execution_mode: str = "coordinator"
     native_parallelism: bool = False
+
+    graph_factory: Callable | None = None
+    product_requires: tuple = ()
+
+    def build_graph(self, options=()):
+        return self.graph_factory(options=tuple(options)) if self.graph_factory is not None else None
 
     def __post_init__(self):
         if self.execution_mode not in {"coordinator", "process"}:

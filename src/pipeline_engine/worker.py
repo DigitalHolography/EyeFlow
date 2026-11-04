@@ -4,8 +4,10 @@ import os
 import traceback
 from importlib import import_module
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
-from .protocol import _SINK, InvocationResult, WorkerEvent
+from .protocol import _SINK, InvocationResult, ProductAcceptedEvent, TransportReceipt, WorkerEvent
 
 
 def run_worker(spec, events):
@@ -58,29 +60,53 @@ def run_worker(spec, events):
     ownership = ArtifactOwnership()
     published_artifact_root = spec.output_manager.layout.ef_dir.resolve()
 
-    def snapshot():
+    cursor, sent_state, sent_artifacts = {}, {}, set()
+    sent_metrics = {}
+
+    def snapshot(commit_id, products):
+        nonlocal cursor
+        records, cursor = output.committed_delta(cursor)
+        changes = {key: value for key, value in variables.items()
+                   if (key not in initial_state or value is not initial_state[key])
+                   and (key not in sent_state or value is not sent_state[key])}
+        sent_state.update(changes)
+        artifacts = tuple(path for path in ownership.paths if path not in sent_artifacts)
+        sent_artifacts.update(artifacts)
+        metrics = {key: value for key, value in storage.metrics.snapshot().items()
+                   if key not in {"serializations", "manifest_bytes"}}
+        delta_metrics = {key: value - sent_metrics.get(key, 0) for key, value in metrics.items()}
+        sent_metrics.update(metrics)
         return dump_result(
             InvocationResult(
-                records=output.committed_records(),
-                state={
-                    key: value
-                    for key, value in variables.items()
-                    if key not in initial_state or value is not initial_state[key]
-                },
-                artifacts=tuple(ownership.paths),
+                records=records,
+                state=changes,
+                artifacts=artifacts,
                 artifact_root=manager.layout.ef_dir,
+                invocation_id=spec.invocation_id,
+                commit_id=commit_id,
+                products=products,
+                metrics=delta_metrics,
             ),
             storage,
         )
 
     def send(kind, stage=None, detail=None):
         detail = dict(detail or {})
-        if kind in {"ProductCommit", "StageFinished", "StageFailed", "StageSkipped"}:
-            detail["result_path"] = snapshot()
-        events.put(WorkerEvent(kind, spec.name, stage, **detail))
+        detail["emitted_at"] = perf_counter()
+        detail["invocation_id"] = spec.invocation_id
+        if kind in {"ProductCommit", "StageFinished", "StageFailed", "StageSkipped", "InvocationFinished"}:
+            commit_id = uuid4().hex
+            handle = detail.get("handle")
+            products = ((detail["product"], handle),) if handle is not None else ()
+            detail["result_path"] = snapshot(commit_id, products)
+            detail["commit_id"] = commit_id
+        event_type = ProductAcceptedEvent if kind == "ProductCommit" else WorkerEvent
+        events.put(event_type(kind, spec.name, stage, **detail))
         # Queue.put only feeds a process-local buffer. Do not enter native
         # calculation (which can crash) until this event is fully received.
-        spec.acknowledgements.get()
+        receipt = spec.acknowledgements.get()
+        if not isinstance(receipt, TransportReceipt) or receipt.commit_id != detail.get("commit_id"):
+            raise RuntimeError("Invalid worker transport receipt.")
 
     def forward_log(message):
         staged_artifact_root = manager.layout.ef_dir.resolve()
@@ -100,7 +126,7 @@ def run_worker(spec, events):
         import_module(spec.module)
         configure_native_threads(native_threads)
         descriptor = PIPELINE_REGISTRY[spec.name]
-        initial_state.update(load_result(spec.initial_result, storage, files))
+        initial_state.update(load_result(spec.initial_result, storage, files, owner_root=spec.owner_id))
         variables.update(initial_state)
         configs = spec.settings.configs
         inputs = PipelineInputs(
@@ -129,13 +155,15 @@ def run_worker(spec, events):
                 scratch=scratch,
                 on_pipeline_success=None,
                 on_progress=None,
+                product_inputs=spec.product_inputs,
+                product_owner_id=spec.owner_id,
                 **spec.settings.context_arguments(),
             )
     except BaseException:  # noqa: BLE001 - report partial work at the process boundary
         error = traceback.format_exc()
     finally:
         try:
-            send("InvocationFinished", detail={"error": error, "result_path": snapshot()})
+            send("InvocationFinished", detail={"error": error})
         finally:
             _SINK.reset(token)
             spec.input_client.close()

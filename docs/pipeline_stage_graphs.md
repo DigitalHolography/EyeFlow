@@ -1,136 +1,95 @@
-# Pipeline-owned stage graphs
+# Executable stage graphs
 
-A pipeline can return a `PipelineGraph` instead of a result mapping. Its own
-package defines the graph, calculations, products, packers and export callbacks.
-The engine supplies execution and uses the existing `PipelineDAG` planner;
-scientific definitions do not belong in the engine or the global catalog.
-Legacy function pipelines remain supported with one invocation transaction.
-
-`pipelines/low_freq_spectra/stages.py` is the first production example. Its
-source, sampling, frequency calibration, spatial reduction, beat products, QC
-and figure nodes have separate dependency and commit boundaries.
-
-## Handoff instead of large return objects
+A pipeline returns an immutable `StageGraph`. Its package declares calculations,
+products, packers and artifacts; `StageGraphPlanner` resolves the local graph
+without constructing global pipeline descriptors. `StageGraphExecutor` runs
+numerical stages serially and continues independent branches after a failure.
 
 ```python
-from pipeline_engine.imports import PipelineGraph, PipelineNode, PipelineProduct
+from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 
 def calculate(ctx):
-    metric = compute_metric(ctx.dag.require("spectrum"))
-    ctx.dag.handoff("metric", metric)
-    # Additional work can follow. A later exception does not undo metric.
+    values = compute(ctx.dag.require("source"))
+    ctx.dag.handoff("metric", values)
 
-def pack_metric(value, ctx):
-    paths = EyeFlowOutputPaths.active()
-    return {
-        f"{paths.spectrograms_masked_metrics_root}/F50":
-            (value, {"unit": "kHz", "dimDesc": []}),
-    }
-
-node = PipelineNode(
-    "metric", calculate,
-    requires=("spectrum",),
-    outputs=(PipelineProduct("metric", pack=pack_metric),),
-)
+graph = StageGraph((
+    StageSpec("source", load_source, products=(ProductSpec("source"),)),
+    StageSpec("metric", calculate, requires=("source",), products=(
+        ProductSpec("metric", pack=pack_metric, exposed=True),
+    )),
+))
 ```
 
-The pipeline returns `PipelineGraph((source_node, node, figure_node))`.
-Stage functions return `None`; they publish products explicitly. A deeply nested
-helper can import `handoff` or `current_pipeline_dag()` instead of accepting
-the whole context. These resolve an invocation-local `ContextVar`, not a singleton.
+Callbacks return `None`. A product may be internal, an explicit
+`InvocationResource`, one direct `path` with metadata, a `pack(value, ctx)`
+mapping, or an exposed product for another pipeline. `path` and `pack` are
+mutually exclusive. Logical IDs are independent of HDF5 paths.
 
-A product may specify `path` and `attrs` for a single dataset, or `pack(value,
-ctx)` for a mapping of schema paths to existing `DatasetValue`/`(data, attrs)`
-payloads. Packing remains scientific pipeline code. Shared HDF5 writers retain
-their serialization, units, axis metadata, compression and provenance policies.
-An optional `validate(value)` callback owns product-specific numerical checks;
-the engine does not change NaN, sign or boundary policies.
+`graph.plan()` exposes `order`, `stage_by_id`, `producer_by_product`,
+`dependencies(id)`, `dependents(id)` and `ancestors(id)`. Kahn ordering preserves
+declaration order among ready stages. Invalid IDs, producers, dependencies,
+cycles and conflicting direct output paths fail preflight.
 
-On handoff the engine validates the declared producer, snapshots the value,
-packs and atomically commits its datasets to the managed output model, advances
-the stage journal for those paths, and makes the logical product available.
-Large payloads use local array references; the final HDF5 is written at run
-finalization. Direct callers using a real HDF5 retain immediate writes. Duplicate
-handoffs and overlapping dataset paths within a graph are rejected. Failed
-packing leaves no partial product, including when the caller catches its error.
-Managed direct HDF5 writes from graph stages are rejected; use handoff.
+Dependency meanings remain distinct:
 
-Handed values and values returned by `require()` are copied so subsequent
-caller/consumer mutations cannot change another stage's product. Use handoff
-for reduced calculated products, not lazy HD datasets or full source videos;
-typed input handles remain on the owning execution context.
+- `requires`: an accepted product, even if its producer subsequently fails.
+- `optional_requires`: wait for acceptance or definitive producer termination;
+  absence is allowed and `ctx.dag.get(name, default)` supplies a fallback.
+- `after`: successful completion of the named stage.
 
-## Dependencies and partial success
+`ProductSpec(optional=True)` permits omission. Missing mandatory products fail
+their producer; missing required inputs skip their consumers. `ctx.dag.skip`
+records expected missing data. Every read must be declared by that stage.
 
-- `requires` names products that must have been handed off.
-- `optional_requires` orders a node after those producers, but allows it to run
-  if they fail or omit a product. Read them with `ctx.dag.get(name, default)`.
-- `after` requires successful completion of another named node, useful when
-  completion itself matters rather than an earlier partial handoff.
-- `PipelineProduct(optional=True)` permits a stage to omit that product.
-- `ctx.dag.skip(reason)` records expected missing input without failing the run.
+## Acceptance and ownership
 
-Read access is restricted to a node's declared products. The planner validates
-missing producers, duplicate names, self-dependencies and cycles before running
-the graph. A failed producer can still have committed products. Consumers of
-those products continue; consumers of missing products skip. Independent nodes
-also continue. A failed stage reports an incomplete parent pipeline after safe
-nodes finish, preserving committed data and exports.
+`ctx.dag.handoff` calls the executor through a narrow stage interface. The
+executor validates the scope/declaration, calls scientific validation, asks
+`DataManager` for a stable handle, calls the scientific packer, and uses existing
+output checkpoints/writers. Only after the output payload is accepted does
+`ProductStore` record availability and `StageJournal` record the commit.
+Artifact dispatch and exposed-product notification follow.
 
-Root JSON attributes `stage_status`, `stage_failures` and `stage_skips` record
-outcomes per pipeline and execution variant. Existing external pipeline
-dependencies remain whole-pipeline dependencies; this change does not silently
-relax an unmigrated consumer's requirements.
-`stage_products` records each handed-off name, producer and actual HDF5 paths,
-including products committed by a stage that subsequently failed.
+`ProductStore` holds identities, producer associations, availability and handles.
+It performs no copying, storage, HDF5 writes, IPC or artifact dispatch.
+`DataManager` recursively snapshots scientific values using `ProductStorage`.
+Large arrays receive one immutable `.npy` snapshot; consumers reuse read-only
+maps. Compatible managed backing is reused. Read-only views of writable bases
+still need a snapshot. `require_mutable` explicitly creates a private writable
+copy. Mutable dataclass envelopes are private per read without copying arrays.
+Small string-array metadata retains its original dtype and shape.
 
-## Artifact nodes and ownership
+Stage checkpoints and the invocation's outer checkpoint advance at handoffs.
+Later failures roll back unfinished edits while preserving accepted records,
+state bindings and owned artifacts. Packing/writing failures expose no product.
+Graph stages use handoff rather than direct managed HDF5 writes.
 
-Mark a node `artifact=True` to run it as soon as its declared products are ready,
-including during the producing function's handoff. It can call shared figure
-writers or `ctx.defer_artifacts(...)` with a pipeline-specific snapshot exporter.
-Only immutable snapshots go to worker processes, never live HDF5 handles.
-Exports start after the corresponding commit. A later calculation failure
-cannot cancel them or remove their files.
+Explicit local resources use `InvocationResource(value)`. Their `close` method
+runs at graph completion. They are never transported; use them for readers and
+replay buffers, not cross-pipeline data. Dense displacement fields instead live
+in the run-owned product directory and survive replay and worker termination.
 
-Shared PNG, EPS, paired article figures and image writers capture exports
-automatically during managed execution. They preserve existing paths and
-formatting. Figure construction stays with the producer; rendering/encoding
-runs in isolated Agg processes. Spectral exports use a reduced HDF5 snapshot
-so their figure construction also happens in the worker.
+## Artifacts, scope and diagnostics
 
-Consumers such as reports declare `wait_for_artifacts=True`. Within a stage
-graph, declare the relevant product/`after` dependencies as well; the consumer
-joins those upstream export jobs. Top-level `pdf_report` joins the file's jobs.
-Other numerical nodes do not wait for exports.
+`ArtifactDispatcher` launches ready `artifact=True` stages during handoff,
+including before a numerical producer returns. Dispatch is deduplicated and
+reentrancy controlled. It reuses `BackgroundArtifacts`; there is no new render
+pool. `wait_for_artifacts=True` waits for declared ancestors' jobs, releases
+compute slots during the wait, and skips a consumer if an export failed.
 
-OutputManager and shared writers record explicit artifact ownership. Checkpoint
-rollback removes only files reserved by its uncommitted invocation/segment.
-There is no directory scan inferring ownership from creation time. Direct file
-writes that bypass managed writers/reservations cannot be automatically owned;
-custom writers must call `register_artifact_path(path, writing=True)`.
+`GraphScope` validates invocation identity, active stage, thread ownership and
+lifetime, and restores context activation on exit. Copied contexts, other
+threads and late handoffs cannot borrow an active graph.
 
-Batch scheduling, resource admission and final publication follow the
-[execution design](parallel_pipeline_execution.md).
+`StageJournal` owns `stage_status`, `stage_failures`, `stage_skips` and
+`stage_products`. Persisted states remain `pending`, `running`, `succeeded`,
+`failed`, `skipped`. Reconciliation merges qualified invocation scopes and
+individual stage/product records, preserving other pipelines and variants.
 
-## Velocity and execution scope
+The spectral graph in `pipelines/low_freq_spectra/graph.py` resolves to
+`source, sampling, calibration, spatial, beats, qc, figures`. Registration and
+profile declarations live in `pipelines/displacement_map/graph.py`.
 
-Every file and pipeline invocation has a new graph execution. The moments and
-band-ratio variants also get separate contexts, product dictionaries, status
-records and artifact namespaces. Logical HDF5 paths pass through the existing
-`PipelineH5Output` namespace mapping, so a `ProcessingMoments/...` declaration
-is mapped to `ProcessingBandRatio/...` in that workflow.
-
-Copying a context clears its graph handle. A copied context cannot publish into
-the original graph, and a handle from an inactive/different invocation is
-rejected. Handoffs execute on the owning pipeline thread; compute threads return
-their results to it. HDF5 commit and scheduling are never performed by rendering
-processes. Tests cover partial handoffs in one velocity workflow while the
-other workflow succeeds with the same product names.
-
-## Verification
-
-`test_pipeline_graphs.py`, `test_artifact_ownership.py` and
-`test_background_artifacts.py` cover handoffs, dependencies, rollback, exports and
-workflow isolation. Performance measurements belong with benchmark results,
-not in this API contract.
+See [cross-process execution](parallel_pipeline_execution.md), the
+[baseline audit](execution_ownership_audit.md), and the
+[implementation report](execution_ownership_report.md).

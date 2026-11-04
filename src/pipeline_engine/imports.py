@@ -12,15 +12,17 @@ from .input_access import read_int_setting, resolve_holodoppler_timing
 
 from .base import ExecutionVariant, PipelineOption, ProcessResult, pipeline, with_attrs
 from .context import PipelineContext
-from .graphs import PipelineGraph, PipelineNode, PipelineProduct, current_pipeline_dag, handoff
+from .product_exchange import ProductRequirement
+from .stage_graph import StageGraph, StageSpec, ProductSpec, current_pipeline_dag, handoff
 
 __all__ = [
     "HolodopplerTiming",
     "ExecutionVariant",
     "PipelineContext",
-    "PipelineGraph",
-    "PipelineNode",
-    "PipelineProduct",
+    "StageGraph",
+    "StageSpec",
+    "ProductSpec",
+    "ProductRequirement",
     "current_pipeline_dag",
     "handoff",
     "PipelineOption",

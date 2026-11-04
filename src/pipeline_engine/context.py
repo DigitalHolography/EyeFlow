@@ -126,6 +126,9 @@ class PipelineContext:
         scratch: RunArrayStorage | None = None,
         background_artifacts: BackgroundArtifacts | None = None,
         computation_cache: dict[object, object] | None = None,
+        product_inputs: Mapping[str, object] | None = None,
+        on_product_commit=None,
+        product_owner_id=None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -166,7 +169,9 @@ class PipelineContext:
         self._figure_job = None
         self._figure_count = 0
         self._dag_execution = None
-        self._graph_runtime_available = False
+        self.product_inputs = dict(product_inputs or {})
+        self._on_product_commit = on_product_commit
+        self.product_owner_id = product_owner_id
         self._execution_variants: tuple[ExecutionVariant, ...] = ()
         self._execution_variant_failures: dict[str, str] = {}
         self.velocity_workflows = selected_velocity_methods(velocity_workflow_selection)
@@ -197,6 +202,13 @@ class PipelineContext:
         if self._dag_execution is None or self._dag_execution.context is not self:
             raise RuntimeError("No active pipeline DAG belongs to this execution context.")
         return self._dag_execution
+
+    def _product_committed(self, stage, name, handle):
+        from .protocol import emit
+
+        if self._on_product_commit is not None and handle is not None:
+            self._on_product_commit(stage, name, handle)
+        emit("ProductCommit", stage=stage, product=name, handle=handle)
 
     def __copy__(self):
         clone = object.__new__(type(self))

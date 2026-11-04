@@ -22,7 +22,8 @@ from .context import (
     RawH5SourceReader,
 )
 from .dag import PipelineDAG, PipelineExecutionPlan
-from .graphs import PipelineGraph, PipelineNode, PipelineProduct, current_pipeline_dag, handoff
+from .product_exchange import PipelineInvocationId, ProductId, ProductRequirement
+from .stage_graph import StageGraph, StageSpec, ProductSpec, current_pipeline_dag, handoff
 from .errors import format_pipeline_exception
 from .runtime import run_pipelines_to_output
 from .run_service import (
@@ -43,9 +44,12 @@ __all__ = [
     "DatasetValue",
     "ExecutionVariant",
     "PipelineDAG",
-    "PipelineGraph",
-    "PipelineNode",
-    "PipelineProduct",
+    "StageGraph",
+    "StageSpec",
+    "ProductSpec",
+    "PipelineInvocationId",
+    "ProductId",
+    "ProductRequirement",
     "current_pipeline_dag",
     "handoff",
     "PipelineDescriptor",

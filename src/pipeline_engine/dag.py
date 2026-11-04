@@ -37,8 +37,10 @@ class PipelineDAG:
             pipeline.name: index for index, pipeline in enumerate(self._pipelines)
         }
         self._key_producers = self._build_key_producers()
+        self._validate_product_requirements()
         self.graph, self._dependencies = self._build_graph()
         self.execution_order = tuple(self._topological_sort())
+        self._validate_product_scopes()
 
     @property
     def ordered_descriptors(self) -> tuple[PipelineDescriptor, ...]:
@@ -52,6 +54,8 @@ class PipelineDAG:
         *,
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
     ) -> PipelineExecutionPlan:
+        self._validate_product_requirements(pipeline_options)
+        self._validate_product_scopes(pipeline_options)
         target_names = tuple(dict.fromkeys(name for name in targets if name))
         unknown = [
             name for name in target_names if name not in self._pipelines_by_name
@@ -101,9 +105,10 @@ class PipelineDAG:
         *,
         transitive: bool = False,
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
+        include_products: bool = True,
     ) -> tuple[str, ...]:
         """Return direct or transitive upstream pipeline dependencies."""
-        dependencies = self._active_dependency_graph(pipeline_options)
+        dependencies = self._active_dependency_graph(pipeline_options, include_products=include_products)
         return self._related_pipelines(
             pipeline_name,
             dependencies,
@@ -132,9 +137,10 @@ class PipelineDAG:
     def _active_dependency_graph(
         self,
         pipeline_options: Mapping[str, Sequence[str]] | None,
+        *, include_products=True,
     ) -> dict[str, set[str]]:
         return {
-            name: self._active_dependencies(name, pipeline_options)
+            name: self._active_dependencies(name, pipeline_options, include_products=include_products)
             for name in self._pipelines_by_name
         }
 
@@ -142,6 +148,7 @@ class PipelineDAG:
         self,
         pipeline_name: str,
         pipeline_options: Mapping[str, Sequence[str]] | None,
+        *, include_products=True,
     ) -> set[str]:
         pipeline = self._pipelines_by_name[pipeline_name]
         required_keys = list(pipeline.dag_requires)
@@ -154,12 +161,49 @@ class PipelineDAG:
         for option in pipeline.options:
             if option.name in selected_options:
                 required_keys.extend(option.dag_requires)
-        return {
+        dependencies = {
             producer
             for key in required_keys
             if (producer := self._key_producers.get(key)) is not None
             and producer != pipeline_name
         }
+        if include_products:
+            dependencies.update(item.producer_pipeline for item in pipeline.product_requires)
+        return dependencies
+
+    def _validate_product_requirements(self, pipeline_options=None):
+        for consumer in self._pipelines:
+            aliases = set()
+            for item in consumer.product_requires:
+                if not item.alias or item.alias in aliases:
+                    raise ValueError("Product requirement aliases must be nonempty and unique.")
+                aliases.add(item.alias)
+                producer = self._pipelines_by_name.get(item.producer_pipeline)
+                if producer is None or producer is consumer:
+                    raise ValueError(f"Unknown or self product producer: {item.producer_pipeline}")
+                graph = producer.build_graph(self._selected_option_names(producer, pipeline_options))
+                if graph is None:
+                    raise ValueError(f"Product producer {producer.name} needs a graph factory.")
+                graph.plan(external_products=(req.alias for req in producer.product_requires))
+                exposed = {product.id for stage in graph.stages for product in stage.products if product.exposed}
+                if item.product not in exposed:
+                    raise ValueError(f"Undeclared exposed product: {producer.name}.{item.product}")
+
+    def _validate_product_scopes(self, pipeline_options=None):
+        variant_pipelines = {
+            name for pipeline in self._pipelines if pipeline.produces_execution_variants
+            for name in self.dependents_of(pipeline.name, transitive=True, pipeline_options=pipeline_options)
+        } - {pipeline.name for pipeline in self._pipelines if pipeline.run_once}
+        for consumer in self._pipelines:
+            for item in consumer.product_requires:
+                producer_varies = item.producer_pipeline in variant_pipelines
+                consumer_varies = consumer.name in variant_pipelines
+                if item.variant == "shared" and producer_varies:
+                    raise ValueError("A variant producer requires a same or explicitly named product scope.")
+                if item.variant == "same" and producer_varies != consumer_varies:
+                    raise ValueError("A same-variant product requirement has incompatible invocation scopes.")
+                if item.variant not in {"shared", "same"} and not producer_varies:
+                    raise ValueError("A shared producer has no named variant invocation.")
 
     @staticmethod
     def _selected_option_names(
@@ -240,6 +284,9 @@ class PipelineDAG:
                     continue
                 graph[producer].add(pipeline.name)
                 dependencies[pipeline.name].add(producer)
+            for requirement in pipeline.product_requires:
+                graph[requirement.producer_pipeline].add(pipeline.name)
+                dependencies[pipeline.name].add(requirement.producer_pipeline)
 
         return dict(graph), dict(dependencies)
 

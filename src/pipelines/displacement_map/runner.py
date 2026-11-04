@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from scratch_location import temporary_directory as create_temporary_directory
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -12,7 +11,6 @@ import h5py
 import numpy as np
 
 from input_output.output_manager import OutputType
-from input_output.readers.frame_sequences import FrameSequence
 from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import DopplerViewSource
 from input_output.schema.doppler_view import (
@@ -26,7 +24,6 @@ from .calculator import create_retinal_motion_map
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
 from .parameters import MotionMapConfig
 
-DISPLACEMENT_MAP_STATE = "displacement_map_artifacts"
 MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.avi"
 DISPLACEMENT_AVI_SUBFOLDER = "displacement_maps"
 DEFAULT_MOMENT_PATH = "moment0"
@@ -59,153 +56,18 @@ class DisplacementMapInputs:
     fps: float
 
 
-@dataclass(slots=True)
-class DisplacementMapArtifacts:
-    registration_method: str
-    field_paths_by_vessel: dict[str, Path]
-    temporary_directory: object
+def run_displacement_map(ctx, config=None):
+    """Return the registration graph; runtime owns its invocation."""
+    from .graph import displacement_graph
 
-    def cleanup(self) -> None:
-        cleanup = getattr(self.temporary_directory, "cleanup", None)
-        if cleanup is not None:
-            cleanup()
+    return displacement_graph(config or DisplacementMapPipelineConfig())
 
 
-def run_displacement_map(
-    ctx,
-    config: DisplacementMapPipelineConfig | None = None,
-) -> None:
-    """Estimate vessel-specific fields independently of later analysis."""
+def run_displacement_profiles(ctx):
+    """Return the product-dependent analysis graph."""
+    from .graph import displacement_profiles_graph
 
-    if getattr(ctx, "_graph_runtime_available", False):
-        from .stages import displacement_graph
-        return displacement_graph(config or DisplacementMapPipelineConfig())
-
-    selected = config or DisplacementMapPipelineConfig()
-    inputs = load_displacement_map_inputs(ctx, selected)
-    source_filename = inputs.moment.file.filename
-    if not source_filename:
-        raise ValueError("The HoloDoppler input does not have a filesystem path.")
-
-    temporary_directory = create_temporary_directory(
-        prefix="eyeflow-displacement-map-"
-    )
-    field_paths_by_vessel: dict[str, Path] = {}
-    output_videos: list[Path] = []
-    try:
-        base_config = MotionMapConfig(
-            input=Path(source_filename),
-            output_dir=Path(temporary_directory.name),
-            h5_dataset=inputs.moment.name.lstrip("/"),
-            h5_fps=inputs.fps,
-            registration_method=selected.registration_method,
-            save_field=True,
-        )
-        sequence = FrameSequence(
-            base_config.input, base_config.h5_dataset, base_config.h5_frame_axis,
-            base_config.h5_fps, base_config.h5_low_percentile,
-            base_config.h5_high_percentile, h5_source=inputs.moment,
-            defer_h5_range=True,
-        )
-        with sequence.cached_for_replay(
-            base_config.max_frames, Path(temporary_directory.name)
-        ) as replay:
-            for mask_input in inputs.masks:
-                _run_displacement_mask(
-                    ctx, mask_input, inputs, base_config, replay,
-                    Path(temporary_directory.name), field_paths_by_vessel, output_videos,
-                )
-    except Exception:
-        temporary_directory.cleanup()
-        raise
-
-    previous = ctx.state.get(DISPLACEMENT_MAP_STATE)
-    if isinstance(previous, DisplacementMapArtifacts):
-        previous.cleanup()
-    artifacts = DisplacementMapArtifacts(
-        registration_method=selected.registration_method,
-        field_paths_by_vessel=field_paths_by_vessel,
-        temporary_directory=temporary_directory,
-    )
-    ctx.state.set(DISPLACEMENT_MAP_STATE, artifacts)
-    ctx.log("Dense displacement fields prepared for displacement analysis.")
-    for output_video in output_videos:
-        ctx.log(f"Displacement magnitude video written to {output_video}.")
-
-
-def run_displacement_profiles(ctx) -> None:
-    """Persist profiles and, when selected, dense per-segment maps."""
-
-    options_for = getattr(ctx, "options_for", None)
-    selected_options = frozenset(
-        options_for("displacement_profiles") if callable(options_for) else ()
-    )
-    retain_segment_maps = "segment_maps" in selected_options
-    if getattr(ctx, "_graph_runtime_available", False):
-        from .stages import displacement_profiles_graph
-
-        return displacement_profiles_graph(retain_segment_maps=retain_segment_maps)
-
-    artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
-    if not isinstance(artifacts, DisplacementMapArtifacts):
-        raise RuntimeError("Displacement fields are unavailable for profile analysis.")
-
-    from pipelines.topology_core.runner import prepared_topologies
-
-    from .profile_outputs import (
-        pack_displacement_profile_outputs,
-        pack_displacement_segment_map_outputs,
-    )
-    from .segments import DEFAULT_WORKING_MEMORY_MB, analyze_displacement_vessels
-    from .timing import select_displacement_timing
-
-    timing = select_displacement_timing(ctx)
-    if timing is None:
-        ctx.log_warning(
-            "Skipping displacement profiles: detected cardiac timing is "
-            "unavailable in both velocity workflows."
-        )
-        return
-    if timing.workflow == "frequency_bands":
-        ctx.log_warning(
-            "Displacement profiles use frequency-band cardiac timing because "
-            "valid Doppler-moments timing is unavailable."
-        )
-    scratch = getattr(getattr(ctx, "runtime", None), "scratch", None)
-    working_memory_mb = (
-        DEFAULT_WORKING_MEMORY_MB
-        if scratch is None
-        else min(DEFAULT_WORKING_MEMORY_MB, scratch.memory_budget_bytes / 2**20)
-    )
-    results = analyze_displacement_vessels(
-        artifacts.field_paths_by_vessel,
-        prepared_topologies(ctx),
-        retain_maps=retain_segment_maps,
-        working_memory_mb=working_memory_mb,
-        array_allocator=_scratch_array_allocator(ctx),
-    )
-    ctx.output.h5.write_many(
-        pack_displacement_profile_outputs(
-            results,
-            artifacts.registration_method,
-            timing.boundaries,
-            timing_attrs=timing.attrs,
-        )
-    )
-    if retain_segment_maps:
-        ctx.output.h5.write_many(
-            pack_displacement_segment_map_outputs(
-                results,
-                artifacts.registration_method,
-                timing.boundaries,
-                timing_attrs=timing.attrs,
-            )
-        )
-
-
-def _scratch_array_allocator(ctx):
-    scratch = getattr(getattr(ctx, "runtime", None), "scratch", None)
-    return scratch.empty_float32 if scratch is not None else None
+    return displacement_profiles_graph(options=ctx.options_for("displacement_profiles"))
 
 
 def _run_displacement_mask(
@@ -416,8 +278,6 @@ def resolve_frame_rate(ctx, fallback: float = DEFAULT_FPS) -> float:
 
 
 __all__ = [
-    "DISPLACEMENT_MAP_STATE",
-    "DisplacementMapArtifacts",
     "DisplacementMapPipelineConfig",
     "load_displacement_map_inputs",
     "resolve_retina_mask",

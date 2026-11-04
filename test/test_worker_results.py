@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from pipeline_engine.output_model import OutputModel, Record
-from pipeline_engine.process_executor import accept_result
+from pipeline_engine.product_exchange.acceptance import accept_result
 from pipeline_engine.protocol import InvocationResult
 from pipeline_engine.storage import ProductStorage
 
@@ -56,7 +56,7 @@ def test_collision_leaves_prior_output_and_state_untouched(tmp_path, collision):
 
 
 def test_copy_failure_rolls_back_model_state_and_files(tmp_path, monkeypatch):
-    import pipeline_engine.process_executor as execution
+    import pipeline_engine.product_exchange.acceptance as execution
 
     result = _result(tmp_path)
     destination = tmp_path / "published"
@@ -79,3 +79,17 @@ def test_copy_failure_rolls_back_model_state_and_files(tmp_path, monkeypatch):
         assert dict(model.attrs) == {"earlier": 2}
         assert "Worker" not in model
         assert not list(destination.iterdir())
+
+
+def test_log_callback_failure_does_not_invalidate_committed_records(tmp_path, monkeypatch):
+    from dataclasses import replace
+    result = replace(_result(tmp_path), messages=("presentation callback",))
+    def fail_log(message):
+        raise RuntimeError("presentation failure")
+    monkeypatch.setattr("pipeline_engine.product_exchange.acceptance.Logger.log", fail_log)
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "published/final.h5")
+        state = {}
+        _accept(result, model, state, tmp_path / "published")
+        np.testing.assert_array_equal(model["Worker/value"][:], [7])
+        assert state["updated"] == 10
