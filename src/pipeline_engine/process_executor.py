@@ -12,7 +12,6 @@ from uuid import uuid4
 from utils.logger import Logger
 
 from .protocol import InvocationSpec
-from .resources import pipeline_memory_bytes
 from .transfer import dump_result, load_result
 from .worker import run_worker
 
@@ -181,12 +180,7 @@ class ProcessExecutor:
             self._acks[event.invocation].put(True)
 
     def start(self, pipeline):
-        memory = pipeline_memory_bytes(pipeline, self.budget)
-        if memory <= 0:
-            return False
-        request = self.budget.default_request(
-            threads=min(4, max(1, self.budget.cpu_limit // 2)), memory=memory,
-        )
+        request = self.budget.default_request(threads=min(4, max(1, self.budget.cpu_limit // 2)))
         if not self.budget.try_acquire(request.threads, request.memory):
             return False
         try:
@@ -212,7 +206,7 @@ class ProcessExecutor:
             output_manager=self.manager,
             input_metadata={slot: self.input_service.metadata.get(slot) for slot in ("hd", "dv")},
             input_client=self.input_service.client(), settings=self.settings,
-            initial_result=initial, threads=threads, memory_account=account, memory_bytes=memory,
+            initial_result=initial, threads=threads, memory_account=account,
             acknowledgements=acknowledgements, native_parallelism=pipeline.native_parallelism,
         )
         process = self.context.Process(

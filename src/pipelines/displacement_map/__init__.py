@@ -16,7 +16,6 @@ from .runner import run_displacement_map, run_displacement_profiles
     input_slot="both",
     execution_mode="process",
     native_parallelism=True,
-    memory_mb=512.0,
     run_once=True,
 )
 def run(ctx):
@@ -44,7 +43,6 @@ def run(ctx):
     ],
     input_slot="both",
     execution_mode="process",
-    memory_mb=512.0,
     run_once=True,
 )
 def run_profiles(ctx):

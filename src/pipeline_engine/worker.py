@@ -41,7 +41,7 @@ def run_worker(spec, events):
         directory=Path(spec.directory) / "products", budget=spec.memory_account
     )
     scratch = RunArrayStorage(
-        Path(spec.directory), memory_budget_bytes=min(spec.memory_bytes, spec.memory_account.memory_limit)
+        Path(spec.directory), memory_budget_bytes=spec.memory_account.memory_limit
     )
     scratch.budget = spec.memory_account
     files = {
@@ -56,6 +56,7 @@ def run_worker(spec, events):
         layout=replace(spec.output_manager.layout, _root_dir=Path(spec.directory) / "artifacts"),
     )
     ownership = ArtifactOwnership()
+    published_artifact_root = spec.output_manager.layout.ef_dir.resolve()
 
     def snapshot():
         return dump_result(
@@ -81,6 +82,17 @@ def run_worker(spec, events):
         # calculation (which can crash) until this event is fully received.
         spec.acknowledgements.get()
 
+    def forward_log(message):
+        staged_artifact_root = manager.layout.ef_dir.resolve()
+        send(
+            "LogMessage",
+            detail={
+                "message": str(message).replace(
+                    str(staged_artifact_root), str(published_artifact_root)
+                )
+            },
+        )
+
     token = _SINK.set(send)
     error = None
     try:
@@ -100,7 +112,7 @@ def run_worker(spec, events):
             }
         )
         with (
-            Logger.capture_messages(lambda message: send("LogMessage", detail={"message": message})),
+            Logger.capture_messages(forward_log),
             artifact_transaction(ArtifactScope(ownership, manager.layout.ef_dir)),
         ):
             _run_pipeline_descriptor(

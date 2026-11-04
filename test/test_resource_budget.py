@@ -13,6 +13,8 @@ def test_overlapping_calculation_and_publication_do_not_reconfigure_native_pools
     native_calls = []
     monkeypatch.setattr("pipeline_engine.resources.configure_native_threads", native_calls.append)
     budget = ResourceBudget(cpu_threads=4, memory_bytes=4096)
+    # This test isolates thread ownership from process RSS fluctuations.
+    monkeypatch.setattr(budget, "refresh", lambda: None)
     rendezvous = Barrier(2)
 
     def calculate():

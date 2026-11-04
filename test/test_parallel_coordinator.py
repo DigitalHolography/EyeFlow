@@ -17,7 +17,7 @@ from input_output.runs.layout import HoloRunLayout
 from pipeline_engine.base import PipelineDescriptor
 from pipeline_engine.input_service import InputService
 from pipeline_engine.output_model import OutputModel
-from pipeline_engine.resources import ResourceBudget, pipeline_memory_bytes
+from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
 from pipeline_engine.storage import ArrayReference, ProductStorage
 from scratch_location import is_local_path
@@ -229,22 +229,6 @@ def test_resource_admission_counts_unreserved_process_tree_rss():
     assert worker.reserve_memory(10 * mib)
     assert not worker.reserve_memory(10 * mib + 1)
     worker.release_memory(10 * mib)
-
-
-def test_displacement_declares_its_bounded_transient_memory():
-    from pipelines import load_pipeline_catalog
-
-    available, _ = load_pipeline_catalog()
-    descriptors = {pipeline.name: pipeline for pipeline in available}
-    assert descriptors["displacement_map"].memory_mb == 512.0
-    assert descriptors["displacement_profiles"].memory_mb == 512.0
-
-
-def test_pipeline_memory_reservation_keeps_headroom_at_exact_limit():
-    mib = 2**20
-    budget = ResourceBudget(cpu_threads=2, memory_bytes=512 * mib)
-    pipeline = descriptor("bounded", lambda ctx: None, memory_mb=512.0)
-    assert pipeline_memory_bytes(pipeline, budget) == 448 * mib
 
 
 def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():

@@ -18,7 +18,7 @@ from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
 from .context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline
 from .errors import format_pipeline_exception
 from .protocol import emit
-from .resources import current_resources, pipeline_memory_bytes
+from .resources import current_resources
 from .scratch import RunArrayStorage
 
 
@@ -109,8 +109,7 @@ def _run_pipeline_descriptor(
 def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     """Calculate and persist a descriptor within its output checkpoint."""
     budget = current_resources()
-    memory = pipeline_memory_bytes(pipeline_desc, budget) if budget else 0
-    with budget.compute(memory=memory) if budget else nullcontext():
+    with budget.compute() if budget else nullcontext():
         result = pipeline.run(ctx)
     from .graphs import PipelineGraph, GraphExecution
 

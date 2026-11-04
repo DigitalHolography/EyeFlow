@@ -47,13 +47,6 @@ class MemoryAccount:
         with self.counters.get_lock():
             return dict(zip(self.categories, self.counters[:]))
 
-    def maximum_reservation(self, category="transient"):
-        """Return capacity after persistent categories, excluding active peers."""
-        index = self.categories.index(category)
-        with self.counters.get_lock():
-            other_categories = sum(self.counters[:]) - self.counters[index]
-        return max(0, self.memory_limit - other_categories)
-
     def reserve_memory(self, size, category="retained"):
         index = self.categories.index(category)
         if size == 0:
@@ -96,24 +89,6 @@ class MemoryAccount:
                 for index, amount in enumerate(self.owned):
                     self.counters[index] -= amount
                     self.owned[index] = 0
-
-
-def pipeline_memory_bytes(pipeline, budget) -> int:
-    """Convert declared MiB to an attainable transient reservation.
-
-    Persistent retained/input/transfer data reduce the maximum request. Active
-    transient reservations are deliberately excluded here: normal admission
-    waits for those peers instead of silently shrinking a heavy calculation.
-    """
-    requested = int(float(pipeline.memory_mb) * 1024**2)
-    capacity = budget.maximum_reservation("transient")
-    headroom = min(64 * 2**20, capacity // 4)
-    if capacity >= requested + headroom:
-        return requested
-    # A budget exactly equal to the declaration still contains small retained
-    # metadata and process overhead. Keep bounded consumer headroom instead of
-    # creating an admission request that can never succeed.
-    return max(0, capacity - headroom)
 
 
 @dataclass(frozen=True)

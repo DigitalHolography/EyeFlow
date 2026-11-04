@@ -59,7 +59,6 @@ class InvocationSpec:
     memory_account: object
     acknowledgements: object
     native_parallelism: bool = False
-    memory_bytes: int = 64 * 2**20
 
 
 @dataclass(frozen=True)

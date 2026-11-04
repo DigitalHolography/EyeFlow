@@ -98,9 +98,9 @@ finalization. The default CPU limit is 75% of affinity-available logical CPUs
 at 50% of available memory sampled at budget creation. Retained arrays leave
 working headroom and spill locally when needed. Admission uses the larger of
 explicit reservations and observed process-tree RSS above the run baseline.
-Both displacement processes declare 512 MiB of working memory; when the budget
-cannot grant that amount, reservations retain consumer headroom and profile
-chunking uses the granted allowance. These are admission estimates,
+Pipeline declarations carry no fixed RAM allowance. The shared budget supplies
+working estimates for admission and accounts for retained/input/transfer bytes;
+profile chunking uses the shared scratch capacity. These are admission estimates,
 not hard limits on native allocations or mapped pages.
 
 The budget exposes admission operations; callers do not inspect private locks or

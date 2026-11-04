@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -42,7 +41,6 @@ def registerPipeline(
     wait_for_artifacts: bool = False,
     execution_mode: str = "coordinator",
     native_parallelism: bool = False,
-    memory_mb: float = 64.0,
 ):
     def decorator(cls):
         cls.name = name
@@ -84,7 +82,6 @@ def registerPipeline(
             wait_for_artifacts=bool(wait_for_artifacts),
             execution_mode=execution_mode,
             native_parallelism=bool(native_parallelism),
-            memory_mb=memory_mb,
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -110,7 +107,6 @@ def pipeline(
     wait_for_artifacts: bool = False,
     execution_mode: str = "coordinator",
     native_parallelism: bool = False,
-    memory_mb: float = 64.0,
 ):
     """Register a function pipeline.
 
@@ -146,7 +142,6 @@ def pipeline(
             wait_for_artifacts=bool(wait_for_artifacts),
             execution_mode=execution_mode,
             native_parallelism=bool(native_parallelism),
-            memory_mb=memory_mb,
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -339,14 +334,10 @@ class PipelineDescriptor:
     wait_for_artifacts: bool = False
     execution_mode: str = "coordinator"
     native_parallelism: bool = False
-    memory_mb: float = 64.0
 
     def __post_init__(self):
         if self.execution_mode not in {"coordinator", "process"}:
             raise ValueError(f"Unsupported pipeline execution mode: {self.execution_mode}")
-        self.memory_mb = float(self.memory_mb)
-        if not math.isfinite(self.memory_mb) or self.memory_mb <= 0:
-            raise ValueError("Pipeline memory_mb must be finite and positive.")
 
     def instantiate(self) -> ProcessPipeline:
         """Factory method to create the actual pipeline instance."""
