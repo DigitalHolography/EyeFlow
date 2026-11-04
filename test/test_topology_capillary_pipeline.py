@@ -51,6 +51,7 @@ def _ctx(hd, dv):
             dv=PipelineInputSource(RawH5SourceReader(h5file=dv, label="DV"), {}),
         ),
         state=PipelineState(),
+        options_for=lambda _pipeline: frozenset(),
         attrs={},
         require_inputs=lambda *slots: None,
     )

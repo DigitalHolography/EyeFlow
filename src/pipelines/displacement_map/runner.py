@@ -58,6 +58,8 @@ class DisplacementMapInputs:
 
 def run_displacement_map(ctx, config=None):
     """Return the registration graph; runtime owns its invocation."""
+    from pipeline_engine.context import require_managed_runtime
+    require_managed_runtime(ctx, "displacement_map")
     from .graph import displacement_graph
 
     return displacement_graph(config or DisplacementMapPipelineConfig())
@@ -65,6 +67,8 @@ def run_displacement_map(ctx, config=None):
 
 def run_displacement_profiles(ctx):
     """Return the product-dependent analysis graph."""
+    from pipeline_engine.context import require_managed_runtime
+    require_managed_runtime(ctx, "displacement_profiles")
     from .graph import displacement_profiles_graph
 
     return displacement_profiles_graph(options=ctx.options_for("displacement_profiles"))

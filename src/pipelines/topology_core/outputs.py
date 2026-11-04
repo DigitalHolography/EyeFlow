@@ -24,7 +24,10 @@ from input_output.schema.doppler_view import (
 from input_output.schema.serialization import (
     serialize_label_map as _serialize_label_map,
     serialize_spatial_image as _serialize_spatial_image,
+    serialize_segment_masks,
 )
+from input_output.schema.output_payload import DatasetValue
+from input_output.writers.h5_storage import segment_mask_h5_options
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
@@ -155,6 +158,24 @@ def pack_topology_outputs(
         pixel_pitch,
         output_paths,
     )
+
+
+def pack_rotated_segment_masks(prepared_topologies):
+    """Publish map-independent masks once for all velocity workflows."""
+    schema = EyeFlowOutputPaths.active()
+    outputs = {}
+    for name, paths in (("artery", schema.artery_segments), ("vein", schema.vein_segments)):
+        masks = np.asarray(prepared_topologies[name].rotated_masks, dtype=bool)
+        if masks.ndim != 4:
+            raise ValueError("segment masks must have shape (radius, branch, y, x).")
+        serialized = serialize_segment_masks(masks)
+        outputs[paths.segments] = DatasetValue(
+            data=serialized,
+            attrs={"dimDesc": ["x", "y", "branch", "radius"],
+                   "coordinate_system": "rotated_segment_pixel"},
+            h5_options=segment_mask_h5_options(serialized.shape),
+        )
+    return outputs
 
 
 def pack_capillary_analysis_zones(

@@ -2,6 +2,7 @@
 
 import json
 from enum import Enum
+from contextlib import nullcontext
 
 
 class StageState(str, Enum):
@@ -30,10 +31,15 @@ class StageJournal:
         self.products[product] = {"producer": stage, "datasets": list(paths)}
 
     def persist(self, model):
-        for key, values in zip(self.keys, (self.statuses, self.failures, self.skips, self.products)):
-            existing = json.loads(model.attrs.get(key, "{}"))
-            existing[self.scope] = values
-            model.attrs[key] = json.dumps(existing, sort_keys=True)
+        self.apply(model, self.reconcile(model, self.attributes()))
+
+    @classmethod
+    def apply(cls, model, attributes):
+        with model.writing_as("stage_journal") if hasattr(model, "writing_as") else nullcontext():
+            for key, value in attributes.items():
+                if key not in cls.keys:
+                    raise ValueError("Only stage journal root attributes belong to StageJournal.")
+                model.attrs[key] = value
 
     def attributes(self):
         return {key: json.dumps({self.scope: values}, sort_keys=True)
@@ -61,8 +67,7 @@ class StageJournal:
         if error and status in {"failed", "skipped"}:
             key = "stage_failures" if status == "failed" else "stage_skips"
             attrs[key] = json.dumps({scope: {stage: error}})
-        for key, value in cls.reconcile(model, attrs).items():
-            model.attrs[key] = value
+        cls.apply(model, cls.reconcile(model, attrs))
 
     @classmethod
     def finalize(cls, model, scope, error):

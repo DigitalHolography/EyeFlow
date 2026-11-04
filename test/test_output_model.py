@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from input_output.writers.h5_initialization import _copy_source_object
-from pipeline_engine.output_model import OutputModel
+from pipeline_engine.output_model import OutputModel, OutputImmutableError, OutputOwnershipError, OutputPathConflictError
 from pipeline_engine.storage import ProductStorage
 
 
@@ -53,3 +53,59 @@ def test_failed_destination_copy_keeps_previous_output_and_cleans_staging(tmp_pa
         assert final.read_bytes() == b"previous output"
         assert not list(tmp_path.glob(".ef-*.h5"))
         assert not list(storage.directory.glob("*.h5"))
+
+
+def test_dataset_commits_are_immutable_while_groups_remain_shared_and_authorized(tmp_path):
+    """Two producers share a namespace; rejected writes roll back only new work."""
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "result.h5")
+        with model.checkpoint(owner="A"):
+            model.create_dataset("Temporary/value", data=1)
+            del model["Temporary/value"]
+            del model["Temporary"]
+            data = model.create_dataset("Shared/Mean", data=[1, 2])
+            data[0] = 3
+            data.attrs["unit"] = "pixels"
+            model.create_dataset("Shared/Mean", data=[3, 4])
+            model["Shared/Mean"].attrs["unit"] = "pixels"
+        records, cursor = model.committed_delta({})
+        assert "Shared/Mean" in records
+        assert not any(path.startswith("Temporary") for path in records)
+        with model.checkpoint(owner="B"):
+            model.create_dataset("Shared/Maximum", data=[9])
+            model.require_group("Shared/Subgroup")
+        records, cursor = model.committed_delta(cursor)
+        assert "Shared/Maximum" in records and "Shared/Mean" not in records
+        for owner, expected in (("A", OutputImmutableError), ("B", OutputOwnershipError)):
+            for mutate in (
+                lambda: model.create_dataset("Shared/Mean", data=[99]),
+                lambda: model["Shared/Mean"].__setitem__(0, 99),
+                lambda: model["Shared/Mean"].attrs.__setitem__("unit", "wrong"),
+                lambda: model.__delitem__("Shared/Mean"),
+            ):
+                with pytest.raises(expected), model.checkpoint(owner=owner):
+                    model.create_dataset("Rejected/value", data=99)
+                    records, _ = model.committed_delta(cursor)
+                    assert "Rejected/value" not in records
+                    mutate()
+                assert "Rejected" not in model
+        with model.writing_as("B"):
+            for mutate, expected in (
+                (lambda: model.__delitem__("Shared"), OutputImmutableError),
+                (lambda: model.create_dataset("Shared", data=1), OutputPathConflictError),
+                (lambda: model.create_dataset("Shared/Mean/child", data=1), OutputPathConflictError),
+                (lambda: model.require_group("Shared/Mean"), OutputPathConflictError),
+                (lambda: model["Shared"].attrs.__setitem__("title", "unauthorized"), OutputOwnershipError),
+                (lambda: model.attrs.__setitem__("pipeline_status", "unauthorized"), OutputOwnershipError),
+            ):
+                with pytest.raises(expected):
+                    mutate()
+        with model.checkpoint(owner="A"):
+            model["Shared"].attrs["title"] = "authorized"
+        np.testing.assert_array_equal(model["Shared/Mean"][:], [3, 4])
+        np.testing.assert_array_equal(model["Shared/Maximum"][:], [9])
+        assert model["Shared/Mean"].attrs["unit"] == "pixels"
+        model.publish()
+        with h5py.File(model.filename) as result:
+            assert result["Shared"].attrs["title"] == "authorized"
+            assert result["Shared/Mean"].attrs["unit"] == "pixels"

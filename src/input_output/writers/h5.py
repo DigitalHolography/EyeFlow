@@ -1,6 +1,6 @@
 """Generic HDF5 file, dataset, and attribute write operations."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 import h5py
@@ -100,6 +100,8 @@ def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group
     parts = [part for part in normalized_key.split("/") if part]
     if not parts:
         raise ValueError("Dataset key cannot be empty.")
+    if hasattr(root_group, "store_dataset"):
+        return root_group.require_group("/".join(parts[:-1])), parts[-1]
 
     parent = root_group
     for part in parts[:-1]:
@@ -131,8 +133,9 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
 
 def write_root_attributes(h5file: h5py.File, values: dict[str, object]) -> None:
     """Apply engine bookkeeping to the root output object."""
-    for key, value in values.items():
-        h5file.attrs[key] = value
+    with h5file.writing_as("runtime") if hasattr(h5file, "writing_as") else nullcontext():
+        for key, value in values.items():
+            h5file.attrs[key] = value
 
 
 def delete_output_path(h5file: h5py.File, path: str) -> None:
@@ -164,12 +167,16 @@ def _matches_inherited_attribute(value, inherited) -> bool:
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
     data, ds_attrs, h5_options = dataset_parts(value)
 
-    target_group, dataset_key = resolve_dataset_target(group, str(key))
-    if dataset_key in target_group:
-        del target_group[dataset_key]
-    backing_name = f"__{dataset_key}_unique_frequency_storage"
-    if backing_name in target_group:
-        del target_group[backing_name]
+    if hasattr(group, "store_dataset"):
+        # Managed paths, ownership and immutability have one authoritative check.
+        target_group, dataset_key = group, str(key)
+    else:
+        target_group, dataset_key = resolve_dataset_target(group, str(key))
+        if dataset_key in target_group:
+            del target_group[dataset_key]
+        backing_name = f"__{dataset_key}_unique_frequency_storage"
+        if backing_name in target_group:
+            del target_group[backing_name]
 
     payload, ds_attrs = _normalize_dataset_payload(data, ds_attrs)
     dataset = _create_dataset(
@@ -178,6 +185,7 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
         payload,
         h5_options=h5_options,
     )
+    target_group = dataset.parent
 
     if ds_attrs:
         inherited_attrs = inherited_provenance(target_group)

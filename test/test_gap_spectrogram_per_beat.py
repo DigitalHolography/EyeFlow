@@ -305,15 +305,15 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
                 warning.assert_called_once()
 
 
-def test_low_frequency_spectra_are_hidden_and_automatically_follow_velocity():
+def test_low_frequency_spectra_are_selectable_and_run_only_when_selected():
     available, missing = load_pipeline_catalog()
     assert "gap_analysis" not in {item.name for item in [*available, *missing]}
     descriptors = {item.name: item for item in available}
     assert "gap_per_beat_spectrograms" not in descriptors["velocity"].dag_produces
     spectra = descriptors["low_freq_spectra"]
-    assert spectra.visibility == "hidden"
+    assert spectra.visibility == "visible"
     assert spectra.run_once
-    assert spectra.auto_run_after == "velocity"
+    assert spectra.auto_run_after is None
     assert "gap_per_beat_spectrograms" in spectra.dag_produces
     assert descriptors["velocity"].dag_requires == ()
     dag = PipelineDAG(available)
@@ -322,7 +322,10 @@ def test_low_frequency_spectra_are_hidden_and_automatically_follow_velocity():
     for target in ("velocity_analysis", "spatial_gradient_moment0"):
         names = dag.resolve_targets([target]).names
         assert names.index("velocity") < names.index(target)
-        assert names.index("topology_core") < names.index("low_freq_spectra")
-        assert names.index("velocity") < names.index("low_freq_spectra")
+        assert "low_freq_spectra" not in names
         assert "gap_analysis" not in names
     assert "low_freq_spectra" not in dag.resolve_targets(["displacement_map"]).names
+    plan = dag.resolve_targets(["low_freq_spectra"])
+    assert plan.targets == ("low_freq_spectra",)
+    assert plan.names.index("topology_core") < plan.names.index("low_freq_spectra")
+    assert plan.names.index("velocity") < plan.names.index("low_freq_spectra")

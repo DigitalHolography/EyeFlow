@@ -85,7 +85,7 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
     available, _ = load_pipeline_catalog()
     low_freq = next(item for item in available if item.name == "low_freq_spectra")
     return resolve_run_spec(
-        input_paths=[holo], target_names=["consumer"], pipelines=[
+        input_paths=[holo], target_names=["low_freq_spectra", "consumer"], pipelines=[
             _descriptor("velocity", source, produces_execution_variants=True,
                         dag_produces=("velocity_workflows", "capillary_analysis_zones")),
             low_freq,
@@ -112,7 +112,7 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
     ctx = run.call_args.args[0]
     assert ctx.execution_variant is None
     assert ctx.output.h5.processing_root is None
-    assert spec.plan.targets == ("consumer",)
+    assert spec.plan.targets == ("low_freq_spectra", "consumer")
     assert spec.plan.names.index("velocity") < spec.plan.names.index("low_freq_spectra")
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:
@@ -375,12 +375,6 @@ def test_automatic_companions_close_dependencies_and_do_not_become_targets():
     assert plan.names.index("source") < plan.names.index("first") < plan.names.index("second")
     assert dag.resolve_targets(["unrelated"]).names == ("unrelated",)
     assert dag.resolve_targets([]).names == ()
-
-
-def test_low_frequency_pipeline_cannot_be_selected_directly():
-    available, _ = load_pipeline_catalog()
-    with pytest.raises(ValueError, match="hidden.*low_freq_spectra"):
-        resolve_run_spec(input_paths=[], target_names=["low_freq_spectra"], pipelines=available)
 
 
 def test_failed_beat_stage_retains_committed_spatial_products_and_basic_exports(tmp_path):

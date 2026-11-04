@@ -29,8 +29,12 @@ def dump_result(value, storage):
             return None
 
     path = storage.path(".pickle")
-    with path.open("wb") as stream:
-        Pickler(stream, protocol=5).dump(value)
+    try:
+        with path.open("wb") as stream:
+            Pickler(stream, protocol=5).dump(value)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
     storage.metrics.add("serializations", 1)
     storage.metrics.add("manifest_bytes", path.stat().st_size)
     return str(path)

@@ -10,26 +10,60 @@ from collections.abc import MutableMapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from types import MappingProxyType
 import numpy as np
 
+from data_manager.handles import FrozenMapping, StringArray
 from .storage import ArrayReference, ValueReference
 
 
-@dataclass
+class OutputError(ValueError):
+    """A rejected managed-output operation."""
+
+
+class OutputImmutableError(OutputError):
+    pass
+
+
+class OutputOwnershipError(OutputError):
+    pass
+
+
+class OutputPathConflictError(OutputError):
+    pass
+
+
+def _metadata(value):
+    if isinstance(value, dict):
+        return FrozenMapping({key: _metadata(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_metadata(item) for item in value)
+    if isinstance(value, np.ndarray):
+        if value.dtype.hasobject:
+            return StringArray(tuple(value.flat), value.shape, value.dtype)
+        return np.frombuffer(value.tobytes(), dtype=value.dtype).reshape(value.shape)
+    return value
+
+
+@dataclass(frozen=True)
 class Record:
     kind: str = "group"
     value: object = None
     attrs: dict = field(default_factory=dict)
     attr_dtypes: dict = field(default_factory=dict)
     options: dict = field(default_factory=dict)
+    owner: str | None = None
+    committed: bool = False
+    metadata_owner: str | None = None
+
+    def __post_init__(self):
+        for key in ("attrs", "attr_dtypes", "options"):
+            value = getattr(self, key)
+            if not isinstance(value, FrozenMapping):
+                object.__setattr__(self, key, _metadata(dict(value)))
 
     def snapshot(self):
-        return replace(
-            self,
-            attrs=deepcopy(self.attrs),
-            attr_dtypes=dict(self.attr_dtypes),
-            options=dict(self.options),
-        )
+        return self
 
 
 class Attributes(MutableMapping):
@@ -38,7 +72,7 @@ class Attributes(MutableMapping):
 
     @property
     def record(self):
-        return self.node.file.records[self.node.path]
+        return self.node.file._records[self.node.path]
 
     def __iter__(self):
         return iter(self.record.attrs)
@@ -47,22 +81,30 @@ class Attributes(MutableMapping):
         return len(self.record.attrs)
 
     def __getitem__(self, key):
-        return deepcopy(self.record.attrs[key])
+        value = self.record.attrs[key]
+        return np.asarray(value).copy() if isinstance(value, StringArray) else deepcopy(value)
 
     def __setitem__(self, key, value):
+        self.node.file._check_attributes(self.node.path, key)
+        attrs, dtypes = dict(self.record.attrs), dict(self.record.attr_dtypes)
+        attrs[key] = value
+        dtypes.pop(key, None)
         self.node.file._touch(self.node.path)
-        self.record.attrs[key] = deepcopy(value)
-        self.record.attr_dtypes.pop(key, None)
+        self.node.file._records[self.node.path] = replace(self.record, attrs=attrs, attr_dtypes=dtypes)
 
     def __delitem__(self, key):
+        self.node.file._check_attributes(self.node.path, key)
+        attrs, dtypes = dict(self.record.attrs), dict(self.record.attr_dtypes)
+        del attrs[key]
+        dtypes.pop(key, None)
         self.node.file._touch(self.node.path)
-        del self.record.attrs[key]
-        self.record.attr_dtypes.pop(key, None)
+        self.node.file._records[self.node.path] = replace(self.record, attrs=attrs, attr_dtypes=dtypes)
 
     def create(self, key, value, dtype=None):
         self[key] = value
         if dtype is not None:
-            self.record.attr_dtypes[key] = dtype
+            self.node.file._records[self.node.path] = replace(
+                self.record, attr_dtypes={**self.record.attr_dtypes, key: dtype})
 
 
 class OutputNode:
@@ -108,6 +150,14 @@ class OutputDataset(OutputNode):
     def __getitem__(self, key):
         return self._value[key]
 
+    def __setitem__(self, key, value):
+        self.file._check_dataset_write(self.path)
+        record = self.file._records[self.path]
+        array = np.array(self._value, copy=True)
+        array[key] = value
+        self.file._touch(self.path)
+        self.file._records[self.path] = replace(record, value=self.file.storage.store(array))
+
     def __array__(self, dtype=None, copy=None):
         array = np.asarray(self._value, dtype=dtype)
         return array.copy() if copy else array
@@ -142,10 +192,24 @@ class OutputGroup(OutputNode):
 
     def __delitem__(self, key):
         path = self._path(key)
-        for child in list(self.file.records):
-            if child == path or child.startswith(path + "/"):
-                self.file._touch(child)
-                del self.file.records[child]
+        if not path:
+            raise OutputPathConflictError("Cannot delete the output root.")
+        record = self.file._records.get(path)
+        if record is None:
+            raise KeyError(path)
+        children = [child for child in self.file._records if child == path or child.startswith(path + "/")]
+        if record.kind == "group" and any(self.file._records[child].kind == "dataset"
+                                           and self.file._records[child].committed for child in children):
+            raise OutputImmutableError(f"Cannot delete group '{path}' containing committed datasets.")
+        for child in children:
+            if self.file._records[child].kind == "dataset":
+                self.file._check_dataset_write(child)
+        if record.kind == "group":
+            self.file._check_attributes(path)
+        for child in children:
+            self.file._touch(child)
+            del self.file._records[child]
+            self.file._versions.pop(child, None)
 
     def keys(self):
         prefix = self.path + "/" if self.path else ""
@@ -165,18 +229,21 @@ class OutputGroup(OutputNode):
 
     def require_group(self, name):
         path = self._path(name)
-        for index in range(1, len(path.split("/")) + 1):
-            parent = "/".join(path.split("/")[:index])
-            if parent not in self.file.records:
+        if not path:
+            return self.file
+        parents = ["/".join(path.split("/")[:index]) for index in range(1, len(path.split("/")) + 1)]
+        for parent in parents:
+            if parent in self.file._records and self.file._records[parent].kind != "group":
+                raise OutputPathConflictError(f"Output path '{path}' conflicts with dataset '{parent}'.")
+        for parent in parents:
+            if parent not in self.file._records:
                 self.file._touch(parent)
-                self.file.records[parent] = Record()
-            elif self.file.records[parent].kind != "group":
-                raise ValueError(f"Dataset blocks group {parent}")
+                self.file._records[parent] = Record(metadata_owner=self.file.current_owner)
         return self.file[path]
 
     def create_group(self, name):
         if name in self:
-            raise ValueError(f"Output group already exists: {name}")
+            raise OutputPathConflictError(f"Output group already exists: {name}")
         return self.require_group(name)
 
     def create_dataset(self, name, data=None, shape=None, dtype=None, **options):
@@ -188,6 +255,7 @@ class OutputGroup(OutputNode):
 
     def store_dataset(self, name, data, options=None):
         path = self._path(name)
+        self.file._check_dataset_write(path)
         if not isinstance(data, (ArrayReference, ValueReference)):
             array = np.asarray(data)
             if array.dtype.kind == "O" and not all(
@@ -201,7 +269,7 @@ class OutputGroup(OutputNode):
         self.file.require_group(path.rpartition("/")[0])
         value = self.file.storage.store(data)
         self.file._touch(path)
-        self.file.records[path] = Record("dataset", value, options=dict(options or {}))
+        self.file._records[path] = Record("dataset", value, options=dict(options or {}), owner=self.file.current_owner)
         return self.file[path]
 
 
@@ -210,10 +278,54 @@ class OutputModel(OutputGroup):
         super().__init__(self, "")
         self.storage = storage
         self.filename = str(filename)
-        self.records = {"": Record()}
+        self._records = {"": Record(committed=True, metadata_owner="runtime")}
+        self.current_owner = "runtime"
         self._checkpoints = []
         self._versions = {"": 0}
         self._generation = 0
+
+    @property
+    def records(self):
+        return MappingProxyType(self._records)
+
+    @contextmanager
+    def writing_as(self, owner):
+        previous = self.current_owner
+        self.current_owner = owner
+        try:
+            yield self
+        finally:
+            self.current_owner = previous
+
+    def _check_dataset_write(self, path):
+        record = self._records.get(path)
+        if record is None:
+            return
+        if record.kind != "dataset":
+            raise OutputPathConflictError(f"Cannot create dataset at existing group '{path}'.")
+        if record.owner != self.current_owner:
+            raise OutputOwnershipError(
+                f"Pipeline '{self.current_owner}' cannot write dataset '{path}' owned by pipeline '{record.owner}'.")
+        if record.committed:
+            raise OutputImmutableError(f"Cannot modify committed dataset '{path}'.")
+
+    def _check_attributes(self, path, key=None):
+        record = self._records[path]
+        if record.kind == "dataset":
+            self._check_dataset_write(path)
+            return
+        owner = ("stage_journal" if not path and key in
+                 {"stage_status", "stage_failures", "stage_skips", "stage_products"} else record.metadata_owner)
+        if owner != self.current_owner:
+            raise OutputOwnershipError(
+                f"Pipeline '{self.current_owner}' cannot modify metadata of group '{path or '/'}' owned by '{owner}'.")
+
+    def designate_metadata(self, path, owner):
+        if self.current_owner != "runtime":
+            raise OutputOwnershipError("Only the runtime may designate group metadata ownership.")
+        group = self.require_group(path)
+        self._touch(group.path)
+        self._records[group.path] = replace(self._records[group.path], metadata_owner=owner)
 
     def _touch(self, path):
         for checkpoint in self._checkpoints:
@@ -228,7 +340,11 @@ class OutputModel(OutputGroup):
         pass
 
     @contextmanager
-    def checkpoint(self):
+    def checkpoint(self, *, owner=None):
+        if owner is not None:
+            with self.writing_as(owner), self.checkpoint() as checkpoint:
+                yield checkpoint
+            return
         checkpoint = ProductCheckpoint(self)
         self._checkpoints.append(checkpoint)
         try:
@@ -236,6 +352,9 @@ class OutputModel(OutputGroup):
         except BaseException:
             checkpoint.rollback()
             raise
+        else:
+            if len(self._checkpoints) == 1:
+                checkpoint.commit(tuple(checkpoint.before))
         finally:
             self._checkpoints.remove(checkpoint)
 
@@ -255,40 +374,62 @@ class OutputModel(OutputGroup):
 
         copy_output_node(self, source, target, name)
 
-    def validate_merge(self, records):
+    def validate_merge(self, records, *, owner=None):
         """Reject conflicts before accepting any invocation records."""
+        if owner is not None:
+            with self.writing_as(owner):
+                return self.validate_merge(records)
         for path, record in records.items():
             if path != path.strip("/") or "\\" in path:
                 raise ValueError(f"Invalid output path: {path!r}")
             if record.kind not in {"group", "dataset"}:
                 raise ValueError(f"Invalid output record kind: {record.kind!r}")
             current = self.records.get(path)
-            if current and (record.kind == "dataset" or current.kind != record.kind):
-                raise ValueError(f"Duplicate pipeline output: {path}")
+            if current and current.kind != record.kind:
+                raise OutputPathConflictError(f"Output path '{path}' has a conflicting dataset/group kind.")
+            if record.kind == "dataset":
+                self._check_dataset_write(path)
+                if record.owner is not None and record.owner != self.current_owner:
+                    raise OutputOwnershipError(f"Invalid producing pipeline for dataset '{path}'.")
+            elif current and record.attrs:
+                for key in record.attrs:
+                    self._check_attributes(path, key)
             parent = path.rpartition("/")[0]
             while path and parent:
                 ancestor = records.get(parent, self.records.get(parent))
-                if ancestor is None or ancestor.kind != "group":
-                    raise ValueError(f"Output parent must be a group: {parent}")
+                if ancestor is not None and ancestor.kind != "group":
+                    raise OutputPathConflictError(f"Output path '{path}' conflicts with dataset '{parent}'.")
                 parent = parent.rpartition("/")[0]
 
-    def merge(self, records):
+    def merge(self, records, *, owner=None):
         """Accept one invocation atomically; only group attributes can be shared."""
+        if owner is not None:
+            with self.writing_as(owner):
+                return self.merge(records)
         self.validate_merge(records)
         with self.checkpoint():
             for path, record in records.items():
                 current = self.records.get(path)
+                if current and record.kind == "group" and not record.attrs:
+                    # An existing structural parent is shared, not rewritten.
+                    continue
                 self._touch(path)
-                if current:
-                    current.attrs.update(deepcopy(record.attrs))
+                if current and record.kind == "group":
+                    attrs, dtypes = dict(current.attrs), dict(current.attr_dtypes)
+                    attrs.update(record.attrs)
                     for key in record.attrs:
-                        current.attr_dtypes.pop(key, None)
-                    current.attr_dtypes.update(record.attr_dtypes)
+                        dtypes.pop(key, None)
+                    dtypes.update(record.attr_dtypes)
+                    self._records[path] = replace(current, attrs=attrs, attr_dtypes=dtypes)
                 else:
                     adopted = record.snapshot()
                     if adopted.kind == "dataset":
-                        adopted.value = self.storage.store(adopted.value)
-                    self.records[path] = adopted
+                        self.require_group(path.rpartition("/")[0])
+                        adopted = replace(adopted, value=self.storage.store(adopted.value),
+                                          owner=self.current_owner, committed=False)
+                    else:
+                        adopted = replace(adopted, metadata_owner=self.current_owner, committed=False)
+                    self._records[path] = adopted
 
     def committed_records(self):
         """Snapshot accepted records without exposing unfinished checkpoint edits."""
@@ -299,7 +440,7 @@ class OutputModel(OutputGroup):
                     records.pop(path, None)
                 else:
                     records[path] = old.snapshot()
-        return records
+        return {path: record for path, record in records.items() if record.committed}
 
     def committed_delta(self, cursor):
         """Return only changed accepted records and an invocation-owned cursor."""
@@ -316,16 +457,21 @@ class OutputModel(OutputGroup):
         records = {
             path: overrides.get(path, self.records.get(path)).snapshot()
             for path, version in versions.items() if cursor.get(path) != version
+            and overrides.get(path, self.records.get(path)).committed
         }
         # The root transports this invocation's diagnostics even for an empty
         # numerical delta; it never contains another invocation's worker tree.
         records.setdefault("", overrides.get("", self.records[""]).snapshot())
-        return records, versions
+        return records, {path: version for path, version in versions.items()
+                         if overrides.get(path, self.records.get(path)).committed}
 
     def publish(self):
         """Publish through the shared I/O policy (also used by standalone callers)."""
         from input_output.writers.h5_publication import publish_output_model
 
+        if self._checkpoints:
+            raise RuntimeError("Cannot publish an active output transaction.")
+        ProductCheckpoint(self).commit(tuple(self._records))
         publish_output_model(self)
 
 
@@ -341,14 +487,17 @@ class ProductCheckpoint:
             parts = path.strip("/").split("/")
             committed.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
         for path in committed:
+            record = self.model._records.get(path)
+            if record is not None and not record.committed:
+                self.model._records[path] = replace(record, committed=True)
             self.before.pop(path, None)
             self.versions.pop(path, None)
 
     def rollback(self):
         for path, old in self.before.items():
             if old is None:
-                self.model.records.pop(path, None)
+                self.model._records.pop(path, None)
                 self.model._versions.pop(path, None)
             else:
-                self.model.records[path] = old
+                self.model._records[path] = old
                 self.model._versions[path] = self.versions[path]

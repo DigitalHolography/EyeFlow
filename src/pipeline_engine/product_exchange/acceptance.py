@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from data_manager import DataManager
 from utils.logger import Logger
+from input_output.writers.h5 import write_root_attributes
 
 from ..stage_graph.journal import StageJournal
 from ..transfer import load_result
@@ -37,7 +38,7 @@ def accept_result(result, *, model, state, destination, name, stages=None, error
     """Apply records, bindings, diagnostics and artifacts with existing checkpoints."""
     source_root, destination = result.artifact_root.resolve(), destination.resolve()
     records = {path: record for path, record in result.records.items() if path}
-    model.validate_merge(records)
+    model.validate_merge(records, owner=name)
     attributes = StageJournal.reconcile(model, result.records[""].attrs, allowed_scope=name)
     changes = published_paths(result.state, source_root, destination)
     artifacts, targets = [], set()
@@ -55,9 +56,10 @@ def accept_result(result, *, model, state, destination, name, stages=None, error
     published, previous_state = [], dict(state)
     try:
         with model.checkpoint():
-            model.merge(records)
-            for key, value in attributes.items():
-                model.attrs[key] = value
+            with model.writing_as(name):
+                model.merge(records)
+            StageJournal.apply(model, {key: value for key, value in attributes.items() if key in StageJournal.keys})
+            write_root_attributes(model, {key: value for key, value in attributes.items() if key not in StageJournal.keys})
             for stage, status in (stages or {}).items():
                 StageJournal.observe(model, name, stage, status)
             StageJournal.finalize(model, name, error)
@@ -167,8 +169,7 @@ class ProductAcceptance:
         if event.journal is not None:
             if set(event.journal) - set(StageJournal.keys):
                 raise ValueError("A graph diagnostic event may contain only stage journal records.")
-            for key, value in StageJournal.reconcile(self.model, event.journal, allowed_scope=invocation_id.label).items():
-                self.model.attrs[key] = value
+            StageJournal.apply(self.model, StageJournal.reconcile(self.model, event.journal, allowed_scope=invocation_id.label))
         status = {"StageStarted": "running", "StageFinished": "succeeded",
                   "StageFailed": "failed", "StageSkipped": "skipped"}.get(event.kind)
         if status:

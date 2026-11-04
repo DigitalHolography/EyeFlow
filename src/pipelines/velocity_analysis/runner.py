@@ -13,7 +13,6 @@ from .builder import (
     _export_pulse_pngs,
     _pulse_pngs_required,
     build_velocity_analysis,
-    pack_velocity_analysis_meta_outputs,
 )
 from .outputs import (
     pack_continuous_velocity_outputs,
@@ -127,8 +126,8 @@ def run_velocity_analysis(ctx) -> dict[str, object]:
     if getattr(output, "available", False):
         h5 = getattr(output, "h5", None)
         if h5 is not None:
-            h5.set_attrs(analysis.attrs)
-            h5.write_many({**metrics, **pack_velocity_analysis_meta_outputs(analysis)})
+            # Shared acquisition/workflow metadata belongs to the runtime.
+            h5.write_many(metrics)
             h5.flush()
         if _pulse_pngs_required(ctx):
             with _optional_artifact_export("pulse-analysis PNG"):

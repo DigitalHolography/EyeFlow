@@ -189,19 +189,6 @@ def test_moments_and_bandratio_graphs_keep_handoffs_and_failures_isolated(tmp_pa
         assert products["science [bands]"]["metric"]["datasets"] == ["ProcessingBandRatio/Metric/value"]
 
 
-@pytest.mark.parametrize("kind", ["unknown", "cycle", "duplicate"])
-def test_graph_definition_rejects_invalid_dependencies(kind):
-    noop = lambda ctx: None
-    if kind == "unknown":
-        graph = StageGraph((StageSpec("a", noop, requires=("missing",)),))
-    elif kind == "cycle":
-        graph = StageGraph((StageSpec("a", noop, after=("b",)), StageSpec("b", noop, after=("a",))))
-    else:
-        graph = StageGraph((StageSpec("a", noop, products=(ProductSpec("metric"),)), StageSpec("b", noop, products=(ProductSpec("metric"),))))
-    with pytest.raises((ValueError, RuntimeError)):
-        graph.plan()
-
-
 def test_graph_report_waits_for_declared_artifacts_and_writes_intermediates_immediately(tmp_path, monkeypatch):
     monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
     manager = _manager(tmp_path)

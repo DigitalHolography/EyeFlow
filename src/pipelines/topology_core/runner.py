@@ -29,7 +29,7 @@ from utils.logger import Logger
 
 from .cache import run_topology_cache
 from .gap_masks import gaps_from_m0ff
-from .outputs import pack_capillary_analysis_zones, pack_gap_mask, pack_topology_outputs
+from .outputs import pack_capillary_analysis_zones, pack_gap_mask, pack_topology_outputs, pack_rotated_segment_masks
 
 TOPOLOGY_CORE_STATE = "topology_core.prepared"
 CAPILLARY_ANALYSIS_ZONES_STATE = "topology_core.capillary_analysis_zones"
@@ -99,6 +99,8 @@ def run_topology_core(ctx) -> dict[str, object]:
         prepared,
         inputs.holodoppler.pixel_pitch,
     )
+    if "segment_velocity_maps" in ctx.options_for("velocity_analysis"):
+        metrics.update(pack_rotated_segment_masks(prepared))
     if legacy_zones is not None:
         metrics.update(pack_capillary_analysis_zones(legacy_zones, capillary_disc))
     metrics.update(gap_outputs)

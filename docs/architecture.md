@@ -98,7 +98,7 @@ The important shared scientific chain is:
 
 ```text
 velocity      -> `velocity` + `cardiac_cycles` + `velocity_workflows`
-  -> low_freq_spectra (hidden, automatic, once per run; optional HD spectra)
+  -> low_freq_spectra (selectable, selected-only, once per run; optional HD spectra)
 topology_core -> `prepared_topology` + shared `capillary_analysis_zones`
         \          /
          velocity_analysis

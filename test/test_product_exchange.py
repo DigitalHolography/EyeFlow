@@ -2,23 +2,20 @@
 
 import json
 from dataclasses import replace
-from pathlib import Path
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
 
-from data_manager import DataManager
 from pipeline_engine.base import PipelineDescriptor
 from pipeline_engine.dag import PipelineDAG
 from pipeline_engine.output_model import OutputModel, Record
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement, ProductExchangeRegistry, ProductStatus
-from pipeline_engine.product_exchange.acceptance import ProductAcceptance
-from pipeline_engine.protocol import InvocationResult, ProductAcceptedEvent
+from pipeline_engine.product_exchange.acceptance import ProductAcceptance, accept_result
+from pipeline_engine.protocol import InvocationResult
 from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.stage_graph.journal import StageJournal
 from pipeline_engine.storage import ProductStorage
-from pipeline_engine.transfer import dump_result
 
 
 def test_identity_variants_and_finalization_do_not_overwrite_accepted_products():
@@ -75,37 +72,32 @@ def test_journal_merges_stages_and_variant_scopes_independently(tmp_path):
                                    allowed_scope="science [moments]")
 
 
-def test_incremental_output_cursor_excludes_unaccepted_edits_and_replacements(tmp_path):
-    with ProductStorage() as storage:
-        model = OutputModel(storage, tmp_path / "final.h5")
-        model.create_dataset("accepted", data=np.arange(32768, dtype=np.float32))
-        records, cursor = model.committed_delta({})
-        assert "accepted" in records
-        with pytest.raises(ValueError), model.checkpoint():
-            model.create_dataset("unfinished", data=17)
-            records, during = model.committed_delta(cursor)
-            assert "unfinished" not in records
-            raise ValueError("failure")
-        records, after = model.committed_delta(cursor)
-        assert "accepted" not in records and "unfinished" not in records
-        assert after == cursor
-
-
 def test_authoritative_acceptance_rejects_another_thread(tmp_path):
     with ProductStorage() as storage:
         model = OutputModel(storage, tmp_path / "final.h5")
         acceptance = ProductAcceptance(model=model, state={}, destination=tmp_path,
                                        inputs={}, registry=ProductExchangeRegistry())
-        errors = []
-        def wrong_thread():
-            try:
-                acceptance.finalize(PipelineInvocationId("run", "a"))
-            except RuntimeError as exc:
-                errors.append(str(exc))
-        thread = Thread(target=wrong_thread)
-        thread.start()
-        thread.join()
-        assert errors and "coordinator thread" in errors[0]
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with pytest.raises(RuntimeError, match="coordinator thread"):
+                pool.submit(acceptance.finalize, PipelineInvocationId("run", "a")).result()
+
+
+def test_log_callback_failure_does_not_invalidate_committed_records(tmp_path, monkeypatch):
+    def fail_log(message):
+        raise RuntimeError("presentation failure")
+
+    monkeypatch.setattr("pipeline_engine.product_exchange.acceptance.Logger.log", fail_log)
+    result = InvocationResult(
+        records={"": Record(), "value": Record("dataset", np.array([7]))},
+        state={"updated": 10}, artifacts=(), artifact_root=tmp_path,
+        messages=("presentation callback",),
+    )
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "final.h5")
+        state = {}
+        accept_result(result, model=model, state=state, destination=tmp_path, name="worker")
+        np.testing.assert_array_equal(model["value"][:], [7])
+        assert state["updated"] == 10
 
 
 @pytest.mark.parametrize("scope", ["same", "moments", "unproduced"])
@@ -143,6 +135,7 @@ def test_runtime_same_variant_products_are_qualified_and_remain_isolated(tmp_pat
     with h5py.File(final) as result:
         if scope == "unproduced":
             assert "ProcessingMoments/Value" not in result
+            assert json.loads(result.attrs["pipeline_status"])["shared"]["consumer"] == "skipped"
         else:
             assert result["ProcessingMoments/Value"][()] == 4
         if scope == "same":

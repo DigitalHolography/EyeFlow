@@ -9,7 +9,7 @@ import pickle
 
 from utils.logger import Logger
 
-from .protocol import InvocationSpec, TransportReceipt
+from .protocol import InvocationSpec, InvocationOutcome, TransportReceipt
 from .transfer import dump_result
 from .worker import run_worker
 from .product_exchange import PipelineInvocationId
@@ -25,12 +25,10 @@ class ActiveInvocation:
     acceptance_error: str | None = None
     finished: bool = False
     exited_at: float | None = None
-
-
-@dataclass(frozen=True)
-class InvocationOutcome:
-    name: str
-    error: str | None = None
+    reaped: bool = False
+    reservation_released: bool = False
+    outcome: InvocationOutcome | None = None
+    reported: bool = False
 
 
 class ProcessExecutor:
@@ -47,12 +45,13 @@ class ProcessExecutor:
         self._stop = Event()
         self._acks = {}
         self.active = {}
+        self._closed = False
         self._receiver = Thread(target=self._receive, name="EyeFlowResults", daemon=True)
         self._receiver.start()
 
     @property
     def running(self):
-        return any(not job.finished for job in self.active.values())
+        return any(not job.finished or not job.reaped for job in self.active.values())
 
     @property
     def coordinator_ready(self):
@@ -137,7 +136,7 @@ class ProcessExecutor:
             process=process, threads=threads, memory=memory, memory_account=account,
         )
 
-    def _finish(self, name, error):
+    def _finish(self, name, error, *, status="succeeded", reason=None):
         active = self.active[name]
         if active.finished:
             return None
@@ -149,11 +148,32 @@ class ProcessExecutor:
             self.acceptance.finalize(PipelineInvocationId(self.run_id, name), error)
         except Exception as exc:
             error = str(exc)
-        finally:
+        active.outcome = InvocationOutcome(name, error, "failed" if error else status, reason)
+        return self._report(active)
+
+    def _report(self, active):
+        if not active.reaped or active.reported or active.outcome is None:
+            return None
+        outcome = active.outcome
+        if active.process.exitcode and not outcome.error:
+            outcome = InvocationOutcome(outcome.name,
+                f"Worker exited with code {active.process.exitcode} during cleanup.", "failed")
+        active.reported = True
+        return outcome
+
+    def _reap(self, active):
+        if active.reaped or active.process.is_alive():
+            return
+        active.process.join(timeout=0)
+        active.memory_account.reclaim()
+        if not active.reservation_released:
             self.budget.release(active.threads, active.memory)
-        return InvocationOutcome(name, error)
+            active.reservation_released = True
+        active.reaped = True
 
     def collect(self, *, wait=False):
+        if self._closed:
+            return []
         outcomes = []
         try:
             event = self._incoming.get(timeout=0.1 if wait else 0.001)
@@ -180,7 +200,7 @@ class ProcessExecutor:
                 if outcome:
                     outcomes.append(outcome)
             if event.kind == "InvocationFinished":
-                outcome = self._finish(event.invocation, event.error)
+                outcome = self._finish(event.invocation, event.error, status=event.status or "succeeded", reason=event.reason)
                 if outcome:
                     outcomes.append(outcome)
             elif event.kind in {"StageFailed", "StageSkipped"}:
@@ -190,11 +210,14 @@ class ProcessExecutor:
             except Empty:
                 event = None
         for name, active in self.active.items():
-            if active.process.is_alive():
+            self._reap(active)
+            if not active.reaped:
                 continue
-            active.process.join(timeout=0)
-            active.memory_account.reclaim()
-            if not active.finished:
+            if active.finished:
+                outcome = self._report(active)
+                if outcome is not None:
+                    outcomes.append(outcome)
+            else:
                 # The receiver can be between queue receipt and local delivery.
                 active.exited_at = active.exited_at or monotonic()
                 if monotonic() - active.exited_at > 0.2:
@@ -203,6 +226,9 @@ class ProcessExecutor:
         return outcomes
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         for name, active in self.active.items():
             if active.process.is_alive() and not active.finished:
                 active.process.terminate()
@@ -212,9 +238,9 @@ class ProcessExecutor:
                 active.process.join()
             if not active.finished:
                 self.acceptance.finalize(PipelineInvocationId(self.run_id, name), "Worker cancelled.")
-                self.budget.release(active.threads, active.memory)
+                active.finished = True
+            self._reap(active)
             active.process.close()
-            active.memory_account.reclaim()
         self._stop.set()
         self._receiver.join()
         for acknowledgements in self._acks.values():

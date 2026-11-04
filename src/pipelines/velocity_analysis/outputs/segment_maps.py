@@ -5,8 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
-from input_output.schema.serialization import serialize_segment_masks
-from input_output.writers.h5_storage import segment_mask_h5_options, velocity_map_h5_options
+from input_output.writers.h5_storage import velocity_map_h5_options
 from pipeline_engine.base import DatasetValue
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs
@@ -23,7 +22,7 @@ def pack_segment_map_outputs(
     *,
     velocity: RetinalVelocity | None = None,
 ) -> dict[str, object]:
-    """Pack prepared per-beat maps and masks for artery and vein segments."""
+    """Pack workflow-specific maps referencing shared topology masks."""
 
     schema = resolve_output_paths(output_paths)
     velocity_attrs = velocity_dataset_attrs(velocity)
@@ -95,19 +94,6 @@ def _pack_vessel_segment_maps(
             },
         )
 
-    if paths.segments is not None:
-        masks = np.asarray(segments.profile.topology.rotated_masks, dtype=bool)
-        if masks.ndim != 4:
-            raise ValueError("segment masks must have shape (radius, branch, y, x).")
-        serialized_masks = serialize_segment_masks(masks)
-        outputs[paths.segments] = DatasetValue(
-            data=serialized_masks,
-            attrs={
-                "dimDesc": ["x", "y", "branch", "radius"],
-                "coordinate_system": "rotated_segment_pixel",
-            },
-            h5_options=segment_mask_h5_options(serialized_masks.shape),
-        )
     return outputs
 
 

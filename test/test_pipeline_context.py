@@ -20,6 +20,15 @@ from utils.logger import Logger
 
 
 class PipelineContextTests(unittest.TestCase):
+    def test_scientific_runners_reject_standalone_contexts(self):
+        from pipelines.low_freq_spectra.runner import run_low_freq_spectra
+        from pipelines.displacement_map.runner import run_displacement_map, run_displacement_profiles
+        for name, runner in (("low_freq_spectra", run_low_freq_spectra),
+                             ("displacement_map", run_displacement_map),
+                             ("displacement_profiles", run_displacement_profiles)):
+            with self.subTest(pipeline=name), self.assertRaisesRegex(RuntimeError, f"Pipeline '{name}' requires the EyeFlow managed execution runtime"):
+                runner(object())
+
     def test_missing_arrays_return_none_for_explicit_none_default(self) -> None:
         with h5py.File("context_missing_test.h5", "w", driver="core", backing_store=False) as h5file:
             source = RawH5SourceReader(h5file=h5file, label="HD")

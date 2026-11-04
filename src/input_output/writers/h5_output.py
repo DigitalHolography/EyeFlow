@@ -90,7 +90,7 @@ class PipelineH5Output:
     def write_many(self, metrics: Mapping[str, Any]) -> None:
         if self._write_guard is not None:
             self._write_guard()
-        if self.processing_root:
+        if self.processing_root and not hasattr(self.file, "writing_as"):
             self.set_attrs(self.provenance)
         for path, value in metrics.items():
             target = self._path(path)

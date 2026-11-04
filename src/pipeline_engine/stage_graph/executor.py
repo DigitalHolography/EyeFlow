@@ -10,7 +10,7 @@ from input_output.writers.deferred import capture_artifact_writes
 from input_output.writers.h5 import h5_write_checkpoint
 from utils.logger import Logger
 
-from ..protocol import emit
+from ..protocol import emit, InvocationOutcome
 from ..resources import current_resources
 from .artifacts import ArtifactDispatcher
 from .exceptions import StageSkipped
@@ -155,6 +155,14 @@ class StageGraphExecutor:
                         self._run_stage(stage)
                 if self.journal.failures:
                     raise RuntimeError("; ".join(f"{name}: {error}" for name, error in self.journal.failures.items()))
+                blocked = [stage.id for stage in self.definition.stages
+                           if self.journal.statuses[stage.id] == "skipped" and not stage.artifact
+                           and (stage.requires or stage.after or any(not p.optional for p in stage.products))]
+                if blocked or (self.journal.statuses and set(self.journal.statuses.values()) == {"skipped"}):
+                    supplied = any(self.products.has(p.id) for stage in self.definition.stages for p in stage.products)
+                    reason = "; ".join(f"{name}: {value}" for name, value in self.journal.skips.items())
+                    return InvocationOutcome(ctx.runtime.pipeline_name, status="partial" if supplied else "skipped", reason=reason)
+                return InvocationOutcome(ctx.runtime.pipeline_name)
         finally:
             ctx.output.h5._write_guard = previous
             try:

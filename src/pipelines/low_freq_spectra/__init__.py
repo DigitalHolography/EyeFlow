@@ -1,4 +1,4 @@
-"""Hidden shared low-frequency spectral analysis after velocity estimation."""
+"""Selectable, once-per-run low-frequency spectral analysis."""
 
 from pipeline_engine.imports import pipeline
 
@@ -16,8 +16,6 @@ def build_graph(*, options=()):
     dag_requires=["velocity_workflows", "capillary_analysis_zones"],
     dag_produces=["gap_spectrograms", "gap_per_beat_spectrograms"],
     input_slot="hd",
-    visibility="hidden",
-    auto_run_after="velocity",
     run_once=True,
     graph_factory=build_graph,
 )

@@ -1,7 +1,7 @@
 """Small queue events; large invocation results travel through local files."""
 
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 from .product_exchange.identity import PipelineInvocationId
@@ -26,6 +26,18 @@ class WorkerEvent:
     handle: object = None
     emitted_at: float | None = None
     journal: dict | None = None
+    status: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class InvocationOutcome:
+    name: str
+    error: str | None = None
+    status: str = "succeeded"
+    reason: str | None = None
+    variants: tuple = ()
+    variant_failures: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

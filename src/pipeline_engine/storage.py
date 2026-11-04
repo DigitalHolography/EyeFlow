@@ -75,6 +75,8 @@ class ProductStorage:
         array = np.asarray(value)
         # Object/string payloads remain small metadata; numeric arrays spill.
         numeric = array.dtype.kind in "biufcSU"
+        if array.dtype.hasobject:
+            return self.store_value(array)
         if numeric and (array.nbytes >= 64 * 1024 or isinstance(value, np.memmap)):
             return self.store_array(array)
         if self.budget and not self.budget.reserve_memory(array.nbytes, category):
@@ -83,8 +85,7 @@ class ProductStorage:
             return self.store_value(array)
         with self._resident_lock:
             self._resident[category] = self._resident.get(category, 0) + array.nbytes
-        result = (array.copy() if array.dtype.hasobject else
-                  np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape))
+        result = np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
         self.metrics.add("array_copies", 1)
         self.metrics.add("array_copied_bytes", array.nbytes)
         result.flags.writeable = False
@@ -95,8 +96,12 @@ class ProductStorage:
         import cloudpickle
 
         path = self.path(".pickle")
-        with path.open("wb") as stream:
-            cloudpickle.dump(value, stream, protocol=5)
+        try:
+            with path.open("wb") as stream:
+                cloudpickle.dump(value, stream, protocol=5)
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
         self.metrics.add("value_serializations", 1)
         self.metrics.add("value_bytes", path.stat().st_size)
         shape = getattr(value, "shape", None)

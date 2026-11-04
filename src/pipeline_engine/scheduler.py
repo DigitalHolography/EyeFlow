@@ -45,11 +45,13 @@ class CoordinatorScheduler:
     def _collect(self, *, wait=False):
         for outcome in self.executor.collect(wait=wait):
             self.completed.add(outcome.name)
-            self.statuses[outcome.name] = "failed" if outcome.error else "succeeded"
+            self.statuses[outcome.name] = outcome.status
             if outcome.error:
                 self.failures[outcome.name] = outcome.error
                 Logger.log_warning(f"Failed {outcome.name}; keeping completed products: {outcome.error}")
-            elif self.on_success:
+            elif outcome.reason:
+                self.skips[outcome.name] = outcome.reason
+            elif outcome.status == "succeeded" and self.on_success:
                 self.on_success(outcome.name)
             self._notify_completion()
 

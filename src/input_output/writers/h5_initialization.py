@@ -20,6 +20,31 @@ from .h5 import open_h5, resolve_dataset_target, set_attr_safe
 from .h5_storage import _MIN_COMPRESSION_BYTES
 
 
+def initialize_acquisition_metadata(model, hd):
+    """One runtime producer for shared timing datasets across all workflows."""
+    from .h5_output import PipelineH5Output
+
+    if hd.h5.h5file is None:
+        return
+    schema = EyeFlowOutputPaths.active()
+    values = {}
+    try:
+        frequency = hd.as_holodoppler().sampling_frequency_hz()
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        pass
+    else:
+        values[schema.sampling_frequency_hz] = (frequency, {"unit": "Hz"})
+    try:
+        timing = hd.as_holodoppler().timing()
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        pass
+    else:
+        values[f"{schema.meta_root}/BatchStride/value"] = np.float32(timing.batch_stride)
+        values[f"{schema.meta_root}/FrameIntervalSeconds/value"] = (np.float32(timing.dt_seconds), {"unit": "s"})
+    with model.checkpoint(owner="runtime"):
+        PipelineH5Output(model).write_many(values)
+
+
 def initialize_output_h5(
     h5file: h5py.File,
     *,

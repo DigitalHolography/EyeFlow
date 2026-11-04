@@ -42,8 +42,11 @@ def test_failed_pipeline_keeps_scratch_alive_until_run_cleanup(tmp_path):
         assert not scratch_path.exists()
 
 
-@pytest.mark.parametrize("variants,fail_both", [(False, False), (True, False), (True, True)])
-@pytest.mark.parametrize("failure_stage", ["calculate", "write"])
+@pytest.mark.parametrize("variants,fail_both,failure_stage", [
+    (False, False, "calculate"), (True, False, "calculate"), (True, True, "calculate"),
+    (False, False, "write"), (True, False, "write"), (True, True, "write"),
+    (False, False, "ownership"),
+])
 def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
     tmp_path, variants, fail_both, failure_stage,
 ):
@@ -52,9 +55,7 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
 
     def source(ctx):
         ctx.state.set("stable", 7)
-        ctx.output.h5.set_attr("stable_attribute", "original")
-        ctx.output.h5.write("ProcessingMoments/Upstream/value", 7)
-        ctx.output.h5.set_attr("stable_attribute", "original")
+        ctx.output.h5.write("ProcessingMoments/Upstream/value", 7, stable_attribute="original")
         artifact = ctx.output.path_for(OutputType.PNG, "earlier.png")
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes(b"earlier artifact")
@@ -75,12 +76,13 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
             return {"ProcessingMoments/Product/value": 10}
         ctx.state.set("stable", -1)
         ctx.state.set("incomplete", True)
-        ctx.output.h5.write("ProcessingMoments/Upstream/value", -1)
         ctx.output.h5.write("ProcessingMoments/Partial/value", -1)
-        ctx.output.h5.set_attr("stable_attribute", "changed")
+        ctx.output.h5.get("ProcessingMoments/Partial/value").attrs["working_attribute"] = "uncommitted"
         artifact = ctx.output.path_for(OutputType.PNG, "partial.png")
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes(b"incomplete artifact")
+        if failure_stage == "ownership":
+            ctx.output.h5.write("ProcessingMoments/Upstream/value", -1)
         if failure_stage == "write":
             return {"ProcessingMoments/Product/value": 1, "ProcessingMoments/Invalid/value": object()}
         raise ValueError("injected failure")
@@ -121,7 +123,7 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
         assert "ProcessingMoments/Partial" not in output
         assert "ProcessingMoments/Product" not in output
         assert "ProcessingMoments/Dependent" not in output
-        assert output.attrs["stable_attribute"] == "original"
+        assert output["ProcessingMoments/Upstream/value"].attrs["stable_attribute"] == "original"
         statuses = json.loads(output.attrs["pipeline_status"])
         status = statuses["variants"]["primary"] if variants else statuses["shared"]
         assert status["failing"] == "failed"

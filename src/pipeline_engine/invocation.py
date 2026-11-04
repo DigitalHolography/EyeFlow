@@ -15,9 +15,9 @@ from utils.logger import Logger
 
 from .background_artifacts import BackgroundArtifacts
 from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
-from .context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline
+from .context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline, managed_invocation
 from .errors import format_pipeline_exception
-from .protocol import emit
+from .protocol import InvocationOutcome
 from .resources import current_resources
 from .scratch import RunArrayStorage
 
@@ -51,7 +51,7 @@ def _run_pipeline_descriptor(
     product_inputs: Mapping[str, object] | None = None,
     on_product_commit=None,
     product_owner_id=None,
-) -> tuple[tuple[ExecutionVariant, ...], dict[str, str]]:
+) -> InvocationOutcome:
     pipeline = pipeline_desc.instantiate()
     label = (
         f"{pipeline.name} [{execution_variant.name}]"
@@ -87,7 +87,8 @@ def _run_pipeline_descriptor(
         product_owner_id=product_owner_id,
     )
     try:
-        with _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts) as checkpoint:
+        with (managed_invocation(ctx),
+              _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts, owner=label) as checkpoint):
             # Consumers may create intermediate images they use immediately.
             # Their upstream artifacts have already been joined by the runtime.
             capture = None if pipeline_desc.wait_for_artifacts else ctx._capture_artifact_write
@@ -102,9 +103,10 @@ def _run_pipeline_descriptor(
         raise
     # Publish the invocation snapshot only after its outer checkpoint accepts
     # every legacy result. Stage graphs publish their earlier handoffs separately.
-    emit("ProductCommit")
     ctx._start_artifacts()
-    if ctx.artifacts_pending:
+    if result.status != "succeeded":
+        Logger.log(f"[{result.status.upper()}] {label}: {result.reason}")
+    elif ctx.artifacts_pending:
         Logger.log(f"[OK] {label}: calculations complete; artifact exports continue in background.")
     else:
         Logger.log(f"[OK] {label}")
@@ -119,8 +121,9 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     from .stage_graph import StageGraph
     from .stage_graph.executor import StageGraphExecutor
 
+    outcome = InvocationOutcome(pipeline.name)
     if isinstance(result, StageGraph):
-        StageGraphExecutor(result, ctx, checkpoint, _pipeline_checkpoint).run()
+        outcome = StageGraphExecutor(result, ctx, checkpoint, _pipeline_checkpoint).run()
         result = None
     if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
         raise ValueError(
@@ -143,11 +146,12 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)
     finish_pipeline(ctx, pipeline.name)
-    return ctx.execution_variants, ctx.execution_variant_failures
+    from dataclasses import replace
+    return replace(outcome, variants=ctx.execution_variants, variant_failures=ctx.execution_variant_failures)
 
 
 @contextmanager
-def _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts=None):
+def _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts=None, *, owner=None):
     """Restore one invocation and remove only artifacts explicitly owned by it."""
     state = dict(variables)
     parent_owner = current_artifact_transaction()
@@ -155,7 +159,8 @@ def _pipeline_checkpoint(work_h5, variables, output_manager, background_artifact
                 parent_owner._registry if parent_owner is not None else ArtifactOwnership())
     transaction = ArtifactScope(registry, output_manager.layout.ef_dir)
     try:
-        with artifact_transaction(transaction), h5_write_checkpoint(work_h5) as h5_checkpoint:
+        with (work_h5.writing_as(owner) if owner is not None and hasattr(work_h5, "writing_as") else nullcontext(),
+              artifact_transaction(transaction), h5_write_checkpoint(work_h5) as h5_checkpoint):
             class Checkpoint:
                 def commit(self, paths=()):
                     h5_checkpoint.commit(paths)

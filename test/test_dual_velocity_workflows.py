@@ -40,7 +40,7 @@ def _dual_input(root):
     return holo, hd_path
 
 
-def _spec(holo, *, artifacts=False):
+def _spec(holo, *, artifacts=False, spectra=False):
     available, _ = load_pipeline_catalog()
     targets = [
         "velocity_analysis",
@@ -50,6 +50,8 @@ def _spec(holo, *, artifacts=False):
         "lowrank_waveform_decomposition",
     ]
     velocity_options = ["segments"]
+    if spectra:
+        targets.append("low_freq_spectra")
     if artifacts:
         targets.append("pdf_report")
         velocity_options += [
@@ -98,7 +100,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
             wraps=gap_spectrograms_per_beat,
         ) as subdivide,
     ):
-        result = execute_run(_spec(holo))
+        result = execute_run(_spec(holo, spectra=True))
     assert result.succeeded, result.failures
     preprocess.assert_called_once()
     subdivide.assert_called_once()
@@ -219,7 +221,7 @@ def test_gap_uses_bandratio_without_moments_and_skips_empty_support(tmp_path, em
             wraps=preprocess_spectrograms,
         ) as preprocess,
     ):
-        result = execute_run(_spec(holo))
+        result = execute_run(_spec(holo, spectra=True))
     assert result.succeeded, result.failures
     if empty_gaps:
         subdivide.assert_not_called()
@@ -254,7 +256,7 @@ def test_malformed_spectra_do_not_disable_velocity_or_its_downstream_analysis(tm
         hd.create_dataset("spectrograms", data=np.ones((4, 4), dtype=np.float32))
     available, _ = load_pipeline_catalog()
     spec = resolve_run_spec(
-        input_paths=[holo], target_names=["velocity_analysis"], pipelines=available,
+        input_paths=[holo], target_names=["velocity_analysis", "low_freq_spectra"], pipelines=available,
         pipeline_options={"velocity_analysis": ()}, band_ratio_frequency_scale_hz=2,
     )
     result = execute_run(spec)
@@ -283,7 +285,7 @@ def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_pa
 
     available, _ = load_pipeline_catalog()
     spec = resolve_run_spec(
-        input_paths=[holo], target_names=["velocity_analysis"], pipelines=available,
+        input_paths=[holo], target_names=["velocity_analysis", "low_freq_spectra"], pipelines=available,
         pipeline_options={"velocity_analysis": ()},
         band_ratio_frequency_scale_hz=2,
     )

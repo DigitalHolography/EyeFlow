@@ -11,18 +11,16 @@ def test_immutable_arrays_reuse_bytes_across_snapshots_and_preserve_aliases(tmp_
     value = np.full(32768, 3.0, dtype=np.float32)
     value.flags.writeable = False
     with ProductStorage(directory=tmp_path) as storage:
-        # Reuse is based on established backing ownership, not the producer's
-        # reversible WRITEABLE flag.
         data = DataManager(storage)
-        value = data.read(data.accept(value))
-        first = dump_result({"a": value, "b": value}, storage)
-        second = dump_result({"a": value}, storage)
+        accepted = data.read(data.accept({"a": value, "b": value}))
+        assert accepted["a"] is accepted["b"]
+        first = dump_result(accepted, storage)
+        second = dump_result({"a": accepted["a"]}, storage)
         assert len(list(tmp_path.glob("*.npy"))) == 1
         loaded = load_result(first, storage, {})
         assert loaded["a"] is loaded["b"]
         assert not loaded["a"].flags.writeable
         np.testing.assert_array_equal(load_result(second, storage, {})["a"], value)
-        # A restored immutable reference must not be copied on its next handoff.
         dump_result(loaded, storage)
         assert len(list(tmp_path.glob("*.npy"))) == 1
 

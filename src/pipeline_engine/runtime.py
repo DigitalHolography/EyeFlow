@@ -24,7 +24,8 @@ from pipeline_engine.scratch import RunArrayStorage
 from input_output.writers.h5 import (
     open_h5, write_root_attributes,
 )
-from input_output.writers.h5_initialization import initialize_output_h5
+from input_output.writers.h5_initialization import initialize_output_h5, initialize_acquisition_metadata
+from input_output.writers.h5_output import PipelineH5Output
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -165,19 +166,20 @@ def _execute_input(
     wait_for_exports: bool,
 ) -> Path:
     hd_h5, dv_h5 = _open_input_h5_sources(stack, holodoppler_h5, doppler_vision_h5)
-    _initialize_work_h5(
-        work_h5=work_h5,
-        pipelines=pipelines,
-        target_names=target_names,
-        pipeline_options=pipeline_options,
-        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-        copy_hd_passthrough=copy_hd_passthrough,
-        velocity_workflow_selection=velocity_workflow_selection,
-        holodoppler_h5=holodoppler_h5,
-        doppler_vision_h5=doppler_vision_h5,
-        hd_source_h5=hd_h5,
-        dv_source_h5=dv_h5,
-    )
+    with work_h5.checkpoint():
+        _initialize_work_h5(
+            work_h5=work_h5,
+            pipelines=pipelines,
+            target_names=target_names,
+            pipeline_options=pipeline_options,
+            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+            copy_hd_passthrough=copy_hd_passthrough,
+            velocity_workflow_selection=velocity_workflow_selection,
+            holodoppler_h5=holodoppler_h5,
+            doppler_vision_h5=doppler_vision_h5,
+            hd_source_h5=hd_h5,
+            dv_source_h5=dv_h5,
+        )
     input_service = InputService({"hd": hd_h5, "dv": dv_h5}, work_h5.storage,
                                  multiprocessing.get_context("spawn"))
     stack.callback(input_service.close)
@@ -192,6 +194,7 @@ def _execute_input(
         hd=PipelineInputSource(RawH5SourceReader(h5file=hd_h5, label="HD"), hd_config),
         dv=PipelineInputSource(RawH5SourceReader(h5file=dv_h5, label="DV"), dv_config),
     )
+    initialize_acquisition_metadata(work_h5, shared_inputs.hd)
     context_vars: dict[str, object] = {}
     computation_cache: dict[object, object] = {}
 
@@ -335,15 +338,17 @@ def _execute_input(
                         acceptance.accept_local(executor.invocation_id(descriptor, variant_name), stage, product, handle),
                 }
                 try:
-                    _run_pipeline_descriptor(pipeline_desc, **branch_arguments)
+                    outcome = _run_pipeline_descriptor(pipeline_desc, **branch_arguments)
                 except Exception as exc:
                     Logger.log_warning(f"Failed {label}; continuing safe pipelines: {exc}")
                     statuses[name] = "failed"
                     pipeline_failures[label] = str(exc)
                     variant_failures.setdefault(variant.name, str(exc))
                 else:
-                    statuses[name] = "succeeded"
-                    succeeded = True
+                    statuses[name] = outcome.status
+                    succeeded = outcome.status == "succeeded"
+                    if outcome.reason:
+                        pipeline_skips[label] = outcome.reason
                 acceptance.finalize(executor.invocation_id(pipeline_desc, variant.name), pipeline_failures.get(label))
         else:
             # Prefer a complete workflow for unrelated shared pipelines.
@@ -367,7 +372,7 @@ def _execute_input(
                 Logger.log_warning(f"Skipping {name}: {pipeline_skips[name]}")
             else:
                 try:
-                    emitted_variants, emitted_failures = _run_pipeline_descriptor(
+                    outcome = _run_pipeline_descriptor(
                         pipeline_desc, **arguments,
                     )
                 except Exception as exc:
@@ -375,8 +380,11 @@ def _execute_input(
                     pipeline_failures[name] = str(exc)
                     Logger.log_warning(f"Failed {name}; continuing safe pipelines: {exc}")
                 else:
-                    shared_status[name] = "succeeded"
-                    succeeded = True
+                    shared_status[name] = outcome.status
+                    succeeded = outcome.status == "succeeded"
+                    emitted_variants, emitted_failures = outcome.variants, outcome.variant_failures
+                    if outcome.reason:
+                        pipeline_skips[name] = outcome.reason
             if emitted_variants:
                 if execution_variants:
                     raise RuntimeError(
@@ -384,6 +392,9 @@ def _execute_input(
                     )
                 execution_variants = list(emitted_variants)
                 variant_failures.update(emitted_failures)
+                for variant in execution_variants:
+                    work_h5.designate_metadata(variant.output_namespace, "runtime")
+                    PipelineH5Output(work_h5, processing_root=variant.output_namespace).set_attrs(variant.provenance)
                 # Variant identities are now known. Declarations remain the same
                 # factories used by execution; only invocation qualification changes.
                 for descriptor in pipelines:

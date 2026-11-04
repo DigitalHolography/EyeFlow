@@ -284,10 +284,8 @@ outputs, segmentation, and other pipeline
 work remain available. An unavailable/legacy spectra source omits this
 product with a warning. Physical capillary velocity remains deferred.
 
-The hidden `low_freq_spectra` pipeline owns all spectral stages. Its
-`auto_run_after="velocity"` declaration automatically adds it to any plan that
-already schedules velocity, without making it a selectable target or pulling
-velocity into unrelated runs. It declares `velocity_workflows` and
+The selectable `low_freq_spectra` pipeline owns all spectral stages and runs only
+when selected. It declares `velocity_workflows` and
 `capillary_analysis_zones` dependencies, owns the `gap_spectrograms` and
 `gap_per_beat_spectrograms` products, and executes once in the shared output
 namespace (`run_once=True`). Missing or legacy-group `/spectrograms` skips all
@@ -900,6 +898,22 @@ retrieve the expected typed state. Stable or externally consumed results belong
 in the output HDF5.
 
 ## Output ownership and schema
+
+Managed scientific datasets have one producing invocation. Its uncommitted
+dataset may be edited or replaced within the transaction. After commit, data,
+shape, dtype and attributes are immutable: the producer gets
+`OutputImmutableError` on mutation/deletion, and other producers get
+`OutputOwnershipError`. Dataset/group path collisions raise
+`OutputPathConflictError`. These checks belong to `OutputModel`.
+
+Groups are shared structural namespaces. New children may be inserted beneath
+existing groups without changing committed siblings. Deleting a group containing
+committed datasets is forbidden. Group creation records its metadata owner;
+only that owner may change its attributes, and only runtime may designate a new
+metadata owner. Runtime owns workflow provenance and acquisition timing; topology
+owns shared rotated segment masks when velocity maps are requested.
+`StageJournal` owns root stage diagnostics; runtime owns other run metadata.
+No dataset revision or tombstone protocol exists.
 
 The output root is `<stem>_EF`. `execute_run` removes an existing output root
 before a new attempt, so a failed run leaves only that attempt's partial files.

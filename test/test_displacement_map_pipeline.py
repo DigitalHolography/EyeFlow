@@ -22,11 +22,10 @@ from input_output.output_manager import OutputManager, OutputType
 from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import HolodopplerSource
 from input_output.writers.magnitude_avi import write_magnitude_avi
-from pipeline_engine import PipelineContext
+from pipeline_engine import PipelineDescriptor
 from pipeline_engine.storage import ProductStorage
 from pipeline_engine.output_model import OutputModel
-from pipeline_engine.invocation import _pipeline_checkpoint
-from pipeline_engine.stage_graph.executor import StageGraphExecutor
+from pipeline_engine.invocation import _run_pipeline_descriptor
 from data_manager import DataManager
 from pipelines.displacement_map import registration
 from pipelines.displacement_map.runner import (
@@ -300,16 +299,22 @@ class DisplacementMapRunnerTests(unittest.TestCase):
             ):
                 output_h5 = OutputModel(product_storage, output_h5_path)
                 accepted = {}
-                ctx = PipelineContext(
+                outcome = _run_pipeline_descriptor(
+                    PipelineDescriptor("displacement_map", "displacement_map", True,
+                        pipeline_factory=lambda: SimpleNamespace(name="displacement_map", run=run_displacement_map)),
                     work_h5=output_h5,
+                    output_h5_path=output_h5_path,
                     on_product_commit=lambda stage, name, handle: accepted.update({name: handle}),
                     holodoppler_h5=hd,
                     doppler_vision_h5=dv,
                     output_manager=manager,
-                    pipeline_name="displacement_map",
+                    holodoppler_config=None, doppler_vision_config=None,
+                    variables={}, pipeline_options={}, pipeline_order=("displacement_map",),
+                    pipeline_targets=("displacement_map",), velocity_estimation_method=None,
+                    execution_variant=None, band_ratio_frequency_scale_hz=1,
+                    on_pipeline_success=None, on_progress=None,
                 )
-                with _pipeline_checkpoint(output_h5, ctx.state.raw, manager) as checkpoint:
-                    StageGraphExecutor(run_displacement_map(ctx), ctx, checkpoint, _pipeline_checkpoint).run()
+                self.assertEqual("succeeded", outcome.status)
                 self.assertEqual(1, len(set(replay_ids)))
                 self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
                 self.assertNotIn("Processing/Displacement", output_h5)

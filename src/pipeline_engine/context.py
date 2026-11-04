@@ -2,6 +2,9 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from contextvars import ContextVar
+from contextlib import contextmanager
+from threading import get_ident
 from typing import Any
 
 import h5py
@@ -26,6 +29,23 @@ from velocity_calibration import (
 
 from .base import ExecutionVariant, ProcessResult
 from .background_artifacts import BackgroundArtifacts
+
+_MANAGED_CONTEXT = ContextVar("eyeflow_managed_invocation", default=None)
+
+
+@contextmanager
+def managed_invocation(ctx):
+    token = _MANAGED_CONTEXT.set((ctx, get_ident()))
+    try:
+        yield
+    finally:
+        _MANAGED_CONTEXT.reset(token)
+
+
+def require_managed_runtime(ctx, pipeline_name):
+    active = _MANAGED_CONTEXT.get()
+    if active is None or active[0] is not ctx or active[1] != get_ident():
+        raise RuntimeError(f"Pipeline '{pipeline_name}' requires the EyeFlow managed execution runtime.")
 
 
 @dataclass(frozen=True)

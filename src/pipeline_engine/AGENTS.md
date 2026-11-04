@@ -92,15 +92,18 @@ remain independently retryable. Each input execution starts with an empty memo.
   does not validate arbitrary `ctx.state` keys.
 - `input_slot` controls preferred merged-attribute lookup. Normal `.holo` layout
   resolution still requires both HD and DV companions.
-- Descriptor failures roll back that invocation's dataset replacements,
+- Descriptor failures roll back that invocation's uncommitted dataset edits,
   attributes, state bindings, and newly created artifacts. Earlier pipeline
   outputs remain available. Skip consumers of failed/skipped active dependencies
   while continuing independent pipelines, including within a failed variant.
   Shared errors or failure of every variant report an incomplete run only after
   safe pipelines finish; its partial HDF5 path remains in `RunResult.outputs`.
   Root `pipeline_status`, `pipeline_failures`, and `pipeline_skips` record outcomes.
-  Writers replace datasets; journals do not cover in-place array or
-  mutable state-object edits, or overwrites of existing sidecar files.
+  Committed scientific datasets are immutable, including their attributes.
+  Groups are shared structural namespaces with a designated metadata owner;
+  inserting a new child does not modify committed children. State rollback and
+  transport cover binding changes, not in-place mutable state-object edits.
+  Existing sidecar files must not be overwritten.
   `invocation._run_pipeline_descriptor` wraps them with pipeline identity and retains
   their cause.
 - Variant producers must declare `produces_execution_variants=True`; publishing

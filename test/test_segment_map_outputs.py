@@ -25,6 +25,7 @@ from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     prepare_segment_velocity_maps_per_beat,
 )
 from pipelines.velocity_analysis.outputs.segment_maps import pack_segment_map_outputs  # noqa: E402
+from pipelines.topology_core.outputs import pack_rotated_segment_masks
 
 
 class SegmentMapOutputTests(unittest.TestCase):
@@ -136,6 +137,9 @@ class SegmentMapOutputTests(unittest.TestCase):
             artery_maps,
             vein_maps,
         )
+        metrics.update(pack_rotated_segment_masks({
+            "artery": artery.profile.topology, "vein": vein.profile.topology,
+        }))
         schema = EyeFlowOutputPaths.active()
 
         self.assertEqual(4, len(metrics))
