@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from pipeline_engine.storage import ProductStorage
-from pipeline_engine.transfer import dump_result, load_result
+from pipeline_engine.data.storage import ProductStorage
+from pipeline_engine.data.transfer import dump_result, load_result
 from data_manager import DataManager
 
 

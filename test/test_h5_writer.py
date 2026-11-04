@@ -24,9 +24,9 @@ from input_output.writers.h5 import (  # noqa: E402
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader  # noqa: E402
 from input_output.writers.h5_initialization import initialize_output_h5  # noqa: E402
-from pipeline_engine.base import DatasetValue  # noqa: E402
-from pipeline_engine.output_model import OutputModel  # noqa: E402
-from pipeline_engine.storage import ProductStorage  # noqa: E402
+from pipeline_engine.planning.base import DatasetValue  # noqa: E402
+from pipeline_engine.output.output_model import OutputModel  # noqa: E402
+from pipeline_engine.data.storage import ProductStorage  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):

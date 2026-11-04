@@ -9,10 +9,10 @@ import pickle
 
 from utils.logger import Logger
 
-from .protocol import InvocationSpec, InvocationOutcome, TransportReceipt
-from .transfer import dump_result
-from .worker import run_worker
-from .product_exchange import PipelineInvocationId
+from pipeline_engine.execution.protocol import InvocationSpec, InvocationOutcome, TransportReceipt
+from pipeline_engine.data.transfer import dump_result
+from pipeline_engine.execution.worker import run_worker
+from pipeline_engine.product_exchange import PipelineInvocationId
 
 
 @dataclass

@@ -1,4 +1,5 @@
-from pipeline_engine.imports import np, pipeline
+import numpy as np
+from pipeline_engine import pipeline
 
 
 @pipeline(

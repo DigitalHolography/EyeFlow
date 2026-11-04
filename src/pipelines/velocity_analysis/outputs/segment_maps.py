@@ -6,7 +6,7 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.h5_storage import velocity_map_h5_options
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs
 

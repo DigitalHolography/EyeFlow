@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import psutil
 
-from pipeline_engine.base import PIPELINE_REGISTRY, pipeline
+from pipeline_engine.planning.base import PIPELINE_REGISTRY, pipeline
 from pipeline_engine.product_exchange import ProductRequirement
 from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 
@@ -129,7 +129,7 @@ class UnserializableState:
 def fault_worker(spec, events):
     """Inject one sender fault around the real worker and multiprocessing queues."""
     from dataclasses import replace
-    from pipeline_engine.worker import run_worker
+    from pipeline_engine.execution.worker import run_worker
     mode = spec.settings.pipeline_options.get(spec.name, ())
     mode = mode[0] if mode else None
     if spec.name != "exchange_producer" or mode not in TRANSPORT_FAULTS:
@@ -163,10 +163,10 @@ def transport_fixture(spec, events):
     from dataclasses import replace
     from uuid import uuid4
     from data_manager import DataManager
-    from pipeline_engine.output_model import OutputModel, Record
-    from pipeline_engine.protocol import InvocationResult, ProductAcceptedEvent, WorkerEvent, TransportReceipt
-    from pipeline_engine.storage import ProductStorage
-    from pipeline_engine.transfer import dump_result
+    from pipeline_engine.output.output_model import OutputModel, Record
+    from pipeline_engine.execution.protocol import InvocationResult, ProductAcceptedEvent, WorkerEvent, TransportReceipt
+    from pipeline_engine.data.storage import ProductStorage
+    from pipeline_engine.data.transfer import dump_result
 
     storage = ProductStorage(directory=spec.directory / "products")
     data = DataManager(storage, owner_id=spec.owner_id)

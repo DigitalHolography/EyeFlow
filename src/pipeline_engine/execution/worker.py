@@ -8,7 +8,7 @@ from queue import Empty
 from time import perf_counter
 from uuid import uuid4
 
-from .protocol import _SINK, InvocationResult, ProductAcceptedEvent, TransportReceipt, WorkerEvent
+from pipeline_engine.execution.protocol import _SINK, InvocationResult, ProductAcceptedEvent, TransportReceipt, WorkerEvent
 
 
 class _WorkerTransportError(BaseException):
@@ -35,14 +35,14 @@ def run_worker(spec, events):
     from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
     from utils.logger import Logger
 
-    from .base import PIPELINE_REGISTRY
-    from .context import PipelineInputs
-    from .input_service import InputFile
-    from .output_model import OutputModel
-    from .invocation import _run_pipeline_descriptor
-    from .scratch import RunArrayStorage
-    from .storage import ProductStorage
-    from .transfer import dump_result, load_result
+    from pipeline_engine.planning.base import PIPELINE_REGISTRY
+    from pipeline_engine.context import PipelineInputs
+    from pipeline_engine.data.input_service import InputFile
+    from pipeline_engine.output.output_model import OutputModel
+    from pipeline_engine.execution.invocation import _run_pipeline_descriptor
+    from pipeline_engine.data.scratch import RunArrayStorage
+    from pipeline_engine.data.storage import ProductStorage
+    from pipeline_engine.data.transfer import dump_result, load_result
 
     storage = ProductStorage(
         directory=Path(spec.directory) / "products", budget=spec.memory_account
@@ -118,7 +118,7 @@ def run_worker(spec, events):
                 if path is not None:
                     detail["result_path"] = path
                 else:
-                    from .stage_graph.journal import StageJournal
+                    from pipeline_engine.stage_graph.journal import StageJournal
                     detail["journal"] = {key: output.attrs[key] for key in StageJournal.keys if key in output.attrs}
             event_type = ProductAcceptedEvent if kind == "ProductCommit" else WorkerEvent
             events.put(event_type(kind, spec.name, stage, **detail))

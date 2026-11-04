@@ -28,7 +28,7 @@ from plotting.formatting import add_legend
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.h5_storage import profile_h5_options
 from input_output.schema.output_payload import payload_array as _metric_data
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from pipelines.profile_outputs import profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0

@@ -14,7 +14,7 @@ from types import MappingProxyType
 import numpy as np
 
 from data_manager.handles import FrozenMapping, StringArray
-from .storage import ArrayReference, ValueReference
+from pipeline_engine.data.storage import ArrayReference, ValueReference
 
 
 class OutputError(ValueError):

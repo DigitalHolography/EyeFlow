@@ -9,6 +9,9 @@ from typing import Any
 
 import h5py
 
+from input_output.schema.base import scalar_from_value
+from retinal_source_data import HolodopplerTiming
+
 from app_settings import (
     DEFAULT_VELOCITY_ESTIMATION_METHOD,
     DEFAULT_VELOCITY_WORKFLOW_SELECTION,
@@ -19,7 +22,7 @@ from app_settings import (
 from input_output.readers.h5 import MergedAttrs, PipelineInputSource, RawH5SourceReader
 from input_output.writers.h5_output import PipelineH5Output
 from input_output.output_manager import OutputManager
-from pipeline_engine.scratch import RunArrayStorage
+from pipeline_engine.data.scratch import RunArrayStorage
 from input_output.writers.h5 import write_root_attributes
 from utils.logger import Logger
 from velocity_calibration import (
@@ -27,8 +30,8 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from .base import ExecutionVariant, ProcessResult
-from .background_artifacts import BackgroundArtifacts
+from pipeline_engine.planning.base import ExecutionVariant, ProcessResult
+from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
 
 _MANAGED_CONTEXT = ContextVar("eyeflow_managed_invocation", default=None)
 
@@ -224,7 +227,7 @@ class PipelineContext:
         return self._dag_execution
 
     def _product_committed(self, stage, name, handle):
-        from .protocol import emit
+        from pipeline_engine.execution.protocol import emit
 
         if self._on_product_commit is not None and handle is not None:
             self._on_product_commit(stage, name, handle)
@@ -476,3 +479,25 @@ def finish_pipeline(ctx: PipelineContext, pipeline_name: str) -> None:
     ctx.runtime.pipeline_name = pipeline_name
     write_root_attributes(ctx.runtime.work_h5, {"last_pipeline": pipeline_name})
     ctx.output.h5.flush()
+
+
+def resolve_holodoppler_timing(ctx: PipelineContext) -> HolodopplerTiming:
+    return ctx.inputs.hd.as_holodoppler().timing()
+
+
+def read_first_attr(ctx: PipelineContext, *keys: str):
+    for key in keys:
+        scalar = scalar_from_value(ctx.attrs.get(key, None))
+        if scalar is not None:
+            return scalar
+    return None
+
+
+def read_int_setting(
+    ctx: PipelineContext,
+    *,
+    default: int,
+    keys: tuple[str, ...],
+) -> int:
+    value = read_first_attr(ctx, *keys)
+    return int(default) if value is None else int(value)

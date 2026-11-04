@@ -11,10 +11,10 @@ import pytest
 
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
-from pipeline_engine.base import PipelineDescriptor
-from pipeline_engine.output_model import OutputModel
+from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 from product_exchange_fixtures import ARRAY_SIZE, CONSUMER, PRODUCER, TRANSPORT_FAULTS, fault_worker
 
 
@@ -31,7 +31,7 @@ def test_real_spawn_product_survives_producer_crash_and_final_publication(tmp_pa
     monkeypatch.setattr(Logger, "_current", Logger(on_log=logs.append))
     bindings = []
     if mode in TRANSPORT_FAULTS:
-        monkeypatch.setattr("pipeline_engine.process_executor.run_worker", fault_worker)
+        monkeypatch.setattr("pipeline_engine.execution.process_executor.run_worker", fault_worker)
     with mp.Manager() as manager:
         sync = {name: manager.Event() for name in ("received", "crash", "b_started", "b_finished")}
         sync.update(pid=manager.Value("i", 0), backing=manager.Value(str, ""))
@@ -121,12 +121,12 @@ def test_real_spawn_product_survives_producer_crash_and_final_publication(tmp_pa
                                   "finish_before_exit", "cleanup_failure"])
 def test_real_transport_acceptance_failures_keep_prior_commits_and_release_resources(tmp_path, mode):
     from time import monotonic
-    from pipeline_engine.process_executor import ProcessExecutor, ActiveInvocation
+    from pipeline_engine.execution.process_executor import ProcessExecutor, ActiveInvocation
     from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry, ProductStatus
     from pipeline_engine.product_exchange.acceptance import ProductAcceptance
-    from pipeline_engine.input_service import InputService
-    from pipeline_engine.storage import ProductStorage
-    from pipeline_engine.protocol import InvocationSettings
+    from pipeline_engine.data.input_service import InputService
+    from pipeline_engine.data.storage import ProductStorage
+    from pipeline_engine.execution.protocol import InvocationSettings
     from product_exchange_fixtures import transport_fixture
 
     mp = multiprocessing.get_context("spawn")

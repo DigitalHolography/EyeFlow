@@ -1,6 +1,6 @@
 """Early artifact readiness, nonrecursive dispatch and completion barriers."""
 
-from ..resources import suspend_compute
+from pipeline_engine.resources import suspend_compute
 from time import perf_counter
 
 

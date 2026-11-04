@@ -16,7 +16,7 @@ shape, unit, layout, or writer behavior.
 | `.holo` companion resolution | `runs/layout.py` | `schema/base.py`, `run_service.py` |
 | Recursive run-folder discovery and batch expansion | `runs/discovery.py`, `runs/inputs.py` | GUI input controller and `run_service.py` |
 | External frame and mask readers | `readers/frame_sequences.py`, `readers/canonical.py` | `pipelines/displacement_map/`, `pipelines/vessel_inputs.py`, and focused tests |
-| Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/input_access.py` |
+| Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/context.py` |
 | HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `readers/h5.py` | `schema/base.py`, `src/retinal_source_data.py`, `readers/canonical.py` |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
 | HDF5 writes | `writers/h5_output.py`, `writers/h5.py`, `writers/h5_storage.py`, `writers/h5_initialization.py`, `schema/output_payload.py` | `writers/h5_publication.py` for managed output serialization; output-schema tests |

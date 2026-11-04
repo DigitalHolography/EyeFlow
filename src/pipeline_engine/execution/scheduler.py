@@ -1,7 +1,7 @@
 """Choose dependency-ready work; process transport belongs to ProcessExecutor."""
 
 from utils.logger import Logger
-from .product_exchange import ProductStatus
+from pipeline_engine.product_exchange import ProductStatus
 
 
 class CoordinatorScheduler:

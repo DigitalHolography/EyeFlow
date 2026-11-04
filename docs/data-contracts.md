@@ -195,7 +195,7 @@ Arbitrary positive target dimensions and noninteger scale ratios are supported;
 matching grids use a copy. The mask stays Boolean and is not averaged or reduced
 using all-true blocks. `calculations.topology.downsample_gap_zones` owns this
 array transform and receives the target shape explicitly; it does not read HDF5.
-`pipelines.low_freq_spectra.masks.gap_velocity_mask` adapts it to the video's spatial
+`calculations.topology.downsample_gap_zones` adapts it to the video's spatial
 shape. Gap preprocessing prepares this reduced mask in native HD `(y, x)`
 coordinates once. Spectral frames stay in exported coordinates; their spatial
 axes are not flipped or transposed for scalar reductions. This selects exactly

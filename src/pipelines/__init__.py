@@ -6,10 +6,7 @@ import sys
 from pathlib import Path
 
 from app_settings import runtime_pipelines_path
-from pipeline_engine import (
-    PIPELINE_REGISTRY,
-    PipelineDescriptor,
-)
+from pipeline_engine import PIPELINE_REGISTRY, PipelineDescriptor
 
 _IGNORED_MODULES = {"utils"}
 _BASE_PIPELINE_PATHS = tuple(Path(path).resolve() for path in __path__)

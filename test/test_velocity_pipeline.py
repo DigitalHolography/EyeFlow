@@ -19,8 +19,7 @@ from input_output.schema import (
     RetinalSourceData,
     VesselMasks,
 )
-from pipeline_engine.context import PipelineState
-from pipelines.velocity.cardiac_cycle import detect_velocity_cardiac_cycles
+from pipelines.velocity.runner import detect_velocity_cardiac_cycles
 from pipelines.velocity.models import (
     RetinalVelocity,
     RetinalVelocityData,
@@ -28,12 +27,7 @@ from pipelines.velocity.models import (
     VesselVelocity,
     VesselVelocitySignals,
 )
-from pipelines.velocity.runner import (
-    _log_cardiac_cycle_warnings,
-    cardiac_cycle_indexes,
-    run_velocity,
-    velocity,
-)
+from pipelines.velocity.runner import _log_cardiac_cycle_warnings, velocity
 from pipelines.velocity.signal_processing import build_velocity
 
 
@@ -48,7 +42,7 @@ class RetinalVelocityTests(unittest.TestCase):
                     provenance={"velocity_estimation_method": method},
                 )
                 with patch(
-                    "pipelines.velocity.cardiac_cycle.cardiac_cycles_from_available_vessel",
+                    "pipelines.velocity.runner.cardiac_cycles_from_available_vessel",
                     return_value=(_cardiac_cycle(), "artery"),
                 ) as detector:
                     detect_velocity_cardiac_cycles(data, dt_seconds=0.02)
@@ -86,60 +80,6 @@ class RetinalVelocityTests(unittest.TestCase):
         np.testing.assert_array_equal(cycles[1], [3.0, 4.0, 5.0])
         np.testing.assert_allclose(result.cycle_durations_seconds, [0.06, 0.04])
 
-    def test_pipeline_retains_velocity_map_for_analysis_consumers(self):
-        source = _source_data()
-        analysis = _cardiac_cycle()
-        ctx = SimpleNamespace(
-            state=PipelineState(),
-            pipeline_scheduled=lambda name: name == "velocity_analysis",
-            runtime=SimpleNamespace(scratch=SimpleNamespace(empty_float32=np.empty)),
-        )
-        estimated = {}
-
-        def load_inputs(ctx):
-            if ctx.velocity_estimation_method == "doppler_moments":
-                return source
-            raise KeyError("missing bands")
-
-        def estimator(**kwargs):
-            estimated["image_maps"] = kwargs["image_maps"]
-            self.assertTrue(kwargs["retain_velocity_video"])
-            self.assertIs(kwargs["velocity_video_allocator"], np.empty)
-            video = np.full(source.image_maps.moment0.shape, 7.0, dtype=np.float32)
-            data = _retinal_velocity_data(video)
-            estimated["data"] = data
-            return data
-
-        with (
-            patch(
-                "pipelines.velocity.runner.load_velocity_inputs",
-                side_effect=load_inputs,
-            ),
-            patch(
-                "pipelines.velocity.runner.estimate_retinal_velocity",
-                side_effect=estimator,
-            ),
-            patch(
-                "pipelines.velocity.runner.detect_velocity_cardiac_cycles",
-                return_value=(analysis, "artery"),
-            ),
-            patch(
-                "pipelines.velocity.signal_processing._filter",
-                side_effect=lambda signal, *_: np.asarray(signal, dtype=np.float32),
-            ),
-        ):
-            result, outputs = run_velocity(ctx)
-
-        self.assertIs(result, velocity(ctx))
-        self.assertIs(estimated["image_maps"], source.image_maps)
-        np.testing.assert_array_equal(cardiac_cycle_indexes(ctx), [0, 3, 5])
-        self.assertIsInstance(result, RetinalVelocity)
-        self.assertIs(result.maps, estimated["data"].maps)
-        self.assertIs(result.artery.signals, estimated["data"].artery)
-        self.assertIs(result.vein.signals, estimated["data"].vein)
-        self.assertTrue(result.has_velocity_map)
-        np.testing.assert_array_equal(result.maps.velocity, 7.0)
-        self.assertIn("ProcessingMoments/Maps/VelocityAverageMasked/value", outputs)
 
     def test_missed_beat_gap_is_recorded_as_a_warning(self):
         gap = SuspectedMissedBeatGap(

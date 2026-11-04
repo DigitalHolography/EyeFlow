@@ -1,4 +1,5 @@
-from pipeline_engine.imports import np, pipeline, resolve_holodoppler_timing, with_attrs
+import numpy as np
+from pipeline_engine import pipeline, resolve_holodoppler_timing, with_attrs
 
 
 HD_EXAMPLE_DATASET_PATH = "moment0"

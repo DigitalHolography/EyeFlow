@@ -122,6 +122,19 @@ navigation aid.
 
 ## Runtime ownership
 
+The formerly flat engine is grouped by responsibility:
+
+```text
+pipeline_engine/
+  __init__.py, context.py, resources.py   public API and shared runtime contracts
+  planning/                             declarations and global dependency resolution
+  execution/                            run service, invocations, scheduling and workers
+  data/                                 input replay, payload/scratch storage, transfer and counters
+  output/                               output transactions and finalization lifetime
+  stage_graph/                          local graph definitions, planning and execution
+  product_exchange/                     identities, readiness and coordinator acceptance
+```
+
 `runtime` owns each input's sources, workflow state and accepted output model.
 `scheduler` chooses ready work; `process_executor` owns opt-in workers and receipt.
 `product_exchange/acceptance.py` accepts incremental commits on the coordinator
@@ -134,6 +147,13 @@ overlaps the next input. Reports read the accepted model before publication.
 The [execution design](parallel_pipeline_execution.md) defines ownership,
 failure recovery, resources and storage lifetime. The [stage graph API](pipeline_stage_graphs.md)
 defines pipeline-owned products and dependencies.
+
+Every production pipeline declares its executable graph in `runner.py`.
+Registration imports that factory; independent numerical algorithms and output
+packers remain separate. `velocity_analysis` publishes one accepted per-beat
+representation for all downstream waveform families, avoiding repeated FFT
+magnitude/phase packing. Shared gradient extraction still uses the existing
+source/settings-compatible computation cache.
 
 ## Scientific processing boundaries
 
@@ -210,10 +230,10 @@ records the method and radius in output provenance.
 | Installed commands and package dependencies | `pyproject.toml` |
 | GUI and CLI dispatch | `src/launcher.py` |
 | Pipeline discovery | `src/pipelines/__init__.py` |
-| Pipeline metadata and registration | decorators in pipeline `__init__.py` files; types in `src/pipeline_engine/base.py` |
-| Dependency resolution | `src/pipeline_engine/dag.py` |
-| Run validation and batch policy | `src/pipeline_engine/run_service.py` |
-| Per-pipeline runtime/context | `src/pipeline_engine/runtime.py`, `src/pipeline_engine/context.py` |
+| Pipeline metadata and registration | decorators in pipeline `__init__.py` files; types in `src/pipeline_engine/planning/base.py` |
+| Dependency resolution | `src/pipeline_engine/planning/dag.py` |
+| Run validation and batch policy | `src/pipeline_engine/execution/run_service.py` |
+| Per-pipeline runtime/context | `src/pipeline_engine/execution/runtime.py`, `src/pipeline_engine/context.py` |
 | Default and persisted settings | `default_settings.json`, `src/app_settings.py` |
 | Companion input layout | `src/input_output/runs/layout.py` and source layouts in `src/input_output/schema/` |
 | HD/DV logical fields | `src/input_output/schema/holodoppler.py`, `src/input_output/schema/doppler_view.py` |

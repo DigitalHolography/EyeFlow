@@ -9,7 +9,7 @@ import numpy as np
 
 from input_output.readers.nodes import is_dataset
 
-from .storage import ArrayReference, ValueReference
+from pipeline_engine.data.storage import ArrayReference, ValueReference
 
 
 @dataclass

@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from input_output.writers.h5_initialization import _copy_source_object
-from pipeline_engine.output_model import OutputModel, OutputImmutableError, OutputOwnershipError, OutputPathConflictError
-from pipeline_engine.storage import ProductStorage
+from pipeline_engine.output.output_model import OutputModel, OutputImmutableError, OutputOwnershipError, OutputPathConflictError
+from pipeline_engine.data.storage import ProductStorage
 
 
 def test_replacing_attribute_infers_dtype_again(tmp_path):

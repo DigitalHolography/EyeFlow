@@ -13,13 +13,13 @@ from input_output.writers.deferred import capture_artifact_writes
 from input_output.writers.h5 import h5_write_checkpoint
 from utils.logger import Logger
 
-from .background_artifacts import BackgroundArtifacts
-from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
-from .context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline, managed_invocation
-from .errors import format_pipeline_exception
-from .protocol import InvocationOutcome
-from .resources import current_resources
-from .scratch import RunArrayStorage
+from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
+from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor, ProcessResult
+from pipeline_engine.context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline, managed_invocation
+from pipeline_engine.execution.errors import format_pipeline_exception
+from pipeline_engine.execution.protocol import InvocationOutcome
+from pipeline_engine.resources import current_resources
+from pipeline_engine.data.scratch import RunArrayStorage
 
 
 def _run_pipeline_descriptor(
@@ -118,8 +118,8 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     budget = current_resources()
     with budget.compute() if budget else nullcontext():
         result = pipeline.run(ctx)
-    from .stage_graph import StageGraph
-    from .stage_graph.executor import StageGraphExecutor
+    from pipeline_engine.stage_graph import StageGraph
+    from pipeline_engine.stage_graph.executor import StageGraphExecutor
 
     outcome = InvocationOutcome(pipeline.name)
     if isinstance(result, StageGraph):

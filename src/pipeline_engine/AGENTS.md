@@ -13,22 +13,21 @@ task crosses front-end or I/O boundaries.
 
 | Module | Responsibility |
 |---|---|
-| `base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
-| `dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
-| `run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion to `input_output/runs/inputs.py` and destination mapping to `input_output/output_manager.py` |
-| `input_access.py` | Context-aware timing and attribute conveniences for pipeline runners |
-| `runtime.py`, `invocation.py` | Per-input workflow coordination / one descriptor's execution and checkpoints |
-| `scheduler.py` | Dependency readiness, artifact barriers and progress order |
-| `process_executor.py`, `worker.py`, `protocol.py` | Worker lifetime, incremental transport and receipt acknowledgments |
+| `planning/base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
+| `planning/dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
+| `execution/run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion to `input_output/runs/inputs.py` and destination mapping to `input_output/output_manager.py` |
+| `execution/runtime.py`, `execution/invocation.py` | Per-input workflow coordination / one descriptor's execution and checkpoints |
+| `execution/scheduler.py` | Dependency readiness, artifact barriers and progress order |
+| `execution/process_executor.py`, `execution/worker.py`, `execution/protocol.py` | Worker lifetime, incremental transport and receipt acknowledgments |
 | `stage_graph/` | Immutable local definitions, dedicated planner, stage executor, logical products, artifact readiness, scope and journal |
 | `product_exchange/` | Qualified product identity, registry and authoritative coordinator acceptance |
 | `src/data_manager/` | Stable structured product handles and physical ownership over `ProductStorage` |
-| `input_service.py`, `storage.py`, `transfer.py` | Lazy source replay, immutable payloads and local-file transport |
-| `output_model.py`, `finalization.py` | Output tree/journals and retained payload ownership through publication |
+| `data/input_service.py`, `data/storage.py`, `data/transfer.py` | Lazy source replay, immutable payloads and local-file transport |
+| `output/output_model.py`, `output/finalization.py` | Output tree/journals and retained payload ownership through publication |
 | `resources.py`, `src/runtime_limits.py` | Batch admission/memory accounting and process/thread allowances |
-| `context.py` | Namespaced inputs/output, shared state, selected options/order/method, result persistence |
-| `errors.py` | User-facing pipeline exception formatting |
-| `imports.py` | Convenience import surface used by pipeline declarations |
+| `context.py` | Namespaced inputs/output, timing/setting helpers, shared state, options and result persistence |
+| `execution/errors.py` | User-facing pipeline exception formatting |
+| `__init__.py` | Public declarations, context, graph and run-service API |
 
 Pipeline discovery itself is in `src/pipelines/__init__.py`; settings
 normalization is in `src/app_settings.py`.
@@ -49,7 +48,7 @@ normalization is in `src/app_settings.py`.
   companions; only visible available pipelines are valid user targets.
 - Descriptor discovery order breaks ties between otherwise independent nodes.
 
-When modifying scheduling, inspect `base.py`, `dag.py`, the affected pipeline
+When modifying scheduling, inspect `planning/base.py`, `planning/dag.py`, the affected pipeline
 declarations, `test_pipeline_discovery.py`,
 `test_pipeline_library_dependencies.py`, and the scheduling cases in
 `test_run_service.py`. Calculation implementations are normally irrelevant.
@@ -116,8 +115,8 @@ remain independently retryable. Each input execution starts with an empty memo.
 
 | Change | Usually inspect | Usually irrelevant |
 |---|---|---|
-| Decorator metadata | `base.py`, affected declarations, discovery tests | calculations, UI views |
-| DAG behavior | `dag.py`, option declarations, dependency tests | HDF5 writers, figures |
-| Run input/output routing | `run_service.py`, `input_output/runs/layout.py`, run-service tests | scientific formulas |
-| Context API/result handling | `context.py`, `runtime.py`, context and writer tests | GUI layout |
-| Progress/cancellation | `run_service.py`, `ui/controllers/run.py`, run-service tests | pipeline algorithms unless callback frequency changes |
+| Decorator metadata | `planning/base.py`, affected declarations, discovery tests | calculations, UI views |
+| DAG behavior | `planning/dag.py`, option declarations, dependency tests | HDF5 writers, figures |
+| Run input/output routing | `execution/run_service.py`, `input_output/runs/layout.py`, run-service tests | scientific formulas |
+| Context API/result handling | `context.py`, `execution/runtime.py`, context and writer tests | GUI layout |
+| Progress/cancellation | `execution/run_service.py`, `ui/controllers/run.py`, run-service tests | pipeline algorithms unless callback frequency changes |

@@ -27,13 +27,8 @@ from app_settings import (  # noqa: E402
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.h5 import open_h5 as real_open_h5  # noqa: E402
-from pipeline_engine import (  # noqa: E402
-    ExecutionVariant,
-    PipelineDescriptor,
-    PipelineOption,
-    ProcessPipeline,
-)
-from pipeline_engine.run_service import (  # noqa: E402
+from pipeline_engine import ExecutionVariant, PipelineDescriptor, PipelineOption, ProcessPipeline
+from pipeline_engine.execution.run_service import (  # noqa: E402
     execute_run,
     expand_run_inputs,
     resolve_run_spec,
@@ -151,7 +146,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
             )
             with (
-                patch("pipeline_engine.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch("pipeline_engine.execution.runtime.open_h5", wraps=real_open_h5) as open_input,
                 patch(
                     "input_output.writers.h5_initialization.open_h5",
                     side_effect=AssertionError("Initialization reopened an input"),
@@ -264,7 +259,7 @@ class RunServiceTests(unittest.TestCase):
                 return output_manager.path_for(OutputType.H5)
 
             with patch(
-                "pipeline_engine.run_service.run_pipelines_to_output",
+                "pipeline_engine.execution.run_service.run_pipelines_to_output",
                 side_effect=fake_run,
             ):
                 result = execute_run(spec)
@@ -296,7 +291,7 @@ class RunServiceTests(unittest.TestCase):
                 raise RuntimeError("analysis failed")
 
             with patch(
-                "pipeline_engine.run_service.run_pipelines_to_output",
+                "pipeline_engine.execution.run_service.run_pipelines_to_output",
                 side_effect=fake_failure,
             ):
                 result = execute_run(spec)
@@ -325,7 +320,7 @@ class RunServiceTests(unittest.TestCase):
                 output_manager.prepare()
 
             with patch(
-                "pipeline_engine.run_service.run_pipelines_to_output",
+                "pipeline_engine.execution.run_service.run_pipelines_to_output",
                 side_effect=fake_run,
             ):
                 result = execute_run(spec)

@@ -9,10 +9,10 @@ from test_run_service import _write_input
 
 from input_output.artifact_ownership import register_artifact_path
 from input_output.output_manager import OutputType
-from pipeline_engine.scratch import RunArrayStorage
-from pipeline_engine.base import ExecutionVariant, PipelineDescriptor, PipelineOption
-from pipeline_engine.run_service import execute_run, resolve_run_spec
-from pipeline_engine.invocation import _pipeline_checkpoint
+from pipeline_engine.data.scratch import RunArrayStorage
+from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor, PipelineOption
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.invocation import _pipeline_checkpoint
 
 
 def _descriptor(name, run, dependencies=(), *, variants=False, options=()):

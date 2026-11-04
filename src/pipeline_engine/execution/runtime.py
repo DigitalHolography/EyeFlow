@@ -20,7 +20,7 @@ from app_settings import (
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.readers.h5 import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
-from pipeline_engine.scratch import RunArrayStorage
+from pipeline_engine.data.scratch import RunArrayStorage
 from input_output.writers.h5 import (
     open_h5, write_root_attributes,
 )
@@ -32,21 +32,21 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from .base import ExecutionVariant, PipelineDescriptor
-from .background_artifacts import BackgroundArtifacts
-from .context import PipelineInputs
-from .dag import PipelineDAG
-from .invocation import _run_pipeline_descriptor
-from .storage import ProductStorage
-from .output_model import OutputModel
-from .resources import ResourceBudget, current_resources
-from .input_service import InputService
-from .scheduler import CoordinatorScheduler
-from .process_executor import ProcessExecutor
-from .protocol import InvocationSettings
-from .finalization import PendingOutput
-from .product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry
-from .product_exchange.acceptance import ProductAcceptance
+from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor
+from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
+from pipeline_engine.context import PipelineInputs
+from pipeline_engine.planning.dag import PipelineDAG
+from pipeline_engine.execution.invocation import _run_pipeline_descriptor
+from pipeline_engine.data.storage import ProductStorage
+from pipeline_engine.output.output_model import OutputModel
+from pipeline_engine.resources import ResourceBudget, current_resources
+from pipeline_engine.data.input_service import InputService
+from pipeline_engine.execution.scheduler import CoordinatorScheduler
+from pipeline_engine.execution.process_executor import ProcessExecutor
+from pipeline_engine.execution.protocol import InvocationSettings
+from pipeline_engine.output.finalization import PendingOutput
+from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry
+from pipeline_engine.product_exchange.acceptance import ProductAcceptance
 
 
 def _bind_product_requirements(registry, descriptors, identity, seen):

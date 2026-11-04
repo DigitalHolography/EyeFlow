@@ -13,9 +13,9 @@ from data_manager import DataManager
 from utils.logger import Logger
 from input_output.writers.h5 import write_root_attributes
 
-from ..stage_graph.journal import StageJournal
-from ..transfer import load_result
-from .identity import ProductId
+from pipeline_engine.stage_graph.journal import StageJournal
+from pipeline_engine.data.transfer import load_result
+from pipeline_engine.product_exchange.identity import ProductId
 
 
 def published_paths(value, source_root, destination_root):

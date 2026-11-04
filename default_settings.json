@@ -4,6 +4,7 @@
     "blood_volume_rate": true,
     "displacement_map": false,
     "displacement_profiles": false,
+    "low_freq_spectra": true,
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "spatial_gradient_moment0": false,

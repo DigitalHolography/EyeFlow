@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
-from .product_exchange.identity import PipelineInvocationId
+from pipeline_engine.product_exchange.identity import PipelineInvocationId
 
 _SINK = ContextVar("eyeflow_worker_events", default=None)
 

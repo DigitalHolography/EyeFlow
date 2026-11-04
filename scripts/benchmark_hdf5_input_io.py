@@ -24,7 +24,7 @@ import h5py
 import numpy as np
 import psutil
 
-from pipeline_engine.storage import ProductStorage
+from pipeline_engine.data.storage import ProductStorage
 from scratch_location import is_local_path
 from pipelines.low_freq_spectra.spatial_reduction import SpatialReducer, spectral_batches
 
@@ -97,7 +97,7 @@ def shared_reader(path, dataset, name, shape, dtype, connection, cache):
 
 def stage_direct(storage, source):
     """Experimental single HDF5 read into an existing local replay mapping."""
-    from pipeline_engine.storage import ArrayReference
+    from pipeline_engine.data.storage import ArrayReference
     if shutil.disk_usage(storage.directory).free < source.nbytes + 4096:
         raise OSError("Insufficient local scratch space")
     staged = storage.path(".npy")

@@ -111,7 +111,7 @@ def test_failed_direct_read_removes_incomplete_replay(tmp_path):
             destination[0] = 42
             raise OSError("incomplete read")
 
-    from pipeline_engine.storage import ProductStorage
+    from pipeline_engine.data.storage import ProductStorage
     with ProductStorage(directory=tmp_path) as storage:
         with pytest.raises(OSError, match="incomplete"):
             benchmark.stage_direct(storage, BrokenSource())

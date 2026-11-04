@@ -18,6 +18,7 @@ def run_waveform_shape_metric_calculations(
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
     include_segments: bool = True,
+    include_global: bool = True,
 ) -> dict[str, object]:
     """Calculate waveform-shape metrics from already-packed EyeFlow outputs."""
 
@@ -26,6 +27,7 @@ def run_waveform_shape_metric_calculations(
     computed = pack_waveform_shape_metric_calculations(
         inputs,
         include_segments=include_segments,
+        include_global=include_global,
     )
     return {
         f"{schema.waveform_shape_metrics_root}/{key}": value

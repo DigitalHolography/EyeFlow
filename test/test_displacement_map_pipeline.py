@@ -23,9 +23,9 @@ from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import HolodopplerSource
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from pipeline_engine import PipelineDescriptor
-from pipeline_engine.storage import ProductStorage
-from pipeline_engine.output_model import OutputModel
-from pipeline_engine.invocation import _run_pipeline_descriptor
+from pipeline_engine.data.storage import ProductStorage
+from pipeline_engine.output.output_model import OutputModel
+from pipeline_engine.execution.invocation import _run_pipeline_descriptor
 from data_manager import DataManager
 from pipelines.displacement_map import registration
 from pipelines.displacement_map.runner import (

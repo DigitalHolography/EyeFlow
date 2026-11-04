@@ -10,13 +10,16 @@ from input_output.writers.deferred import capture_artifact_writes
 from input_output.writers.h5 import h5_write_checkpoint
 from utils.logger import Logger
 
-from ..protocol import emit, InvocationOutcome
-from ..resources import current_resources
-from .artifacts import ArtifactDispatcher
-from .exceptions import StageSkipped
-from .journal import StageJournal
-from .products import ProductStore
-from .scope import GraphScope
+from pipeline_engine.execution.protocol import emit, InvocationOutcome
+from pipeline_engine.resources import current_resources
+from pipeline_engine.stage_graph.artifacts import ArtifactDispatcher
+from pipeline_engine.stage_graph.journal import StageJournal
+from pipeline_engine.stage_graph.products import ProductStore
+from pipeline_engine.stage_graph.scope import GraphScope
+
+
+class StageSkipped(Exception):
+    """Expected missing scientific input, rather than a calculation failure."""
 
 
 class StageAccess:

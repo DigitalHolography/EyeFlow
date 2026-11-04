@@ -12,9 +12,9 @@ from runtime_process_fixtures import STAGE_COMPLETION_DESCRIPTOR
 
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
-from pipeline_engine.base import PipelineDescriptor
+from pipeline_engine.planning.base import PipelineDescriptor
 from pipeline_engine.resources import ResourceBudget
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 
 def _run_single_cpu_case(destination):

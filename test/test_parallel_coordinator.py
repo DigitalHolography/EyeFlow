@@ -14,12 +14,12 @@ from runtime_process_fixtures import PROCESS_DESCRIPTOR
 
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
-from pipeline_engine.base import PipelineDescriptor
-from pipeline_engine.input_service import InputService
-from pipeline_engine.output_model import OutputModel
+from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.data.input_service import InputService
+from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
-from pipeline_engine.storage import ArrayReference, ProductStorage
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.data.storage import ArrayReference, ProductStorage
 from scratch_location import is_local_path
 from utils.logger import Logger
 
@@ -246,7 +246,7 @@ def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():
 def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, monkeypatch):
     from test_run_service import _write_input
 
-    from pipeline_engine.run_service import execute_run, resolve_run_spec
+    from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 
     holo = _write_input(tmp_path)
     spec = resolve_run_spec(
@@ -279,7 +279,7 @@ def test_native_initialization_failure_releases_compute_reservations(monkeypatch
 
 
 def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypatch):
-    from pipeline_engine.process_executor import ProcessExecutor
+    from pipeline_engine.execution.process_executor import ProcessExecutor
 
     def fail_launch(self, pipeline, threads, memory):
         raise OSError("cannot prepare worker")

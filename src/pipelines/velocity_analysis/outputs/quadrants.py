@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
+from input_output.schema.output_payload import payload_data as _payload_data
+
 
 from calculations.math import nanmedian
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
@@ -192,11 +194,3 @@ def _optional_payload(metrics: dict[str, object], path: str | None) -> object | 
     if path is None or path not in metrics:
         return None
     return _payload_data(metrics[path])
-
-
-def _payload_data(value: object) -> object:
-    if isinstance(value, DatasetValue):
-        return value.data
-    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        return value[0]
-    return value

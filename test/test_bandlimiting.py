@@ -20,7 +20,7 @@ from calculations.math import band_limit, butter_lowpass_filtfilt
 from calculations.math.bandlimiting import DEFAULT_BAND_LIMITED_HARMONICS, validate_harmonics
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
-from pipeline_engine.run_service import resolve_run_spec
+from pipeline_engine.execution.run_service import resolve_run_spec
 from pipelines.signal_settings import band_limited_harmonics
 from pipelines.velocity_analysis.outputs.per_beat import pack_velocity_per_beat_outputs
 

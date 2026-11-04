@@ -7,15 +7,15 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pytest
 
-from pipeline_engine.base import PipelineDescriptor
-from pipeline_engine.dag import PipelineDAG
-from pipeline_engine.output_model import OutputModel, Record
+from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.planning.dag import PipelineDAG
+from pipeline_engine.output.output_model import OutputModel, Record
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement, ProductExchangeRegistry, ProductStatus
 from pipeline_engine.product_exchange.acceptance import ProductAcceptance, accept_result
-from pipeline_engine.protocol import InvocationResult
+from pipeline_engine.execution.protocol import InvocationResult
 from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.stage_graph.journal import StageJournal
-from pipeline_engine.storage import ProductStorage
+from pipeline_engine.data.storage import ProductStorage
 
 
 def test_identity_variants_and_finalization_do_not_overwrite_accepted_products():
@@ -104,8 +104,8 @@ def test_log_callback_failure_does_not_invalidate_committed_records(tmp_path, mo
 def test_runtime_same_variant_products_are_qualified_and_remain_isolated(tmp_path, scope):
     from types import SimpleNamespace
     import h5py
-    from pipeline_engine.base import ExecutionVariant
-    from pipeline_engine.runtime import run_pipelines_to_output
+    from pipeline_engine.planning.base import ExecutionVariant
+    from pipeline_engine.execution.runtime import run_pipelines_to_output
     from input_output.output_manager import OutputManager
     from input_output.runs.layout import HoloRunLayout
 

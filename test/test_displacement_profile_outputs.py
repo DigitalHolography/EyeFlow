@@ -16,7 +16,7 @@ from input_output.writers.h5_output import PipelineH5Output
 from pipeline_engine import PIPELINE_REGISTRY
 from pipelines import load_pipeline_catalog
 from pipelines.displacement_map.runner import DisplacementMapPipelineConfig
-from pipelines.displacement_map.graph import (
+from pipelines.displacement_map.runner import (
     displacement_graph,
     displacement_profiles_graph,
 )
@@ -300,9 +300,9 @@ def test_real_process_registration_product_feeds_the_production_profile_graph(tm
     from input_output.output_manager import OutputManager
     from input_output.runs.layout import HoloRunLayout
     from input_output.schema.doppler_view import DV_ARTERY_MASK_PATH, DV_VEIN_MASK_PATH
-    from pipeline_engine.base import PipelineDescriptor
+    from pipeline_engine.planning.base import PipelineDescriptor
     from pipeline_engine.resources import ResourceBudget
-    from pipeline_engine.runtime import run_pipelines_to_output
+    from pipeline_engine.execution.runtime import run_pipelines_to_output
     from pipelines.topology_core.runner import TOPOLOGY_CORE_STATE
     from pipelines.velocity.models import VelocityWorkflows
     from pipelines.velocity.runner import VELOCITY_WORKFLOWS_STATE

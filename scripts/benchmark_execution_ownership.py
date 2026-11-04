@@ -17,14 +17,14 @@ import numpy as np
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
 from pipeline_engine.context import PipelineContext
-from pipeline_engine.invocation import _pipeline_checkpoint
-from pipeline_engine.output_model import OutputModel
-from pipeline_engine.protocol import InvocationResult
+from pipeline_engine.execution.invocation import _pipeline_checkpoint
+from pipeline_engine.output.output_model import OutputModel
+from pipeline_engine.execution.protocol import InvocationResult
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.stage_graph.executor import StageGraphExecutor
-from pipeline_engine.storage import ProductStorage
-from pipeline_engine.transfer import dump_result
+from pipeline_engine.data.storage import ProductStorage
+from pipeline_engine.data.transfer import dump_result
 
 
 def local(array_mib, consumers):
@@ -67,8 +67,8 @@ def processes():
     from dataclasses import replace
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test"))
     from product_exchange_fixtures import PRODUCER, CONSUMER
-    from pipeline_engine.base import PipelineDescriptor
-    from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+    from pipeline_engine.planning.base import PipelineDescriptor
+    from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
     mp = multiprocessing.get_context("spawn")
     with TemporaryDirectory() as temp, mp.Manager() as sync_manager:

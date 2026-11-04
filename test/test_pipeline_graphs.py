@@ -12,11 +12,8 @@ import pytest
 
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
-from pipeline_engine import (
-    ExecutionVariant, PipelineDescriptor, StageGraph, StageSpec, ProductSpec,
-    current_pipeline_dag, handoff,
-)
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine import ExecutionVariant, PipelineDescriptor, StageGraph, StageSpec, ProductSpec, current_pipeline_dag, handoff
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 
 def _descriptor(name, run, **kwargs):
@@ -82,7 +79,7 @@ def test_committed_handoff_survives_later_failure_and_only_missing_consumers_ski
 
 
 def test_handoff_launches_ready_artifacts_before_its_producer_returns(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
+    monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
     manager = _manager(tmp_path)
     started = Event()
 
@@ -190,7 +187,7 @@ def test_moments_and_bandratio_graphs_keep_handoffs_and_failures_isolated(tmp_pa
 
 
 def test_graph_report_waits_for_declared_artifacts_and_writes_intermediates_immediately(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
+    monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
     manager = _manager(tmp_path)
 
     def produce(ctx):

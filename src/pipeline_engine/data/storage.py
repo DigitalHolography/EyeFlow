@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import numpy as np
 from scratch_location import temporary_directory
-from .metrics import ExecutionMetrics
+from pipeline_engine.data.metrics import ExecutionMetrics
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,16 @@ class ProductStorage:
         if isinstance(value, (ArrayReference, ValueReference)):
             return value
         array = np.asarray(value)
+        # Reuse owned resident snapshots as well as managed file references.
+        if not array.flags.writeable:
+            with self._array_lock:
+                cached = self._immutable_arrays.get(id(array))
+                if cached is not None and cached[0]() is array:
+                    reference = cached[1]
+                    if reference is None:
+                        return array
+                    if reference.shape == array.shape and reference.dtype == array.dtype:
+                        return reference
         # Object/string payloads remain small metadata; numeric arrays spill.
         numeric = array.dtype.kind in "biufcSU"
         if array.dtype.hasobject:
@@ -89,6 +99,8 @@ class ProductStorage:
         self.metrics.add("array_copies", 1)
         self.metrics.add("array_copied_bytes", array.nbytes)
         result.flags.writeable = False
+        with self._array_lock:
+            self._remember_array(result, None)
         weakref.finalize(result, self._release_resident, array.nbytes, category)
         return result
 
@@ -121,7 +133,7 @@ class ProductStorage:
                 current = array
                 while isinstance(current, np.ndarray):
                     cached = self._immutable_arrays.get(id(current))
-                    if (cached is not None and cached[0]() is current
+                    if (cached is not None and cached[1] is not None and cached[0]() is current
                             and current.shape == array.shape and current.dtype == array.dtype
                             and current.strides == array.strides
                             and current.ctypes.data == array.ctypes.data):

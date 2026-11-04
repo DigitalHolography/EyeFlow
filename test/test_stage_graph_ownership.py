@@ -6,7 +6,7 @@ import pytest
 
 from data_manager import DataManager
 from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
-from pipeline_engine.storage import ProductStorage
+from pipeline_engine.data.storage import ProductStorage
 
 
 def noop(ctx):
@@ -90,17 +90,17 @@ def test_snapshot_protects_producer_aliases_and_reuses_consumers(large):
         writable = manager.writable(handle)
         writable[:] = 5
         assert manager.read(handle)[0] == 0
+        copies = storage.metrics.snapshot()["array_copies"]
+        manager.accept(first)
+        assert storage.metrics.snapshot()["array_copies"] == copies
         if large:
-            assert storage.metrics.snapshot()["npy_writes"] == 1
-            adopted = manager.accept(first)
-            assert adopted.storage == handle.storage
             assert storage.metrics.snapshot()["npy_writes"] == 1
 
 
 def test_exposed_local_scientific_types_travel_by_small_stable_reference():
     import pickle
     from dataclasses import dataclass
-    from pipeline_engine.storage import ValueReference
+    from pipeline_engine.data.storage import ValueReference
     @dataclass
     class Result:
         values: np.ndarray

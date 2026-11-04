@@ -1,4 +1,4 @@
-﻿"""Isolated renderers, asynchronous publication, and rollback-safe artifact ownership."""
+"""Isolated renderers, asynchronous publication, and rollback-safe artifact ownership."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ class ArtifactWorkers:
                 self._admission = ThreadPoolExecutor(
                     max_workers=1, thread_name_prefix="EyeFlowExportAdmission",
                 )
-            from .resources import current_resources
+            from pipeline_engine.resources import current_resources
             budget = current_resources()
             self._admission.submit(self._submit_admitted, job, complete, budget)
 

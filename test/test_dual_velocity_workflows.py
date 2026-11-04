@@ -12,7 +12,7 @@ from input_output.reports.pdf_data import extract_parameters_from_h5
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from input_output.schema.provenance import read_dataset_attrs
-from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 from pipelines.velocity.runner import (
     detect_velocity_cardiac_cycles,
@@ -92,7 +92,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         dv.create_dataset("segmentation/Choroid/vessel_mask", data=np.zeros(shape))
     with (
         patch(
-            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
         patch(
@@ -217,7 +217,7 @@ def test_gap_uses_bandratio_without_moments_and_skips_empty_support(tmp_path, em
         patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat",
               wraps=gap_spectrograms_per_beat) as subdivide,
         patch(
-            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
     ):
@@ -303,6 +303,7 @@ def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_pa
 
 def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_beats(tmp_path):
     holo, _ = _dual_input(tmp_path)
+    from pipelines.velocity_analysis import runner as shared_analysis
     events = []
     detected = {}
 
@@ -321,10 +322,13 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
     with (
         patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
-        patch("pipeline_engine.scratch._available_memory_bytes", return_value=0),
+        patch("pipeline_engine.data.scratch._available_memory_bytes", return_value=0),
+        patch.object(shared_analysis, "_run_velocity_per_beat_analysis", wraps=shared_analysis._run_velocity_per_beat_analysis) as per_beat,
+        patch.object(shared_analysis, "pack_velocity_per_beat_inputs", wraps=shared_analysis.pack_velocity_per_beat_inputs) as pack_inputs,
     ):
         result = execute_run(_spec(holo, artifacts=True))
     assert result.succeeded, result.failures
+    assert per_beat.call_count == pack_inputs.call_count == 2
     assert not list(result.outputs[0].parent.parent.glob(".ef_scratch_*"))
     assert events == [
         ("estimate", "doppler_moments"),

@@ -4,7 +4,7 @@ from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from .base import PipelineDescriptor
+from pipeline_engine.planning.base import PipelineDescriptor
 
 
 @dataclass(frozen=True)

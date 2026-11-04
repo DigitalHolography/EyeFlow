@@ -15,6 +15,7 @@ def pack_waveform_shape_metric_calculations(
     inputs: WaveformShapeMetricInputs,
     *,
     include_segments: bool = True,
+    include_global: bool = True,
 ) -> dict[str, object]:
     """Pack the existing global and by-segment waveform output groups."""
     beat_periods = np.asarray(inputs.beat_period_seconds, dtype=np.float32)
@@ -38,7 +39,7 @@ def pack_waveform_shape_metric_calculations(
                 vessel.bandlimited_segments,
                 beat_periods,
             )
-        if vessel.raw_global is not None and vessel.bandlimited_global is not None:
+        if include_global and vessel.raw_global is not None and vessel.bandlimited_global is not None:
             _pack_global_outputs(
                 metrics,
                 calculator,

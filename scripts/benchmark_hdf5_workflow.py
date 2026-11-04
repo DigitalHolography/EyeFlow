@@ -24,9 +24,9 @@ from benchmark_hdf5_input_io import stage_direct
 from app_settings import AppSettingsStore
 from runtime_limits import configure_numeric_threads
 from pipeline_engine import execute_run, resolve_run_spec, selectable_pipeline_registry
-from pipeline_engine.storage import ProductStorage
+from pipeline_engine.data.storage import ProductStorage
 from scratch_location import is_local_path
-from pipeline_engine.output_model import OutputModel
+from pipeline_engine.output.output_model import OutputModel
 from pipelines import load_pipeline_catalog
 from utils.logger import Logger
 from input_output import resolve_selected_run_layouts

@@ -57,6 +57,6 @@ class StageGraph:
         object.__setattr__(self, "stages", tuple(self.stages))
 
     def plan(self, *, external_products=()):
-        from .planner import StageGraphPlanner
+        from pipeline_engine.stage_graph.planner import StageGraphPlanner
 
         return StageGraphPlanner().plan(self, external_products=external_products)

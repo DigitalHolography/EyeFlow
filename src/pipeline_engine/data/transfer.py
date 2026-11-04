@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import cloudpickle
 
-from .input_service import InputNode
+from pipeline_engine.data.input_service import InputNode
 
 
 def dump_result(value, storage):

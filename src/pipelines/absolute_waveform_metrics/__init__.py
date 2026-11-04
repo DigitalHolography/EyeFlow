@@ -1,8 +1,8 @@
 """Gain-sensitive absolute waveform metric products."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 
-from .runner import run_absolute_waveform_metrics
+from .runner import run_absolute_waveform_metrics, absolute_waveform_graph
 
 
 @pipeline(
@@ -26,6 +26,7 @@ from .runner import run_absolute_waveform_metrics
             "Four-quadrant absolute metric aggregates.",
         ),
     ],
+    graph_factory=absolute_waveform_graph,
     input_slot="both",
 )
 def run(ctx):

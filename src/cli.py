@@ -35,12 +35,7 @@ from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
 )
-from pipeline_engine import (
-    execute_run,
-    expand_run_inputs,
-    resolve_run_spec,
-    selectable_pipeline_registry,
-)
+from pipeline_engine import execute_run, expand_run_inputs, resolve_run_spec, selectable_pipeline_registry
 from utils.logger import Logger
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:

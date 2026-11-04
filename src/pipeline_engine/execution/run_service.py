@@ -34,11 +34,11 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from .base import PipelineDescriptor
-from .background_artifacts import ArtifactWorkers, BackgroundArtifacts
-from .dag import PipelineDAG, PipelineExecutionPlan
-from .finalization import PendingOutput
-from .runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.execution.background_artifacts import ArtifactWorkers, BackgroundArtifacts
+from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
+from pipeline_engine.output.finalization import PendingOutput
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 @dataclass(frozen=True)
 class RunRequest:
@@ -188,7 +188,7 @@ def execute_run(
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
-    from .resources import ResourceBudget
+    from pipeline_engine.resources import ResourceBudget
 
     budget = ResourceBudget()
     with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(

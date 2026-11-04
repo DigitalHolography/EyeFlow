@@ -1,12 +1,9 @@
 """Selectable, once-per-run low-frequency spectral analysis."""
 
-from pipeline_engine.imports import pipeline
+from pipeline_engine import pipeline
 
 
-def build_graph(*, options=()):
-    from .graph import spectral_graph
-
-    return spectral_graph(options=options)
+from .runner import spectral_graph, run_low_freq_spectra
 
 
 @pipeline(
@@ -17,9 +14,7 @@ def build_graph(*, options=()):
     dag_produces=["gap_spectrograms", "gap_per_beat_spectrograms"],
     input_slot="hd",
     run_once=True,
-    graph_factory=build_graph,
+    graph_factory=spectral_graph,
 )
 def run(ctx):
-    from .runner import run_low_freq_spectra
-
     return run_low_freq_spectra(ctx)

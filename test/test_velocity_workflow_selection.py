@@ -7,9 +7,9 @@ import h5py
 import pytest
 
 from app_settings import AppSettingsStore, selected_velocity_methods
-from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
-from pipelines.velocity.sources import load_velocity_inputs
+from pipelines.vessel_inputs import load_vessel_topology_inputs
 from test_dual_velocity_workflows import _dual_input
 
 
@@ -64,7 +64,7 @@ def test_only_selected_workflows_load_inputs_and_execute_downstream(tmp_path, se
         input_paths=[holo], target_names=["velocity_analysis"], pipelines=available,
         pipeline_options={"velocity_analysis": ()}, velocity_estimation_method=selection,
     )
-    with patch("pipelines.velocity.runner.load_velocity_inputs", wraps=load_velocity_inputs) as load:
+    with patch("pipelines.velocity.runner.load_vessel_topology_inputs", wraps=load_vessel_topology_inputs) as load:
         result = execute_run(spec)
     assert result.succeeded, result.failures
     methods = selected_velocity_methods(selection)

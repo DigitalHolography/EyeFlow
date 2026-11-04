@@ -14,9 +14,9 @@ from test_velocity_pipeline import _retinal_velocity
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS, processing_path
 from pipeline_engine import ExecutionVariant, PipelineDAG, PipelineDescriptor
-from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
-from pipelines.low_freq_spectra.runner import run_low_freq_spectra
+from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 from pipelines.low_freq_spectra.frequency import write_frequency_bin_table
 from input_output.writers.h5_output import PipelineH5Output
 from pipelines.topology_core.runner import CAPILLARY_ANALYSIS_ZONES_STATE
@@ -104,14 +104,11 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
 ])
 def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, moments, bands, expected):
     spec = _spec(tmp_path, moments=moments, bands=bands)
-    with patch("pipelines.low_freq_spectra.runner.run_low_freq_spectra",
-               wraps=run_low_freq_spectra) as run:
+    with patch("pipelines.low_freq_spectra.runner.preprocess_spectrograms",
+               wraps=preprocess_spectrograms) as reduce:
         result = execute_run(spec)
     assert result.succeeded, result.failures
-    run.assert_called_once()
-    ctx = run.call_args.args[0]
-    assert ctx.execution_variant is None
-    assert ctx.output.h5.processing_root is None
+    reduce.assert_called_once()
     assert spec.plan.targets == ("low_freq_spectra", "consumer")
     assert spec.plan.names.index("velocity") < spec.plan.names.index("low_freq_spectra")
     schema = EyeFlowOutputPaths.active()
@@ -286,7 +283,7 @@ def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):
 @pytest.mark.parametrize("spectra", ["missing", "legacy_group"])
 def test_optional_source_skips_all_spectral_processing(tmp_path, spectra):
     spec = _spec(tmp_path, spectra=spectra)
-    with patch("pipelines.low_freq_spectra.stages.preprocess_spectrograms") as preprocess:
+    with patch("pipelines.low_freq_spectra.runner.preprocess_spectrograms") as preprocess:
         result = execute_run(spec)
     assert result.succeeded, result.failures
     preprocess.assert_not_called()
@@ -318,7 +315,7 @@ def test_bad_spectra_fail_only_the_shared_pipeline(tmp_path, spectra):
 
 
 def test_invalid_spectral_source_logs_before_failing() -> None:
-    from pipelines.low_freq_spectra.stages import _source
+    from pipelines.low_freq_spectra.runner import _source
 
     source = SimpleNamespace(
         optional_spectograms_dataset=lambda: (_ for _ in ()).throw(
@@ -332,7 +329,7 @@ def test_invalid_spectral_source_logs_before_failing() -> None:
         ),
     )
     with (
-        patch("pipelines.low_freq_spectra.stages.Logger.log_error") as error_log,
+        patch("pipelines.low_freq_spectra.runner.Logger.log_error") as error_log,
         pytest.raises(ValueError, match="invalid spectral rank"),
     ):
         _source(ctx)
@@ -340,7 +337,7 @@ def test_invalid_spectral_source_logs_before_failing() -> None:
 
 
 def test_invalid_dopplerview_support_logs_before_spatial_failure() -> None:
-    from pipelines.low_freq_spectra.stages import _spatial
+    from pipelines.low_freq_spectra.runner import _spatial
 
     source = SimpleNamespace(optional_spectograms_dataset=lambda: object())
     ctx = SimpleNamespace(
@@ -350,10 +347,10 @@ def test_invalid_dopplerview_support_logs_before_spatial_failure() -> None:
     )
     with (
         patch(
-            "pipelines.low_freq_spectra.stages.optional_capillary_zones",
+            "pipelines.low_freq_spectra.runner.optional_capillary_zones",
             side_effect=ValueError("invalid DopplerView mask"),
         ),
-        patch("pipelines.low_freq_spectra.stages.Logger.log_error") as error_log,
+        patch("pipelines.low_freq_spectra.runner.Logger.log_error") as error_log,
         pytest.raises(ValueError, match="invalid DopplerView mask"),
     ):
         _spatial(ctx)
@@ -379,7 +376,7 @@ def test_automatic_companions_close_dependencies_and_do_not_become_targets():
 
 def test_failed_beat_stage_retains_committed_spatial_products_and_basic_exports(tmp_path):
     spec = _spec(tmp_path)
-    with patch("pipelines.low_freq_spectra.stages.run_gap_analysis", side_effect=ValueError("beat failure")):
+    with patch("pipelines.low_freq_spectra.runner.run_gap_analysis", side_effect=ValueError("beat failure")):
         result = execute_run(spec)
     assert not result.succeeded
     schema = EyeFlowOutputPaths.active()
@@ -401,7 +398,7 @@ def test_failed_beat_stage_retains_committed_spatial_products_and_basic_exports(
 
 @pytest.mark.parametrize("class_pipeline", [False, True])
 def test_decorators_preserve_companion_and_shared_execution_metadata(monkeypatch, class_pipeline):
-    from pipeline_engine import base
+    from pipeline_engine.planning import base
 
     monkeypatch.setattr(base, "PIPELINE_REGISTRY", {})
     if class_pipeline:

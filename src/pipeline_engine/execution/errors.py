@@ -5,7 +5,7 @@ import linecache
 import traceback
 from pathlib import Path
 
-from .base import ProcessPipeline
+from pipeline_engine.planning.base import ProcessPipeline
 
 
 def _resolve_path(path: str | None) -> Path | None:

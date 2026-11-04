@@ -1,8 +1,8 @@
 """Selectable blood-volume-rate products."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 
-from .runner import run_blood_volume_rate
+from .runner import run_blood_volume_rate, blood_volume_rate_graph
 
 
 @pipeline(
@@ -27,6 +27,7 @@ from .runner import run_blood_volume_rate
         ),
     ],
     dag_produces=["blood_volume_rate"],
+    graph_factory=blood_volume_rate_graph,
     input_slot="both",
     default_selected=True,
 )

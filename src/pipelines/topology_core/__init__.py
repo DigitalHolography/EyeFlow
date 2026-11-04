@@ -1,8 +1,8 @@
 """Hidden shared retinal topology preparation pipeline."""
 
-from pipeline_engine.imports import pipeline
+from pipeline_engine import pipeline
 
-from .runner import run_topology_core
+from .runner import run_topology_core, topology_graph
 
 
 @pipeline(
@@ -12,6 +12,7 @@ from .runner import run_topology_core
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
     dag_produces=["prepared_topology", "capillary_analysis_zones"],
+    graph_factory=topology_graph,
     input_slot="both",
     visibility="hidden",
 )

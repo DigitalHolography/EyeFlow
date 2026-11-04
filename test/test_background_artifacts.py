@@ -16,10 +16,10 @@ from input_output.writers.h5_output import PipelineH5Output
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.background_artifacts import ArtifactExportResult, BackgroundArtifacts
-from pipeline_engine.base import PipelineDescriptor, pipeline, registerPipeline
+from pipeline_engine.execution.background_artifacts import ArtifactExportResult, BackgroundArtifacts
+from pipeline_engine.planning.base import PipelineDescriptor, pipeline, registerPipeline
 from pipeline_engine.context import PipelineOutput
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 from pipelines.low_freq_spectra.artifacts import export_spectrogram_figures
 from pipelines.low_freq_spectra.figure_export import (
     export_spectral_snapshot, snapshot_spectral_figures,
@@ -32,7 +32,7 @@ def threaded_exporter(monkeypatch):
     # These jobs write fixture bytes only. The real renderer uses a process;
     # test its spawn path separately, without running Matplotlib in threads.
     monkeypatch.setattr(
-        "pipeline_engine.background_artifacts.ProcessPoolExecutor",
+        "pipeline_engine.execution.background_artifacts.ProcessPoolExecutor",
         lambda **kwargs: ThreadPoolExecutor(max_workers=1),
     )
 
@@ -144,7 +144,7 @@ def test_export_failure_preserves_numerics_continues_analysis_and_skips_report(
         raise ValueError("injected export failure")
 
     if failure_stage == "submit":
-        monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", fail)
+        monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", fail)
 
     def export(*args):
         if failure_stage == "render_result":
@@ -262,7 +262,7 @@ def test_real_spawned_renderer_uses_independent_reduced_snapshot(tmp_path):
 def test_decorators_preserve_artifact_consumer_metadata(monkeypatch):
     # Replace the registry locally so discovery state is untouched.
     registry = {}
-    monkeypatch.setattr("pipeline_engine.base.PIPELINE_REGISTRY", registry)
+    monkeypatch.setattr("pipeline_engine.planning.base.PIPELINE_REGISTRY", registry)
 
     @pipeline("function_consumer", wait_for_artifacts=True)
     def run(ctx):

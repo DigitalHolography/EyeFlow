@@ -19,9 +19,9 @@ from input_output.writers.article import save_article_figure_pair
 from input_output.writers.deferred import save_figure_file
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import FigureArtifactWriter
-from pipeline_engine.base import PipelineDescriptor
-from pipeline_engine.run_service import execute_run, resolve_run_spec
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 from test_run_service import _write_input
 from utils.logger import Logger
 
@@ -110,7 +110,7 @@ def test_shared_writers_capture_automatically_and_report_consumes_identical_file
 def test_unserializable_figure_is_an_export_failure_and_retains_numerics(tmp_path, monkeypatch):
     # Serialization fails before rendering, so these fixture workers never run Matplotlib.
     monkeypatch.setattr(
-        "pipeline_engine.background_artifacts.ProcessPoolExecutor",
+        "pipeline_engine.execution.background_artifacts.ProcessPoolExecutor",
         lambda **kwargs: ThreadPoolExecutor(max_workers=1),
     )
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
@@ -133,7 +133,7 @@ def test_queued_writers_are_cancelled_when_numerical_persistence_fails(tmp_path,
     def forbidden_pool(**kwargs):
         pytest.fail("A rolled-back producer must not start an exporter")
 
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", forbidden_pool)
+    monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", forbidden_pool)
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
 
     def source(ctx):
@@ -153,7 +153,7 @@ def test_next_file_starts_before_exports_finish_and_completion_logs_are_asynchro
         pools.append(kwargs)
         return ThreadPoolExecutor(max_workers=2)
 
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", fixture_pool)
+    monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", fixture_pool)
     first = _write_input(tmp_path / "inputs", "first")
     second = _write_input(tmp_path / "inputs", "second")
     render_started, second_started, release, first_complete = (Event() for _ in range(4))

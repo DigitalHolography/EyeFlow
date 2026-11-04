@@ -1,10 +1,10 @@
 """Dense retinal displacement-map pipeline."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 from pipeline_engine.product_exchange import ProductRequirement
 
 from .runner import run_displacement_map, run_displacement_profiles
-from .graph import displacement_graph, displacement_profiles_graph
+from .runner import displacement_graph, displacement_profiles_graph
 
 
 @pipeline(

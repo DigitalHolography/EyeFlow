@@ -21,7 +21,7 @@ Small pipelines may be one module. Larger pipelines use:
 ```text
 pipeline_name/
   __init__.py       declaration only
-  runner.py         orchestration and state ownership
+  runner.py         executable graph, stage callbacks, managed entry and state ownership
   sources.py        typed input assembly, when needed
   outputs.py        schema packing/artifact export
   calculator.py     product-specific calculation, when not broadly reusable
@@ -299,8 +299,8 @@ Retain clear method, calibration, and unit provenance for their results.
 | Change | Read/inspect | Usually skip |
 |---|---|---|
 | New pipeline or option | `CONTRIBUTING.md`, package `__init__.py`, runner, DAG tests | GUI views; discovery is automatic |
-| Velocity source/semantics | `vessel_inputs.py`, velocity sources/runner/estimator, data contracts | displacement internals |
-| Per-beat/segment output | velocity-analysis builder and packers, output schema, profile/segment tests | settings UI |
+| Velocity source/semantics | `vessel_inputs.py`, velocity runner/estimator, data contracts | displacement internals |
+| Per-beat/segment output | velocity-analysis runner and packers, output schema, profile/segment tests | settings UI |
 | Spatial-gradient lumen metric | spatial-gradient package, vessel-segment sampling/measurement, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |

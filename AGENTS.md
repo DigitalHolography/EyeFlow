@@ -31,7 +31,7 @@ Read only the context needed for the task:
 | `src/input_output/` | `.holo` companion discovery, typed HDF5 adapters, output schema, writers, reports, and archives |
 | `src/retinal_source_data.py` | Shared typed, aligned HD/DV retinal input model |
 | `src/plotting/` | Reusable figure styling and layout; I/O writers save the finished figures |
-| `src/ui/` | Tkinter views and controllers; delegates runs to `pipeline_engine.run_service` |
+| `src/ui/` | Tkinter views and controllers; delegates runs to `pipeline_engine.execution.run_service` |
 | `src/utils/` | Process-wide logging; keep domain and orchestration behavior out of this small shared layer |
 | `src/app_settings.py` / `default_settings.json` | Persisted settings behavior / fresh-install defaults |
 | `test/` | Unit, numerical-reference, pipeline-integration, schema, UI-controller, and launcher tests |
@@ -49,7 +49,7 @@ CLI (`cli.main`) --------+                         |
                     -> shared run state + EyeFlow HDF5/sidecars
 ```
 
-Both front ends must converge on `pipeline_engine.run_service`; do not create a
+Both front ends must converge on `pipeline_engine.execution.run_service`; do not create a
 second scheduling or execution path in a controller or CLI handler.
 
 ## Global invariants

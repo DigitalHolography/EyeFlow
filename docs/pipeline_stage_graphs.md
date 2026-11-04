@@ -64,6 +64,30 @@ Existing `BackgroundArtifacts` owns rendering; numerical stages remain serial.
 Graph scope enforces context identity, owning thread and lifetime. `StageJournal`
 owns root `stage_status`, `stage_failures`, `stage_skips` and `stage_products`,
 merging qualified invocation scopes without overwriting other pipelines.
-Scientific declarations live in `pipelines/low_freq_spectra/graph.py` and
-`pipelines/displacement_map/graph.py`. See [process execution](parallel_pipeline_execution.md)
-for global readiness, transport and resource lifetime.
+Invocation-local reader adapters and scratch intermediates use `InvocationResource`;
+they remain local and do not serialize full working arrays at each stage.
+Durable datasets still pass through the authoritative output transaction. Only
+explicitly exposed scientific products may cross process boundaries.
+
+Production factories and callbacks live together in each package's `runner.py`:
+
+| Pipeline | Calculation flow and optional branches |
+|---|---|
+| `low_freq_spectra` | source, sampling, calibration, spatial reductions, beats, QC, figures |
+| `displacement_map` | prepare replay; independent artery/vein registration; finalize shared fields |
+| `displacement_profiles` | analysis, profiles; optional segment maps |
+| `topology_core` | inputs, gap support, shared sampling topology |
+| `spatial_gradient_moment0` | inputs, cached gradient profiles, lumen figures; persist only when targeted |
+| `absolute_waveform_metrics` | shared waveform inputs, global/selected segment metrics; optional quadrants reuse those metrics |
+| `waveform_shape_metrics` | shared waveform inputs, global/selected segment metrics; optional quadrants reuse those metrics |
+| `lowrank_waveform_decomposition` | shared waveform inputs, decomposition; optional independent quadrant decompositions |
+| `blood_volume_rate` | inputs, selected gradient/mask branches, corresponding figures |
+| `velocity` | selected inputs, all estimates, method-specific cardiac cycles, workflow publication |
+| `velocity_analysis` | inputs, optional segments, per-beat analysis, continuous/shared waveform publication; selected maps/profiles/fits/FFTs/quadrants and artifacts |
+| `pdf_report` | one atomic report render after upstream artifact completion |
+
+Profile FFT accumulation stays fused with segment extraction to avoid replaying
+the velocity volume; its selected output stage publishes the retained result.
+Velocity method failures retain their established per-workflow outcome policy.
+See [process execution](parallel_pipeline_execution.md) for global readiness,
+transport and resource lifetime.

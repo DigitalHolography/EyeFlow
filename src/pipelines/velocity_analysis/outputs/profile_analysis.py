@@ -14,7 +14,7 @@ from calculations.vessel_segments.profiles.fits import (
     fit_quadratic_profiles,
 )
 from input_output import EyeFlowOutputPaths
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from utils.logger import Logger
 
 _OUTPUT_PATHS = EyeFlowOutputPaths.active()

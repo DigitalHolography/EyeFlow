@@ -7,7 +7,7 @@ from time import monotonic, sleep
 import numpy as np
 
 from input_output.output_manager import OutputType
-from pipeline_engine.base import PIPELINE_REGISTRY, pipeline
+from pipeline_engine.planning.base import PIPELINE_REGISTRY, pipeline
 from pipeline_engine.stage_graph import StageGraph, StageSpec, ProductSpec
 
 

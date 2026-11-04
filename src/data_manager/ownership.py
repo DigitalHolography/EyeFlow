@@ -42,7 +42,7 @@ class DataManager:
         return handle
 
     def _snapshot(self, value, memo):
-        from pipeline_engine.storage import ArrayReference, ValueReference
+        from pipeline_engine.data.storage import ArrayReference, ValueReference
 
         if isinstance(value, InvocationResource):
             key = uuid4().hex
@@ -97,7 +97,7 @@ class DataManager:
         return value
 
     def _resolve(self, value):
-        from pipeline_engine.storage import ArrayReference, ValueReference
+        from pipeline_engine.data.storage import ArrayReference, ValueReference
 
         if isinstance(value, ResourceReference):
             return self._resources[value.id]
@@ -141,7 +141,7 @@ class DataManager:
         return handle
 
     def validate_storage(self, value, *, product_paths=False):
-        from pipeline_engine.storage import ArrayReference, ValueReference
+        from pipeline_engine.data.storage import ArrayReference, ValueReference
 
         if isinstance(value, ResourceReference):
             raise ValueError("Invocation-local resources cannot cross process boundaries.")

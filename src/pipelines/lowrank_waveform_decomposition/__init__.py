@@ -1,8 +1,8 @@
 """Low-rank SVD decomposition for beat-aligned segment waveforms."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 
-from .runner import run_lowrank_waveform_decomposition
+from .runner import run_lowrank_waveform_decomposition, lowrank_waveform_graph
 
 
 @pipeline(
@@ -21,6 +21,7 @@ from .runner import run_lowrank_waveform_decomposition
             "Four-quadrant low-rank waveform decomposition metrics.",
         ),
     ],
+    graph_factory=lowrank_waveform_graph,
     input_slot="both",
 )
 def run(ctx):
