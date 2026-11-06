@@ -33,6 +33,27 @@ def _run(manager, descriptors):
     )
 
 
+def test_resolved_graph_uses_downstream_options_without_reading_acquisition(tmp_path, monkeypatch):
+    from pipeline_engine import PipelineDAG, resolve_execution_graph, export_execution_graph
+    from pipeline_engine.execution.run_service import RunSpec
+    from pipelines import load_pipeline_catalog
+
+    available, _ = load_pipeline_catalog()
+    options = {"velocity_analysis": (), "absolute_waveform_metrics": ("segments",)}
+    plan = PipelineDAG(available).resolve_targets(("absolute_waveform_metrics",), pipeline_options=options)
+    spec = RunSpec(plan, (), options)
+    monkeypatch.setattr(h5py, "File", lambda *args, **kwargs: pytest.fail("Preflight read scientific input"))
+    graph = resolve_execution_graph(spec)
+    stages = next(item["stages"] for item in graph["pipelines"] if item["id"] == "velocity_analysis")
+    assert "segments" in {item["id"] for item in stages}
+    assert "maps" not in {item["id"] for item in stages}
+    assert graph["variant_discovery"]["successful"] is None
+    assert graph == resolve_execution_graph(spec)
+    json_path, dot_path = export_execution_graph(spec, tmp_path / "plan")
+    assert json.loads(json_path.read_text()) == graph
+    assert "per successful variant" in dot_path.read_text()
+
+
 def test_committed_handoff_survives_later_failure_and_only_missing_consumers_skip(tmp_path):
     calls = []
 

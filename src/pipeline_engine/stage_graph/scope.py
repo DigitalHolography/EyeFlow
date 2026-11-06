@@ -56,4 +56,4 @@ def current_pipeline_dag():
 
 
 def handoff(name, value):
-    current_pipeline_dag().handoff(name, value)
+    return current_pipeline_dag().handoff(name, value)

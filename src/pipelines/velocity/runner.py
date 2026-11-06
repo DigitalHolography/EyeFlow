@@ -49,7 +49,10 @@ def _inputs(ctx):
     if not sources:
         raise RuntimeError(f"No selected velocity workflow has usable inputs: {failures}")
     reference_shape = _source_shape(next(iter(sources.values())))
-    ctx.dag.handoff("inputs", InvocationResource((sources, failures, reference_shape)))
+    ctx.dag.handoff("inputs", (
+        {method: InvocationResource(source) for method, source in sources.items()},
+        failures, reference_shape,
+    ))
 
 
 def _estimates(ctx):
@@ -57,7 +60,7 @@ def _estimates(ctx):
     failures = dict(initial_failures)
     estimates = {method: _estimate_available(ctx, source, reference_shape, failures)
                  for method, source in sources.items()}
-    ctx.dag.handoff("estimates", InvocationResource((estimates, failures)))
+    ctx.dag.handoff("estimates", (estimates, failures))
 
 
 def _cycles(ctx):
@@ -100,7 +103,7 @@ def _cycles(ctx):
             variants.append(
                 ExecutionVariant(
                     name=method,
-                    state={VELOCITY_STATE: result, "velocity_source": source},
+                    state={VELOCITY_STATE: result, "velocity_source": InvocationResource(source)},
                     output_namespace=root,
                     artifact_namespace=VELOCITY_WORKFLOW_FOLDERS[method],
                     provenance=provenance,
@@ -109,13 +112,14 @@ def _cycles(ctx):
         except Exception as exc:
             failures[method] = str(exc)
             Logger.log_warning(f"Skipping {method}: {exc}")
-    ctx.dag.handoff("workflows", InvocationResource((variants, failures)))
+    ctx.dag.handoff("workflows", (variants, failures))
 
 
 def _publish(ctx):
     candidates, initial_failures = ctx.dag.require("workflows")
     failures, variants = dict(initial_failures), []
     for variant in candidates:
+        variant = replace(variant, state=dict(variant.state))
         try:
             packed = pack_velocity_outputs(variant.state[VELOCITY_STATE])
             qualified = {processing_path(path, variant.output_namespace): value for path, value in packed.items()}

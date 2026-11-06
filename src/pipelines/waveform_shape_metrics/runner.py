@@ -1,6 +1,7 @@
 """Executable global, segment and quadrant waveform metrics."""
 
 from functools import partial
+from dataclasses import replace
 
 from data_manager import InvocationResource
 from pipeline_engine import ProductSpec, StageGraph, StageSpec
@@ -14,7 +15,7 @@ from .metrics.quadrants import pack_quadrant_metrics
 def _inputs(ctx):
     analysis = velocity_analysis(ctx)
     values = analysis.waveform_inputs
-    ctx.dag.handoff("inputs", InvocationResource((analysis, values)))
+    ctx.dag.handoff("inputs", (replace(analysis, source_data=InvocationResource(analysis.source_data)), values))
 
 
 def _selected_metrics(values, ctx):
@@ -29,7 +30,7 @@ def _metrics(branch, ctx):
         include_segments=branch == "segment_metrics",
         include_global=branch == "global_metrics", include_quadrants=False,
     )
-    ctx.dag.handoff(branch, InvocationResource(computed))
+    computed = ctx.dag.handoff(branch, computed)
     ctx.state.set("waveform_shape_metric_outputs", {
         **ctx.state.get("waveform_shape_metric_outputs", {}),
         **_selected_metrics(computed, ctx),
@@ -40,7 +41,7 @@ def _quadrants(ctx):
     analysis, inputs = ctx.dag.require("inputs")
     values = {**inputs, **ctx.dag.require("global_metrics"), **ctx.dag.require("segment_metrics")}
     outputs = pack_quadrant_metrics(values, analysis.artery_segments, analysis.vein_segments)
-    ctx.dag.handoff("quadrants", outputs)
+    outputs = ctx.dag.handoff("quadrants", outputs)
     ctx.state.set("waveform_shape_metric_outputs", {**ctx.state["waveform_shape_metric_outputs"], **outputs})
 
 

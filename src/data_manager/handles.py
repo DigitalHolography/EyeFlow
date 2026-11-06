@@ -14,7 +14,12 @@ class ProductHandle:
 
 @dataclass(frozen=True, slots=True)
 class InvocationResource:
-    """Opt in to local resource ownership; never eligible for IPC transport."""
+    """Own a local reader/replay/working resource, not a scientific value.
+
+    Reads retain resource identity. Scientific results belong in ordinary
+    handoffs; this wrapper does not provide a value snapshot or writable copy.
+    Never eligible for IPC transport.
+    """
 
     value: object
 

@@ -93,6 +93,9 @@ def test_snapshot_protects_producer_aliases_and_reuses_consumers(large):
         copies = storage.metrics.snapshot()["array_copies"]
         manager.accept(first)
         assert storage.metrics.snapshot()["array_copies"] == copies
+        aliases = manager.read(manager.accept({"first": first, "second": first}))
+        assert np.shares_memory(aliases["first"], aliases["second"])
+        assert storage.metrics.snapshot()["array_copies"] == copies
         if large:
             assert storage.metrics.snapshot()["npy_writes"] == 1
 
@@ -171,7 +174,13 @@ def test_owned_resources_all_close_even_if_one_close_fails():
                 raise OSError("close failed")
     with ProductStorage() as storage:
         manager = DataManager(storage)
-        manager.accept(InvocationResource(Resource("first")))
+        resource = Resource("first")
+        manager.accept(InvocationResource(resource))
+        handle = manager.accept((InvocationResource(resource), InvocationResource(resource)))
+        with pytest.raises(TypeError, match="writable scientific copies"):
+            manager.writable(handle)
+        with pytest.raises(ValueError, match="cannot cross"):
+            manager.accept({"nested": InvocationResource(resource)}, transportable=True)
         manager.accept(InvocationResource(Resource("second", True)))
         with pytest.raises(OSError, match="close failed"):
             manager.close_resources()

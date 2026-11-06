@@ -17,7 +17,7 @@ from ..schema.doppler_view import (
 from ..schema.eyeflow_output import EyeFlowOutputPaths
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
 from .h5 import open_h5, resolve_dataset_target, set_attr_safe
-from .h5_storage import _MIN_COMPRESSION_BYTES
+from .h5_storage import _DEFAULT_GZIP_LEVEL, _MIN_COMPRESSION_BYTES
 
 
 def initialize_acquisition_metadata(model, hd):
@@ -147,7 +147,7 @@ def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
                 and source.size * source.dtype.itemsize >= _MIN_COMPRESSION_BYTES
             )
             options = (
-                {"compression": "gzip", "compression_opts": 9, "shuffle": True}
+                {"compression": "gzip", "compression_opts": _DEFAULT_GZIP_LEVEL, "shuffle": True}
                 if compressible else {}
             )
             target = parent.store_dataset(name, value, options)
@@ -187,7 +187,7 @@ def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
         maxshape=source.maxshape,
         chunks=source.chunks or True,
         compression="gzip",
-        compression_opts=9,
+        compression_opts=_DEFAULT_GZIP_LEVEL,
         shuffle=True,
         fillvalue=source.fillvalue,
     )

@@ -13,6 +13,8 @@ from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from input_output.schema.provenance import read_dataset_attrs
 from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
+from pipeline_engine import resolve_execution_graph
+from input_output.schema.output_payload import payload_array
 from pipelines import load_pipeline_catalog
 from pipelines.velocity.runner import (
     detect_velocity_cardiac_cycles,
@@ -306,8 +308,17 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
     from pipelines.velocity_analysis import runner as shared_analysis
     events = []
     detected = {}
+    figure_inputs = {}
+    real_figures = shared_analysis.export_velocity_signals
+
+    def figures(output, artery, vein):
+        figure_inputs[output.h5.processing_root] = (payload_array(artery).copy(), payload_array(vein).copy())
+        return real_figures(output, artery, vein)
 
     def cycles(data, *, dt_seconds):
+        assert not data.maps.velocity.flags.writeable
+        with pytest.raises(ValueError):
+            data.maps.velocity[0, 0, 0] = -1
         method = data.provenance["velocity_estimation_method"]
         events.append(("cycles", method))
         result = detect_velocity_cardiac_cycles(data, dt_seconds=dt_seconds)
@@ -325,8 +336,10 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
         patch("pipeline_engine.data.scratch._available_memory_bytes", return_value=0),
         patch.object(shared_analysis, "_run_velocity_per_beat_analysis", wraps=shared_analysis._run_velocity_per_beat_analysis) as per_beat,
         patch.object(shared_analysis, "pack_velocity_per_beat_inputs", wraps=shared_analysis.pack_velocity_per_beat_inputs) as pack_inputs,
+        patch.object(shared_analysis, "export_velocity_signals", side_effect=figures),
     ):
-        result = execute_run(_spec(holo, artifacts=True))
+        spec = _spec(holo, artifacts=True)
+        result = execute_run(spec)
     assert result.succeeded, result.failures
     assert per_beat.call_count == pack_inputs.call_count == 2
     assert not list(result.outputs[0].parent.parent.glob(".ef_scratch_*"))
@@ -337,6 +350,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
         ("cycles", "frequency_bands"),
     ]
     schema = EyeFlowOutputPaths.active()
+    inspected = resolve_execution_graph(spec, observed_output=result.outputs[0])
+    assert inspected["variant_discovery"]["successful"] == ["doppler_moments", "frequency_bands"]
     with h5py.File(result.outputs[0], "r") as output:
         assert "Segmentation" in output
         assert "velocity_estimation_method" not in output.attrs
@@ -349,6 +364,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             ("doppler_moments", "ProcessingMoments"),
             ("frequency_bands", "ProcessingBandRatio"),
         ):
+            for actual, paths in zip(figure_inputs[root], (schema.artery_per_beat_filtered, schema.vein_per_beat_filtered)):
+                np.testing.assert_array_equal(actual, output[processing_path(paths.segment_velocity_signal_band_limited, root)][:])
             assert output[root].attrs["velocity_estimation_method"] == method
             if method == "doppler_moments":
                 assert output[root].attrs["moment0_source_path"] == "/moment0"
@@ -366,6 +383,11 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
                 schema.waveform_shape_metrics_root,
                 schema.lowrank_waveform_decomposition_root,
                 schema.artery_velocity_profiles.transverse_velocity_profile_masked,
+                schema.vein_velocity_profiles.transverse_velocity_profile_masked,
+                schema.artery_velocity_profiles.transverse_velocity_profile_fft_masked,
+                schema.vein_velocity_profiles.transverse_velocity_profile_fft_masked,
+                f"{schema.velocity_profile_analysis_root}/Artery",
+                f"{schema.velocity_profile_analysis_root}/Vein",
             ):
                 assert processing_path(family, root) in output
 

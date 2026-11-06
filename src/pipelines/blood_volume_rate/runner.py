@@ -1,5 +1,7 @@
 """Executable gradient- and mask-derived blood-volume-rate branches."""
 
+from dataclasses import replace
+
 from data_manager import InvocationResource
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import ProductSpec, StageGraph, StageSpec
@@ -16,7 +18,8 @@ from .outputs import (export_blood_volume_rate_signals, export_lumen_diameter_di
 
 
 def _inputs(ctx):
-    ctx.dag.handoff("analysis", InvocationResource(velocity_analysis(ctx)))
+    analysis = velocity_analysis(ctx)
+    ctx.dag.handoff("analysis", replace(analysis, source_data=InvocationResource(analysis.source_data)))
 
 
 def _gradient_edges(ctx):

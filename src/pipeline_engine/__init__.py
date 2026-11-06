@@ -24,6 +24,7 @@ from pipeline_engine.context import (
     RawH5SourceReader,
 )
 from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
+from pipeline_engine.planning.inspection import export_execution_graph, resolve_execution_graph
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement
 from pipeline_engine.stage_graph import (
     StageGraph,
@@ -63,6 +64,8 @@ __all__ = [
     "PipelineDescriptor",
     "PipelineOption",
     "PipelineExecutionPlan",
+    "export_execution_graph",
+    "resolve_execution_graph",
     "PipelineContext",
     "PipelineH5Output",
     "PipelineInputs",

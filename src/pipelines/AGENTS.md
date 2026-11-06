@@ -283,6 +283,8 @@ Retain clear method, calibration, and unit provenance for their results.
 ## State and output rules
 
 - Give shared state keys one owning runner and a declared producer DAG key.
+- Hand off scientific values normally and publish the accepted return value to
+  shared state. Reserve `InvocationResource` for local input/replay resources.
 - Use typed objects for multi-field state and validate type/shape in consumers.
 - Put durable products in the HDF5 result, not only in `ctx.state` or figures.
 - Use `EyeFlowOutputPaths.active()` for centralized output families.

@@ -46,8 +46,13 @@ def continuous_gradient_key(moment0ff, masks, topologies, settings, filter_setti
     )
 
 
-def freeze_continuous_gradients(segments):
+def freeze_continuous_gradients(segments, *, storage=None):
     """Protect cached measurement arrays from downstream in-place changes."""
+    if storage is not None:
+        from data_manager import DataManager
+
+        data = DataManager(storage)
+        return data.read(data.accept(segments))
     for result in segments:
         result.segment_signal.setflags(write=False)
         for pair in (result.transverse, result.longitudinal, result.mean_images):

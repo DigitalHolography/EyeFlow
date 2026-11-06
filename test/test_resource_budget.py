@@ -9,6 +9,21 @@ from pipeline_engine.resources import ResourceBudget, suspend_compute
 from runtime_limits import thread_allowance
 
 
+def test_run_service_reuses_the_callers_cpu_and_memory_budget(monkeypatch):
+    from pipeline_engine.execution import run_service
+    from pipeline_engine.planning.dag import PipelineExecutionPlan
+    from pipeline_engine.resources import current_resources
+
+    budget = ResourceBudget(cpu_threads=2, memory_bytes=1024**3)
+    def execute(*args, **kwargs):
+        assert current_resources() is budget
+        return run_service.RunResult((), ())
+    monkeypatch.setattr(run_service, "_execute_batch", execute)
+    spec = run_service.RunSpec(PipelineExecutionPlan((), ()), (), {})
+    with budget.activate():
+        assert run_service.execute_run(spec).succeeded
+
+
 def test_overlapping_calculation_and_publication_do_not_reconfigure_native_pools(monkeypatch):
     native_calls = []
     monkeypatch.setattr("pipeline_engine.resources.configure_native_threads", native_calls.append)

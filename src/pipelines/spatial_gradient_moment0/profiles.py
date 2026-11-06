@@ -118,7 +118,10 @@ def extract_spatial_gradient_segments(
     if key is not None:
         # Publish only after both vessels succeed. Beat packing/output failures
         # cannot corrupt this immutable continuous result or poison another retry.
-        cache[key] = freeze_continuous_gradients(segments)
+        model = getattr(getattr(ctx, "runtime", None), "work_h5", None)
+        segments = cache[key] = freeze_continuous_gradients(
+            segments, storage=getattr(model, "storage", None),
+        )
         Logger.log("Stored shared continuous moment0ff spatial-gradient measurements.")
     return segments
 

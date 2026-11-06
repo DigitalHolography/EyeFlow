@@ -62,7 +62,9 @@ def _pack_vessel_segment_maps(
             raise ValueError(
                 "velocity_maps_per_beat is required when map output is enabled."
             )
-        maps_per_beat = np.asarray(velocity_maps_per_beat, dtype=np.float32)
+        maps_per_beat = velocity_maps_per_beat
+        if isinstance(maps_per_beat, np.ndarray):
+            maps_per_beat = np.asarray(maps_per_beat, dtype=np.float32)
         if maps_per_beat.ndim != 6:
             raise ValueError(
                 "velocity_maps_per_beat must have shape "

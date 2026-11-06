@@ -17,7 +17,7 @@ from .runner import displacement_graph, displacement_profiles_graph
     dag_produces=["displacement_map"],
     input_slot="both",
     execution_mode="process",
-    native_parallelism=True,
+    native_parallelism=False,
     run_once=True,
     graph_factory=displacement_graph,
 )

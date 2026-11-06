@@ -53,10 +53,8 @@ def _gaps(ctx):
     zones, outputs = _prepare_gap_masks(ctx, inputs, legacy, disc)
     if legacy is not None:
         outputs.update(pack_capillary_analysis_zones(legacy, disc))
-    if zones is not None:
-        zones.setflags(write=False)
-    ctx.state.set(CAPILLARY_ANALYSIS_ZONES_STATE, zones)
-    ctx.dag.handoff("gaps", outputs)
+    accepted_zones, _ = ctx.dag.handoff("gaps", (zones, outputs))
+    ctx.state.set(CAPILLARY_ANALYSIS_ZONES_STATE, accepted_zones)
 
 
 def _sampling(ctx):
@@ -105,8 +103,8 @@ def _sampling(ctx):
         name: resolve_segment_rotations(topology, topology_reference)
         for name, topology in prepared.items()
     }
-    ctx.state.set(TOPOLOGY_CORE_STATE, prepared)
-    ctx.dag.handoff("topology", InvocationResource(prepared))
+    accepted = ctx.dag.handoff("topology", prepared)
+    ctx.state.set(TOPOLOGY_CORE_STATE, accepted)
 
 
 def _pack_topology(prepared, ctx):
@@ -123,7 +121,7 @@ def topology_graph(*, options=()):
     return StageGraph((
         StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),)),
         StageSpec("gaps", _gaps, requires=("inputs",),
-                  products=(ProductSpec("gaps", pack=lambda value, ctx: value),)),
+                  products=(ProductSpec("gaps", pack=lambda value, ctx: value[1]),)),
         StageSpec("sampling", _sampling, requires=("inputs",),
                   products=(ProductSpec("topology", pack=_pack_topology),)),
     ))

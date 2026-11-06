@@ -83,6 +83,7 @@ def interpolate_segment_maps_per_beat(
     *,
     index_base: int = 0,
     valid_segments: np.ndarray | None = None,
+    array_allocator=None,
 ) -> np.ndarray:
     """Interpolate dense segment maps into the serialized per-beat layout.
 
@@ -90,7 +91,7 @@ def interpolate_segment_maps_per_beat(
     is also supported. Output is ``(x, y, time, beat, branch, radius, ...)``.
     """
 
-    maps = np.asarray(segment_maps, dtype=np.float32)
+    maps = segment_maps if hasattr(segment_maps, "shape") else np.asarray(segment_maps, dtype=np.float32)
     if maps.ndim not in (5, 6):
         raise ValueError(
             "segment_maps must have shape (radius, branch, frame, y, x) "
@@ -98,7 +99,13 @@ def interpolate_segment_maps_per_beat(
         )
     radius_count, branch_count, frame_count, y_count, x_count = maps.shape[:5]
     if valid_segments is None:
-        active = np.any(np.isfinite(maps), axis=tuple(range(2, maps.ndim)))
+        active = np.zeros((radius_count, branch_count), dtype=bool)
+        for radius in range(radius_count):
+            for branch in range(branch_count):
+                for frame in range(frame_count):
+                    if np.any(np.isfinite(maps[radius, branch, frame])):
+                        active[radius, branch] = True
+                        break
     else:
         active = np.asarray(valid_segments, dtype=bool)
         if active.shape != (radius_count, branch_count):
@@ -114,8 +121,12 @@ def interpolate_segment_maps_per_beat(
     beat_count = boundaries.size - 1
     time_count = next_power_of_two(int(np.max(np.diff(boundaries))))
     component_shape = maps.shape[5:]
-    output = np.full(
-        (
+    working_bytes = x_count * y_count * max(1, int(np.prod(component_shape))) * 4 * (
+        2 * (int(np.max(np.diff(boundaries))) + 1) + 4 * (time_count + 1)
+    )
+    if working_bytes > 512 * 2**20:
+        raise MemoryError("One displacement segment/beat FFT exceeds the 512 MiB working-memory allowance.")
+    shape = (
             x_count,
             y_count,
             time_count,
@@ -123,10 +134,9 @@ def interpolate_segment_maps_per_beat(
             branch_count,
             radius_count,
             *component_shape,
-        ),
-        np.nan,
-        dtype=np.float32,
     )
+    output = np.empty(shape, dtype=np.float32) if array_allocator is None else array_allocator(shape)
+    output.fill(np.nan)
 
     for radius_index, branch_index in np.argwhere(active):
         for beat_index in range(beat_count):

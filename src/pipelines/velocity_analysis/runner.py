@@ -52,7 +52,10 @@ from .sources import VelocityAnalysisSourceData, load_velocity_analysis_source_d
 VELOCITY_ANALYSIS_STATE = "velocity_analysis"
 
 
-def velocity_analysis_graph(*, options=(), segments_required=None, pulse_figures=True):
+def velocity_analysis_graph(*, options=(), selection=None, segments_required=None, pulse_figures=True):
+    if selection is not None:
+        segments_required = _segments_required(selection)
+        pulse_figures = _pulse_pngs_required(selection)
     options = set(options)
     has_segments = bool(options) if segments_required is None else segments_required
     packed = lambda value, ctx: value
@@ -93,7 +96,7 @@ def velocity_analysis_graph(*, options=(), segments_required=None, pulse_figures
 def run_velocity_analysis(ctx):
     require_managed_runtime(ctx, "velocity_analysis")
     return velocity_analysis_graph(options=ctx.options_for("velocity_analysis"),
-        segments_required=_segments_required(ctx), pulse_figures=_pulse_pngs_required(ctx))
+                                   selection=ctx)
 
 
 def _inputs(ctx):
@@ -103,7 +106,7 @@ def _inputs(ctx):
     harmonic_count = band_limited_harmonics(ctx)
     attrs = _context_attrs(source, retinal, harmonic_count, "eyeflow_velocity_analysis",
                            _number_of_radii_in_fov(ctx), retinal.cardiac_cycle_source)
-    ctx.dag.handoff("inputs", InvocationResource((retinal, source, harmonic_count, attrs)))
+    ctx.dag.handoff("inputs", (retinal, InvocationResource(source), harmonic_count, attrs))
 
 
 def _segments(ctx):
@@ -113,7 +116,7 @@ def _segments(ctx):
     segments = tuple(replace(value, filtered_signal=lowpass_velocity_signals(
         value.profile.segment_signal, dt_seconds=dt)) if value is not None else None
         for value in (artery, vein))
-    ctx.dag.handoff("segments", InvocationResource(segments))
+    ctx.dag.handoff("segments", segments)
 
 
 def _per_beat(has_segments, ctx):
@@ -121,9 +124,9 @@ def _per_beat(has_segments, ctx):
     artery, vein = ctx.dag.require("segments") if has_segments else (None, None)
     with _logged_stage("shared per-beat velocity analysis"):
         result = _run_velocity_per_beat_analysis(retinal, source, artery, vein, harmonic_count=harmonics)
-    analysis = VelocityAnalysis(retinal, source, artery, vein, result, attrs)
-    ctx.state.set(VELOCITY_ANALYSIS_STATE, analysis)
-    ctx.dag.handoff("analysis", InvocationResource(analysis))
+    analysis = VelocityAnalysis(retinal, InvocationResource(source), artery, vein, result, attrs)
+    accepted = ctx.dag.handoff("analysis", analysis)
+    ctx.state.set(VELOCITY_ANALYSIS_STATE, accepted)
 
 
 def _continuous(ctx):
@@ -154,9 +157,12 @@ def _pack_per_beat(values, ctx):
 
 
 def _maps(ctx):
+    from input_output.writers.h5_storage import velocity_map_h5_options
     analysis = ctx.dag.require("analysis")
-    artery, vein = prepare_segment_velocity_maps_per_beat(analysis.artery_segments,
-        analysis.vein_segments, analysis.cycle_boundary_indexes, index_base=0)
+    with ctx.output.h5.build_arrays() as allocate:
+        artery, vein = prepare_segment_velocity_maps_per_beat(analysis.artery_segments,
+            analysis.vein_segments, analysis.cycle_boundary_indexes, index_base=0,
+            array_allocator=lambda shape: allocate(shape, h5_options=velocity_map_h5_options(shape)))
     ctx.dag.handoff("maps", pack_segment_map_outputs(analysis.artery_segments,
         analysis.vein_segments, artery, vein, velocity=analysis.velocity))
 
@@ -420,7 +426,7 @@ def _segment_velocity_inputs(
         )
     )
     compute_longitudinal_profiles = compute_profile_outputs
-    with _logged_stage("segment velocity extraction"):
+    with _logged_stage("segment velocity extraction"), ctx.output.h5.build_arrays() as allocate:
         results = analyze_velocity_segment_profiles(
             velocity_map,
             {
@@ -437,6 +443,7 @@ def _segment_velocity_inputs(
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,
             index_base=int(source_data.provenance["beat_index_base"]),
+            map_allocator=allocate if retain_velocity_maps else None,
         )
     return results["artery"], results["vein"]
 

@@ -42,6 +42,7 @@ def analyze_velocity_segment_profiles(
     post_interpolation=None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
+    map_allocator=None,
 ) -> dict[str, VelocitySegmentResult]:
     """Measure velocity profiles and attach velocity-only optional products."""
 
@@ -94,6 +95,7 @@ def analyze_velocity_segment_profiles(
         temporal_halo=temporal_halo,
         scratch_array_count=scratch_array_count,
         segment_observer_factory=segment_observer_factory,
+        map_allocator=map_allocator,
     )
 
     results: dict[str, VelocitySegmentResult] = {}

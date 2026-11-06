@@ -34,7 +34,7 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.planning.base import PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
 from pipeline_engine.output.finalization import PendingOutput
@@ -63,6 +63,10 @@ class RunSpec:
     @property
     def total_pipeline_units(self) -> int:
         return len(self.plan.descriptors) * len(self.requests)
+
+    @property
+    def selection(self):
+        return PipelineSelection(self.plan.names, self.plan.targets, self.pipeline_options)
 
 
 @dataclass(frozen=True)
@@ -188,9 +192,9 @@ def execute_run(
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
-    from pipeline_engine.resources import ResourceBudget
+    from pipeline_engine.resources import ResourceBudget, current_resources
 
-    budget = ResourceBudget()
+    budget = current_resources() or ResourceBudget()
     with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
         max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
     ) as completions:

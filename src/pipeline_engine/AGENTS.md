@@ -15,6 +15,7 @@ task crosses front-end or I/O boundaries.
 |---|---|
 | `planning/base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
 | `planning/dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
+| `planning/inspection.py` | Resolved JSON/DOT export using the execution selection; optional observed stage/artifact diagnostics |
 | `execution/run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion to `input_output/runs/inputs.py` and destination mapping to `input_output/output_manager.py` |
 | `execution/runtime.py`, `execution/invocation.py` | Per-input workflow coordination / one descriptor's execution and checkpoints |
 | `execution/scheduler.py` | Dependency readiness, artifact barriers and progress order |

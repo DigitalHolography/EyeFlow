@@ -2,7 +2,7 @@
 
 Pipeline packages declare an immutable `StageGraph`; the engine plans and runs
 it through the managed invocation path. Graph factories can be inspected without
-execution. Spectral, displacement-map and displacement-profile runners reject
+execution. Production runners reject
 direct calls with `Pipeline 'NAME' requires the EyeFlow managed execution runtime.`
 
 ```python
@@ -19,7 +19,8 @@ graph = StageGraph((
 ))
 ```
 
-Callbacks return `None` and persist products through `ctx.dag.handoff`.
+Callbacks return `None`; `ctx.dag.handoff` accepts a product and returns its
+immutable consumer view, which can also be published through run state.
 `ProductSpec.path` and `pack(value, ctx)` are alternative output declarations;
 logical product IDs are independent of HDF5 paths. `graph.plan()` exposes ordered
 stages, producers and dependency queries. Invalid definitions fail preflight.
@@ -74,7 +75,7 @@ Production factories and callbacks live together in each package's `runner.py`:
 | Pipeline | Calculation flow and optional branches |
 |---|---|
 | `low_freq_spectra` | source, sampling, calibration, spatial reductions, beats, QC, figures |
-| `displacement_map` | prepare replay; independent artery/vein registration; finalize shared fields |
+| `displacement_map` | prepare replay; shared raw reference; artery/vein fields; publish fields; separate AVI exports |
 | `displacement_profiles` | analysis, profiles; optional segment maps |
 | `topology_core` | inputs, gap support, shared sampling topology |
 | `spatial_gradient_moment0` | inputs, cached gradient profiles, lumen figures; persist only when targeted |
@@ -91,3 +92,15 @@ the velocity volume; its selected output stage publishes the retained result.
 Velocity method failures retain their established per-workflow outcome policy.
 See [process execution](parallel_pipeline_execution.md) for global readiness,
 transport and resource lifetime.
+
+Inspect a resolved selection without executing calculations with
+`eyeflow-cli --data scan.holo --pipelines targets.txt --inspect-graph plan`.
+This writes `plan.json` and `plan.dot`; add `--observed-output result.h5` to
+include recorded statuses, timings, product sizes, failures and artifact jobs.
+Graph construction uses the same resolved selection as execution, including
+downstream segment requirements. Successful velocity variants remain dynamic
+until observed. DOT boundary diamonds are dependency ports, not runtime stages;
+independent branches do not imply concurrent execution. Stage wall durations
+include nested artifact callbacks; product snapshot/packing/commit and deferred
+rendering timings are recorded separately. Neither export requires Graphviz or
+AtomicViz at runtime.

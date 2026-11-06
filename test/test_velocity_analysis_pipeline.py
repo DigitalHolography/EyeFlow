@@ -14,6 +14,42 @@ from pipelines import load_pipeline_catalog
 from pipelines.velocity_analysis import runner as analysis_builder
 
 
+@pytest.mark.parametrize("target,options,segments", [
+    ("waveform_shape_metrics", (), False),
+    ("waveform_shape_metrics", ("segments",), True),
+    ("velocity_analysis", ("velocity_profiles",), True),
+])
+def test_managed_optional_analysis_uses_only_required_calculations(tmp_path, target, options, segments):
+    import h5py
+    from test_dual_velocity_workflows import _dual_input
+    from input_output.schema import EyeFlowOutputPaths
+    from pipeline_engine import execute_run, resolve_run_spec, resolve_execution_graph
+    from pipelines.velocity import runner as velocity_runner
+
+    holo, _ = _dual_input(tmp_path)
+    available, _ = load_pipeline_catalog()
+    spec = resolve_run_spec(input_paths=[holo], target_names=[target], pipelines=available,
+        pipeline_options={"velocity_analysis": options if target == "velocity_analysis" else (),
+                          "waveform_shape_metrics": options if target == "waveform_shape_metrics" else ()})
+    with (
+        patch.object(analysis_builder, "_build_segments", wraps=analysis_builder._build_segments) as build,
+        patch.object(analysis_builder, "prepare_segment_velocity_maps_per_beat", side_effect=AssertionError("disabled maps executed")),
+        patch.object(velocity_runner, "estimate_retinal_velocity", wraps=velocity_runner.estimate_retinal_velocity) as estimate,
+    ):
+        result = execute_run(spec)
+    assert result.succeeded, result.failures
+    assert build.call_count == (2 if segments else 0)
+    assert all(call.kwargs["retain_velocity_video"] and callable(call.kwargs["velocity_video_allocator"]) for call in estimate.call_args_list)
+    graph = resolve_execution_graph(spec, observed_output=result.outputs[0])
+    stages = next(item["stages"] for item in graph["pipelines"] if item["id"] == "velocity_analysis")
+    assert ("segments" in {item["id"] for item in stages}) == segments
+    if not segments:
+        schema = EyeFlowOutputPaths.active()
+        with h5py.File(result.outputs[0]) as output:
+            assert schema.waveform_shape_metrics_root in output
+            assert schema.artery_per_beat_filtered.segment_velocity_signal_band_limited not in output
+
+
 class _State:
     def __init__(self, values=None):
         self.values = dict(values or {})

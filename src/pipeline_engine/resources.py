@@ -23,6 +23,18 @@ _CURRENT = ContextVar("eyeflow_resources", default=None)
 _RESERVATION = ContextVar("eyeflow_compute_reservation", default=None)
 
 
+def ensure_memory_available(required=0):
+    """Refuse predictable allocations under host pressure; not an OS hard cap."""
+    memory = psutil.virtual_memory()
+    margin = min(2 * 2**30, memory.total // 20)
+    if memory.available < int(required) + margin:
+        raise MemoryError(
+            "Insufficient available physical memory for the next scientific chunk; "
+            f"need {int(required) + margin:,} bytes including the host safety margin, "
+            f"available {memory.available:,}."
+        )
+
+
 class MemoryAccount:
     """Shared byte counters, optionally tracking one worker's owned bytes."""
 

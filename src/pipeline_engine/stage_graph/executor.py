@@ -52,7 +52,7 @@ class StageAccess:
         return execution.data.writable(execution.products.require(name))
 
     def handoff(self, name, value):
-        self._executor.handoff(name, value)
+        return self._executor.handoff(name, value)
 
     def skip(self, reason):
         self._executor.scope.validate()
@@ -101,11 +101,13 @@ class StageGraphExecutor:
         started = perf_counter()
         handle = self.data.accept(value, transportable=spec.exposed)
         snapshot = self.data.read(handle)
+        snapshotted = perf_counter()
         payload = spec.pack(snapshot, self.context) if spec.pack else (
             {spec.path: DatasetValue(snapshot, dict(spec.attrs))} if spec.path else {}
         )
         if not isinstance(payload, Mapping):
             raise TypeError("A product packer must return a schema-path/payload mapping.")
+        packed = perf_counter()
         paths = [self.context.output.h5._path(path) for path in payload]
         seen = set(self._paths)
         for path in paths:
@@ -121,7 +123,14 @@ class StageGraphExecutor:
         self._advance_checkpoints(paths)
         self.products.record_accepted(name, handle)
         self._paths.update({path: name for path in paths})
-        self.journal.committed(name, stage.id, paths)
+        self.journal.committed(name, stage.id, paths, timing={
+            "snapshot_seconds": snapshotted - started,
+            "packing_seconds": packed - snapshotted,
+            "commit_seconds": perf_counter() - packed,
+            "array_bytes": self.data.array_bytes(handle),
+            "dataset_bytes": sum(self.context.runtime.work_h5[path].size *
+                                 self.context.runtime.work_h5[path].dtype.itemsize for path in paths),
+        })
         self._record()
         self.data.storage.metrics.add("local_acceptance_seconds", perf_counter() - started)
         # Transport and coordinator acceptance are collaborators, never store policy.
@@ -130,6 +139,7 @@ class StageGraphExecutor:
         self.context._start_artifacts()
         self.artifacts.notify()
         self.artifacts.dispatch(self._run_stage)
+        return snapshot
 
     def _guard_write(self):
         if not self._writing:
@@ -176,17 +186,26 @@ class StageGraphExecutor:
 
     def _run_stage(self, stage):
         ctx = self.context
+        wait_started = perf_counter()
         if not self.artifacts.wait(stage):
             self.journal.mark(stage.id, "skipped", "Required artifact export failed.")
             self._record()
             emit("StageSkipped", stage=stage.id, error=self.journal.skips[stage.id])
             return
+        artifact_waited = perf_counter() - wait_started
         previous_figure = ctx._figure_job, ctx._figure_count
         ctx._figure_job, ctx._figure_count = None, 0
         jobs_before = len(ctx._artifact_jobs)
         self.journal.mark(stage.id, "running")
+        timing = self.journal.timings[stage.id]
+        ready_at = max([self.journal.created_at,
+            *(self.products.resolved_at[name] for name in (*stage.requires, *stage.optional_requires)),
+            *(self.journal.timings[name]["end"] for name in stage.after)])
+        timing.update(ready_at=ready_at, dependency_wait_seconds=ready_at - self.journal.created_at,
+                      dispatch_wait_seconds=max(0.0, timing["start"] - ready_at),
+                      artifact_wait_seconds=artifact_waited)
         self._record()
-        emit("StageStarted", stage=stage.id)
+        emit("StageStarted", stage=stage.id, journal=self.journal.attributes())
         try:
             with self.checkpoint_factory(ctx.runtime.work_h5, ctx.state.raw, ctx.output.manager, ctx._background_artifacts) as checkpoint:
                 self._checkpoints.append(checkpoint)
@@ -194,8 +213,14 @@ class StageGraphExecutor:
                     capture = None if stage.wait_for_artifacts else ctx._capture_artifact_write
                     with self.scope.executing(stage.id), capture_artifact_writes(capture):
                         budget = current_resources()
+                        acquired = perf_counter()
                         with budget.compute() if budget else nullcontext():
-                            result = stage.run(ctx)
+                            callback_started = perf_counter()
+                            timing["resource_wait_seconds"] = callback_started - acquired
+                            try:
+                                result = stage.run(ctx)
+                            finally:
+                                timing["callback_wall_seconds"] = perf_counter() - callback_started
                     if result is not None:
                         raise TypeError("Graph stages hand off products and return None.")
                     missing = [p.id for p in stage.products if not p.optional and not self.products.has(p.id)]

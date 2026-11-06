@@ -71,6 +71,7 @@ def pack_displacement_segment_map_outputs(
     index_base: int = 0,
     timing_attrs: Mapping[str, object] | None = None,
     output_paths: EyeFlowOutputPaths | None = None,
+    array_allocator=None,
 ) -> dict[str, DatasetValue]:
     """Pack explicitly requested dense per-segment displacement maps."""
 
@@ -87,6 +88,8 @@ def pack_displacement_segment_map_outputs(
             result.maps,
             cycle_boundary_indexes,
             index_base=index_base,
+            valid_segments=result.valid_segments,
+            array_allocator=array_allocator,
         )
         path = (
             f"{schema.displacement_map_root}/{method}/"

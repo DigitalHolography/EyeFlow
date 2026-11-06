@@ -35,6 +35,7 @@ class DisplacementSegmentResult:
     y_sum_profile: np.ndarray
     radial_movement_amplitude: np.ndarray
     radial_asymmetry_index: np.ndarray
+    valid_segments: np.ndarray | None = None
 
 
 def analyze_displacement_vessels(
@@ -44,6 +45,7 @@ def analyze_displacement_vessels(
     retain_maps: bool,
     working_memory_mb: float = DEFAULT_WORKING_MEMORY_MB,
     array_allocator: Callable[[tuple[int, ...]], np.ndarray] | None = None,
+    map_allocator=None,
 ) -> dict[str, DisplacementSegmentResult]:
     """Analyze each available vessel field without retaining the full input map."""
 
@@ -62,6 +64,7 @@ def analyze_displacement_vessels(
                 retain_maps=retain_maps,
                 working_memory_mb=working_memory_mb,
                 array_allocator=array_allocator,
+                map_allocator=map_allocator,
             )
         finally:
             memory_map = getattr(displacement_map, "_mmap", None)
@@ -77,6 +80,7 @@ def analyze_displacement_segments(
     retain_maps: bool,
     working_memory_mb: float,
     array_allocator: Callable[[tuple[int, ...]], np.ndarray] | None = None,
+    map_allocator=None,
 ) -> DisplacementSegmentResult:
     """Reduce one dense displacement field into bounded segment measurements."""
 
@@ -96,7 +100,9 @@ def analyze_displacement_segments(
         values.fill(np.nan)
         return values
 
-    maps = filled((*signal_shape, canvas_side, canvas_side, 2)) if retain_maps else None
+    map_shape = (*signal_shape, canvas_side, canvas_side, 2)
+    maps = (filled(map_shape) if map_allocator is None else map_allocator(map_shape)) if retain_maps else None
+    valid_segments = np.zeros(topology.segment_shape, dtype=bool)
     transverse_unmasked = filled(profile_shape)
     transverse_masked = filled(profile_shape)
     longitudinal_unmasked = filled(profile_shape)
@@ -117,6 +123,7 @@ def analyze_displacement_segments(
         working_memory_mb=working_memory_mb,
     ):
         segment_index = (prepared.ring_index, prepared.branch_index)
+        valid_segments[segment_index] = True
         output_index = (*segment_index, prepared.frame_slice)
         vectors = _local_displacement_vectors(
             prepared.rotated,
@@ -157,6 +164,7 @@ def analyze_displacement_segments(
         y_sum_profile=y_sum,
         radial_movement_amplitude=radial_amplitude,
         radial_asymmetry_index=radial_asymmetry,
+        valid_segments=valid_segments,
     )
 
 

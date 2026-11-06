@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from uuid import uuid4
+from time import perf_counter
 
 import numpy as np
 
@@ -31,24 +32,61 @@ class DataManager:
         self._values = {}
         self._backing = {}
         self._resources = {}
+        self._resource_ids = {}
 
     def accept(self, value, *, transportable=False):
+        started = perf_counter()
         snapshot = self._snapshot(value, {})
+        if transportable:
+            self.validate_storage(snapshot, product_paths=True)
         if transportable and isinstance(snapshot, (Mapping, tuple, frozenset, ScientificValue, StringArray)):
             # A structured scientific value can contain local Python types or
             # extensive metadata. IPC carries one stable metadata reference.
             snapshot = self.storage.store_value(snapshot)
         handle = ProductHandle(uuid4().hex, snapshot, self.owner_id)
+        self.storage.metrics.add("product_snapshot_seconds", perf_counter() - started)
         return handle
 
-    def _snapshot(self, value, memo):
-        from pipeline_engine.data.storage import ArrayReference, ValueReference
+    def array_bytes(self, handle):
+        """Unique scientific array backing, excluding invocation-local resources."""
+        from pipeline_engine.data.storage import ArrayReference, ValueReference, H5ArrayReference, H5Array
 
+        seen = set()
+        def size(value):
+            key = value.path if isinstance(value, (ArrayReference, ValueReference, H5ArrayReference)) else id(value)
+            if key in seen:
+                return 0
+            seen.add(key)
+            if isinstance(value, (ArrayReference, H5ArrayReference)):
+                return int(np.prod(value.shape)) * np.dtype(value.dtype).itemsize
+            if isinstance(value, ValueReference):
+                return size(value.open())
+            if isinstance(value, np.ndarray):
+                return value.nbytes
+            if isinstance(value, ScientificValue):
+                return size(value.fields)
+            if isinstance(value, Mapping):
+                return sum(size(item) for item in value.values())
+            if isinstance(value, (tuple, frozenset)):
+                return sum(size(item) for item in value)
+            return 0
+        return size(handle.storage)
+
+    def _snapshot(self, value, memo):
+        from pipeline_engine.data.storage import ArrayReference, ValueReference, H5ArrayReference, H5Array
+
+        if isinstance(value, H5Array):
+            value = value.reference
         if isinstance(value, InvocationResource):
+            identity = id(value.value)
+            if identity in self._resource_ids:
+                return self._resource_ids[identity]
             key = uuid4().hex
             self._resources[key] = value.value
-            return ResourceReference(key)
-        if isinstance(value, (ArrayReference, ValueReference)):
+            reference = ResourceReference(key)
+            self._resource_ids[identity] = reference
+            return reference
+        if isinstance(value, (ArrayReference, ValueReference, H5ArrayReference)):
             self.validate_storage(value)
             return value
         if isinstance(value, np.ndarray):
@@ -97,13 +135,13 @@ class DataManager:
         return value
 
     def _resolve(self, value):
-        from pipeline_engine.data.storage import ArrayReference, ValueReference
+        from pipeline_engine.data.storage import ArrayReference, ValueReference, H5ArrayReference, H5Array
 
         if isinstance(value, ResourceReference):
             return self._resources[value.id]
         if isinstance(value, ScientificValue):
             return _envelope(value.type, {key: self._resolve(item) for key, item in value.fields.items()})
-        if isinstance(value, (ArrayReference, ValueReference)):
+        if isinstance(value, (ArrayReference, ValueReference, H5ArrayReference)):
             if value not in self._backing:
                 loaded = self.storage.read(value)
                 self._backing[value] = self._resolve(loaded) if isinstance(value, ValueReference) else loaded
@@ -118,7 +156,22 @@ class DataManager:
         return value
 
     def writable(self, handle):
+        from pipeline_engine.data.storage import H5Array
+
+        pending = [handle.storage]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, ResourceReference):
+                raise TypeError("Invocation resources do not support writable scientific copies.")
+            if isinstance(value, ScientificValue):
+                pending.append(value.fields)
+            elif isinstance(value, Mapping):
+                pending.extend(value.values())
+            elif isinstance(value, (tuple, frozenset)):
+                pending.extend(value)
         def copy(value):
+            if isinstance(value, H5Array):
+                return np.array(value, copy=True)
             if isinstance(value, np.ndarray):
                 self.storage.metrics.add("array_copies", 1)
                 self.storage.metrics.add("array_copied_bytes", value.nbytes)
@@ -141,15 +194,22 @@ class DataManager:
         return handle
 
     def validate_storage(self, value, *, product_paths=False):
-        from pipeline_engine.data.storage import ArrayReference, ValueReference
+        from pipeline_engine.data.storage import ArrayReference, ValueReference, H5ArrayReference, H5Array
 
         if isinstance(value, ResourceReference):
             raise ValueError("Invocation-local resources cannot cross process boundaries.")
-        if isinstance(value, (ArrayReference, ValueReference)):
+        if isinstance(value, (ArrayReference, ValueReference, H5ArrayReference)):
             path = Path(value.path).resolve()
             if not path.is_relative_to(self.owner_root) or not path.is_file():
                 raise ValueError(f"Invalid run-owned storage reference: {path}")
-            if isinstance(value, ArrayReference):
+            if isinstance(value, H5ArrayReference):
+                import h5py
+                with h5py.File(path, "r") as backing:
+                    dataset = backing["data"]
+                    if dataset.shape != value.shape or dataset.dtype != value.dtype:
+                        raise ValueError("Product storage shape/dtype mismatch.")
+            elif isinstance(value, ArrayReference):
+                self.storage.metrics.add("array_reference_validations", 1)
                 array = value.open()
                 try:
                     if tuple(array.shape) != value.shape or array.dtype != value.dtype:
@@ -184,6 +244,7 @@ class DataManager:
                         errors.append(exc)
         finally:
             self._resources.clear()
+            self._resource_ids.clear()
             self._values.clear()
             self._backing.clear()
         if errors:

@@ -1,6 +1,7 @@
 """Executable low-rank global and optional quadrant decomposition."""
 
 from functools import partial
+from dataclasses import replace
 
 from data_manager import InvocationResource
 from pipeline_engine import ProductSpec, StageGraph, StageSpec
@@ -15,7 +16,7 @@ LOWRANK_WAVEFORM_OUTPUTS_STATE = "lowrank_waveform_decomposition_outputs"
 def _inputs(ctx):
     analysis = velocity_analysis(ctx)
     values = analysis.waveform_inputs
-    ctx.dag.handoff("inputs", InvocationResource((analysis, values)))
+    ctx.dag.handoff("inputs", (replace(analysis, source_data=InvocationResource(analysis.source_data)), values))
 
 
 def _decompose(quadrants, ctx):
@@ -24,7 +25,7 @@ def _decompose(quadrants, ctx):
         include_global=not quadrants, include_quadrants=quadrants,
         artery_segments=analysis.artery_segments if quadrants else None,
         vein_segments=analysis.vein_segments if quadrants else None)
-    ctx.dag.handoff("quadrants" if quadrants else "metrics", outputs)
+    outputs = ctx.dag.handoff("quadrants" if quadrants else "metrics", outputs)
     ctx.state.set(LOWRANK_WAVEFORM_OUTPUTS_STATE,
         {**ctx.state.get(LOWRANK_WAVEFORM_OUTPUTS_STATE, {}), **outputs})
 

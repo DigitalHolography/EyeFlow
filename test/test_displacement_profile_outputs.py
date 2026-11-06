@@ -168,7 +168,7 @@ def test_displacement_registration_and_analysis_are_separate_pipelines() -> None
     assert options["segment_maps"].default_enabled is False
     assert base_descriptor.dag_requires == ()
     assert base_descriptor.execution_mode == "process"
-    assert base_descriptor.native_parallelism is True
+    assert base_descriptor.native_parallelism is False
     assert profile_descriptor.execution_mode == "process"
     assert profile_descriptor.run_once is True
     assert profile_descriptor.native_parallelism is False
@@ -183,9 +183,12 @@ def test_displacement_registration_and_analysis_are_separate_pipelines() -> None
     base_graph = displacement_graph(DisplacementMapPipelineConfig())
     assert [node.id for node in base_graph.stages] == [
         "prepare",
+        "reference",
         "artery",
         "vein",
         "finalize",
+        "artery_video",
+        "vein_video",
     ]
 
     profile_graph = displacement_profiles_graph()
@@ -233,7 +236,8 @@ def test_segment_results_use_the_run_scratch_allocator(monkeypatch) -> None:
 
     assert len(allocated) == 9
     assert result.maps is not None
-    assert all(np.isnan(value).all() for value in result.__dict__.values())
+    assert all(np.isnan(value).all() for name, value in result.__dict__.items() if name != "valid_segments")
+    assert not result.valid_segments.any()
 
 
 def test_displacement_timing_prefers_moments_then_falls_back_to_bands(

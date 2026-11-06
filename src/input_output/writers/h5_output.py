@@ -121,3 +121,7 @@ class PipelineH5Output:
 
     def flush(self) -> None:
         self.file.flush()
+
+    def build_arrays(self):
+        """Prepare numerical payloads; only a later handoff can publish them."""
+        return self.file.build_arrays()

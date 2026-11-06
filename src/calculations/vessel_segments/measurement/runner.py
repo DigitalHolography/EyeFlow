@@ -45,6 +45,7 @@ def analyze_segment_profiles(
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
     segment_observer_factory: SegmentObserverFactory | None = None,
+    map_allocator=None,
 ) -> dict[str, SegmentMeasurements]:
     """Measure profiles from a time-varying scalar map for each vessel mask.
 
@@ -146,6 +147,7 @@ def analyze_segment_profiles(
                 transverse_mask_dilation_pixels,
                 name,
             ),
+            map_allocator=map_allocator,
         )
         if backend is not None:
             backend.cupy.cuda.get_current_stream().synchronize()
@@ -167,6 +169,7 @@ def _measure_segment_profiles_from_prepared(
     compute_longitudinal_profiles: bool,
     segment_observer: SegmentObserver | None,
     transverse_mask_dilation_pixels: int,
+    map_allocator=None,
 ) -> SegmentMeasurements:
     geometry = prepared_topology.native
     frame_count = int(signal_map.shape[0])
@@ -177,6 +180,7 @@ def _measure_segment_profiles_from_prepared(
         retain_segment_maps=retain_segment_maps,
         compute_transverse_profiles=compute_transverse_profiles,
         compute_longitudinal_profiles=compute_longitudinal_profiles,
+        map_allocator=map_allocator,
     )
 
     for segment in prepared_segments:

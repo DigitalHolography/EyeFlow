@@ -62,7 +62,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(path, "r") as h5file:
                 dataset = h5file["values"]
                 self.assertEqual("gzip", dataset.compression)
-                self.assertEqual(9, dataset.compression_opts)
+                self.assertEqual(4, dataset.compression_opts)
                 self.assertTrue(dataset.shuffle)
                 self.assertEqual(values.dtype, dataset.dtype)
                 self.assertEqual(values.shape, dataset.shape)
@@ -270,7 +270,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(output_path, "r") as output_h5:
                 registration = output_h5["Meta/registration"]
                 self.assertEqual("gzip", registration.compression)
-                self.assertEqual(9, registration.compression_opts)
+                self.assertEqual(4, registration.compression_opts)
                 self.assertEqual("pixel", registration.attrs["unit"])
                 np.testing.assert_array_equal(values, registration[()])
                 self.assertEqual(

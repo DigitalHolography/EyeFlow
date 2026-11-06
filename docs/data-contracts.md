@@ -1,5 +1,10 @@
 # Data contracts
 
+Large optional segment maps are constructed in bounded chunks through
+`OutputModel.build_arrays()`. Closed HDF5 backing is reused at handoff and final
+publication; absent segments use NaN fill values without dense initialization.
+Only finished payloads enter the existing output checkpoint and become immutable.
+
 This is the authoritative documentation layer for data moving into, through,
 and out of EyeFlow. Executable path constants in `src/input_output/schema/`
 remain the final source of truth.

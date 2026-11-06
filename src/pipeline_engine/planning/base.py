@@ -316,6 +316,24 @@ class FunctionPipeline(ProcessPipeline):
         return self.func(ctx)
 
 
+@dataclass(frozen=True)
+class PipelineSelection:
+    """Resolved choices needed to build graphs without scientific execution."""
+
+    names: tuple[str, ...]
+    targets: tuple[str, ...]
+    options: Mapping
+
+    def options_for(self, pipeline):
+        return frozenset(self.options.get(pipeline, ()))
+
+    def pipeline_scheduled(self, pipeline):
+        return pipeline in self.names
+
+    def pipeline_targeted(self, pipeline):
+        return pipeline in (self.targets or self.names)
+
+
 @dataclass
 class PipelineDescriptor:
     name: str
@@ -346,8 +364,13 @@ class PipelineDescriptor:
     graph_factory: Callable | None = None
     product_requires: tuple = ()
 
-    def build_graph(self, options=()):
-        return self.graph_factory(options=tuple(options)) if self.graph_factory is not None else None
+    def build_graph(self, options=(), *, selection=None):
+        if self.graph_factory is None:
+            return None
+        kwargs = {"options": tuple(options)}
+        if selection is not None and "selection" in inspect.signature(self.graph_factory).parameters:
+            kwargs["selection"] = selection
+        return self.graph_factory(**kwargs)
 
     def __post_init__(self):
         if self.execution_mode not in {"coordinator", "process"}:

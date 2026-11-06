@@ -54,6 +54,13 @@ class RunArrayStorage:
         if self._closed:
             raise RuntimeError("Run scratch storage is closed.")
         size_bytes = prod(shape) * np.dtype(np.float32).itemsize
+        from pipeline_engine.resources import ensure_memory_available
+        if self.budget is not None and size_bytes > self.budget.memory_limit:
+            raise MemoryError(
+                f"Dense retained array {shape} requires {size_bytes:,} bytes, exceeding "
+                "the run memory budget. Use incremental HDF5 output for large maps."
+            )
+        ensure_memory_available(min(size_bytes, 64 * 2**20))
         if (self._resident_bytes + size_bytes <= self.memory_budget_bytes
                 and (self.budget is None or self.budget.reserve_memory(size_bytes))):
             self._resident_bytes += size_bytes

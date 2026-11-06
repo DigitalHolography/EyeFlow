@@ -11,6 +11,56 @@ from pipeline_engine.output.output_model import OutputModel, OutputImmutableErro
 from pipeline_engine.data.storage import ProductStorage
 
 
+def test_incremental_dense_shape_is_sparse_atomic_immutable_and_reused(tmp_path):
+    """A 1 TiB logical output needs only its two written chunks, never dense RAM."""
+    import psutil
+    from data_manager import DataManager
+    from input_output.writers.h5 import write_value_dataset
+    from input_output.schema.output_payload import DatasetValue
+
+    process = psutil.Process()
+    before = process.memory_info().rss
+    shape = (1024, 1024, 1024, 256)
+    options = {"chunks": (2, 2, 2, 1), "compression": "gzip", "compression_opts": 4, "shuffle": True}
+    values = np.array([0., -0., np.nan, np.inf, -np.inf, 1., 2., 3.], np.float32).reshape(2, 2, 2)
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "sparse.h5")
+        data = DataManager(storage)
+        with model.checkpoint(owner="producer"):
+            with model.build_arrays() as allocate:
+                array = allocate(shape, h5_options=options)
+                with pytest.raises(RuntimeError, match="Unfinished"):
+                    data.accept(array)
+                array[:2, :2, :2, 0] = values
+                array[-2:, -2:, -2:, -1] = values
+            accepted = data.read(data.accept(array))
+            write_value_dataset(model, "Shared/Maps", DatasetValue(accepted, {"unit": "pixels"}, options))
+        assert storage.store(accepted) == array.reference
+        assert not storage.metrics.snapshot().get("npy_writes", 0)
+        with pytest.raises(MemoryError, match="bounded slices"):
+            np.asarray(accepted)
+        with pytest.raises(OutputImmutableError), model.writing_as("producer"):
+            model["Shared/Maps"][0, 0, 0, 0] = 42
+        with pytest.raises(RuntimeError, match="construction failed"), model.checkpoint(owner="producer"):
+            with model.build_arrays() as allocate:
+                broken = allocate(shape, h5_options=options)
+                broken[:2, :2, :2, 0] = values
+                broken_path = broken._reference.path
+                raise RuntimeError("construction failed")
+        assert not Path(broken_path).exists()
+        model.publish()
+        with h5py.File(model.filename) as output:
+            dataset = output["Shared/Maps"]
+            assert dataset.shape == shape and dataset.dtype == np.dtype(np.float32)
+            assert dataset.id.get_num_chunks() == 2
+            assert dataset[:2, :2, :2, 0].tobytes() == values.tobytes()
+            assert dataset[100:102, 100:102, 100:102, 99].tobytes() == np.full((2, 2, 2), np.nan, np.float32).tobytes()
+            assert dataset.attrs["unit"] == "pixels"
+            assert dataset.compression_opts == 4 and dataset.shuffle
+        assert Path(model.filename).stat().st_size < 128 * 1024
+        assert process.memory_info().rss - before < 64 * 2**20
+
+
 def test_replacing_attribute_infers_dtype_again(tmp_path):
     with ProductStorage() as storage:
         model = OutputModel(storage, tmp_path / "output.h5")

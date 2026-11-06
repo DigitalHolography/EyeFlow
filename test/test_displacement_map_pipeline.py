@@ -7,6 +7,7 @@ import struct
 import tempfile
 import unittest
 from io import BytesIO
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,6 +17,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from calculations.temporal_reference import compute_mean_reference
 from input_output.readers.frame_sequences import FrameSequence
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
@@ -227,6 +229,15 @@ class DisplacementMapInputTests(unittest.TestCase):
 
 class DisplacementMapRunnerTests(unittest.TestCase):
     def test_prepares_both_fields_without_writing_dense_field_to_h5(self) -> None:
+        self._check_field_publication(False)
+
+    def test_video_failure_preserves_both_accepted_fields(self) -> None:
+        self._check_field_publication(True)
+
+    def test_one_failed_vessel_keeps_the_other_field_and_video(self) -> None:
+        self._check_field_publication(False, fail_vessel=True)
+
+    def _check_field_publication(self, fail_video, fail_vessel=False):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             hd_path = root / "scan_HD.h5"
@@ -268,25 +279,40 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                 h5_source,
                 frame_replay,
                 log_label,
+                raw_reference,
+                render_video,
+                registration_workers,
+                native_threads,
             ):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)
                 self.assertEqual("/moment0", h5_source.name)
                 self.assertIn(config.output_dir.name, log_label)
                 replay_ids.append(id(frame_replay))
+                self.assertFalse(render_video)
+                self.assertEqual(3, raw_reference[1])
+                self.assertFalse(raw_reference[0].flags.writeable)
                 if np.array_equal(analysis_mask_array, artery.astype(bool)):
+                    if fail_vessel:
+                        raise RuntimeError("synthetic registration failure")
                     field_value = 1.0
                 elif np.array_equal(analysis_mask_array, vein.astype(bool)):
                     field_value = 2.0
                 else:
                     self.fail("Unexpected displacement analysis mask.")
-                magnitude_video_path.write_bytes(b"fake avi")
                 field_path = config.output_dir / "displacement_field.npy"
                 np.save(
                     field_path,
                     np.full((3, 2, 4, 2), field_value, dtype=np.float32),
                 )
                 return {"displacement_field": field_path}
+
+            def encode(config, *, magnitude_video_path, log_label):
+                self.assertIn("registered_fields", accepted)
+                self.assertFalse(magnitude_video_path.exists())
+                if fail_video and config.output_dir.name == "artery":
+                    raise RuntimeError("synthetic encoding failure")
+                magnitude_video_path.write_bytes(b"fake avi")
 
             with (
                 h5py.File(hd_path, "r") as hd,
@@ -296,32 +322,42 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     "pipelines.displacement_map.runner.create_retinal_motion_map",
                     side_effect=fake_motion_map,
                 ),
+                patch("pipelines.displacement_map.runner.render_retinal_motion_map_video", side_effect=encode),
+                patch("pipelines.displacement_map.runner.compute_mean_reference",
+                      wraps=compute_mean_reference) as mean,
             ):
                 output_h5 = OutputModel(product_storage, output_h5_path)
                 accepted = {}
-                outcome = _run_pipeline_descriptor(
-                    PipelineDescriptor("displacement_map", "displacement_map", True,
-                        pipeline_factory=lambda: SimpleNamespace(name="displacement_map", run=run_displacement_map)),
-                    work_h5=output_h5,
-                    output_h5_path=output_h5_path,
-                    on_product_commit=lambda stage, name, handle: accepted.update({name: handle}),
-                    holodoppler_h5=hd,
-                    doppler_vision_h5=dv,
-                    output_manager=manager,
-                    holodoppler_config=None, doppler_vision_config=None,
-                    variables={}, pipeline_options={}, pipeline_order=("displacement_map",),
-                    pipeline_targets=("displacement_map",), velocity_estimation_method=None,
-                    execution_variant=None, band_ratio_frequency_scale_hz=1,
-                    on_pipeline_success=None, on_progress=None,
-                )
-                self.assertEqual("succeeded", outcome.status)
+                expected = self.assertRaisesRegex(RuntimeError, "synthetic encoding failure") if fail_video else nullcontext()
+                with expected:
+                    outcome = _run_pipeline_descriptor(
+                        PipelineDescriptor("displacement_map", "displacement_map", True,
+                            pipeline_factory=lambda: SimpleNamespace(name="displacement_map", run=run_displacement_map)),
+                        work_h5=output_h5,
+                        output_h5_path=output_h5_path,
+                        on_product_commit=lambda stage, name, handle: accepted.update({name: handle}),
+                        holodoppler_h5=hd,
+                        doppler_vision_h5=dv,
+                        output_manager=manager,
+                        holodoppler_config=None, doppler_vision_config=None,
+                        variables={}, pipeline_options={}, pipeline_order=("displacement_map",),
+                        pipeline_targets=("displacement_map",), velocity_estimation_method=None,
+                        execution_variant=None, band_ratio_frequency_scale_hz=1,
+                        on_pipeline_success=None, on_progress=None,
+                    )
+                if not fail_video:
+                    self.assertEqual("partial" if fail_vessel else "succeeded", outcome.status)
+                mean.assert_called_once()
                 self.assertEqual(1, len(set(replay_ids)))
                 self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
                 self.assertNotIn("Processing/Displacement", output_h5)
                 self.assertNotIn("ProcessingWidth/Displacement", output_h5)
                 registration_product = DataManager(product_storage).read(accepted["registered_fields"])
                 self.assertEqual(registration_product["registration_method"], DisplacementMapPipelineConfig().registration_method)
-                np.testing.assert_array_equal(registration_product["fields"]["artery"], 1.0)
+                if fail_vessel:
+                    self.assertNotIn("artery", registration_product["fields"])
+                else:
+                    np.testing.assert_array_equal(registration_product["fields"]["artery"], 1.0)
                 np.testing.assert_array_equal(registration_product["fields"]["vein"], 2.0)
 
             for vessel in ("artery", "vein"):
@@ -333,7 +369,66 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     manager.layout.ef_dir / "avi" / "displacement_maps",
                     video_path.parent,
                 )
-                self.assertEqual(b"fake avi", video_path.read_bytes())
+                if (fail_video or fail_vessel) and vessel == "artery":
+                    self.assertFalse(video_path.exists())
+                else:
+                    self.assertEqual(b"fake avi", video_path.read_bytes())
+
+
+@pytest.mark.parametrize("initialization", ["zero", "previous"])
+def test_parallel_fields_preserve_temporal_median_ema_and_previous_initialization(tmp_path, initialization):
+    from threading import Lock
+    from time import sleep
+    from dataclasses import replace
+    from pipelines.displacement_map import calculator
+    from pipelines.displacement_map.parameters import MotionMapConfig
+    from runtime_limits import use_thread_allowance
+
+    y, x = np.mgrid[:32, :32]
+    image = np.exp(-((x - 16) ** 2 + (y - 16) ** 2) / 25).astype(np.float32)
+    frames = np.stack([np.roll(image, shift, axis=1) for shift in (0, 1, -1, 2, 0, -2, 1)])
+    path = tmp_path / "moments.h5"
+    active = peak = 0
+    lock = Lock()
+    real_estimate = registration.estimate_registration_field
+
+    def estimate(**kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            sleep(0.005)  # Force overlapping real registrations, without changing their values.
+            return real_estimate(**kwargs)
+        finally:
+            with lock:
+                active -= 1
+
+    config = MotionMapConfig(
+        path,
+        tmp_path / "sequential",
+        iterations=3,
+        registration_initialization=initialization,
+        temporal_median_window=3,
+        temporal_alpha=0.4,
+    )
+    with h5py.File(path, "w") as hd, use_thread_allowance(4):
+        source = hd.create_dataset("moment0", data=frames)
+        first = calculator.create_retinal_motion_map(
+            config, h5_source=source, render_video=False, native_threads=1
+        )
+        with patch.object(calculator, "estimate_registration_field", side_effect=estimate):
+            second = calculator.create_retinal_motion_map(
+                replace(config, output_dir=tmp_path / "parallel"),
+                h5_source=source,
+                render_video=False,
+                registration_workers=4,
+                native_threads=1,
+            )
+    assert peak == (4 if initialization == "zero" else 1)
+    np.testing.assert_array_equal(
+        np.load(first["displacement_field"]), np.load(second["displacement_field"])
+    )
 
 
 def test_magnitude_avi_renders_masked_frames(tmp_path: Path, capsys) -> None:

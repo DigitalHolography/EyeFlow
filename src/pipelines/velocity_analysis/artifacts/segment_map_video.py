@@ -235,7 +235,9 @@ def _prepare_mosaic_source(
 ) -> tuple[_MosaicSource | None, _MosaicPreparationStats]:
     if packed_value is None:
         return None, _MosaicPreparationStats()
-    maps = np.asarray(getattr(packed_value, "data", packed_value), dtype=np.float32)
+    maps = getattr(packed_value, "data", packed_value)
+    if isinstance(maps, np.ndarray):
+        maps = np.asarray(maps, dtype=np.float32)
     if maps.ndim != 6:
         raise ValueError(
             "VelocityMapPerSegment must have shape "
@@ -410,14 +412,28 @@ def _mosaic_frame_chunk(
         return frames
 
     plan = source.render_plan
-    display_xy_time_tile = source.maps[
-        plan.x_indexes[:, None, None, None],
-        plan.y_indexes[None, :, None, None],
-        times[None, None, :, None],
-        int(beat_index),
-        plan.branch_indexes[None, None, None, :],
-        plan.radius_indexes[None, None, None, :],
-    ]
+    if isinstance(source.maps, np.ndarray):
+        display_xy_time_tile = source.maps[
+            plan.x_indexes[:, None, None, None],
+            plan.y_indexes[None, :, None, None],
+            times[None, None, :, None], int(beat_index),
+            plan.branch_indexes[None, None, None, :],
+            plan.radius_indexes[None, None, None, :],
+        ]
+    else:
+        # Read one tile and a bounded time slab; HDF5 does not implement NumPy's
+        # broadcast advanced indexing and must never expand the whole mosaic.
+        display_xy_time_tile = np.empty(
+            (plan.display_x_count, plan.display_y_count, times.size, len(source.tiles)),
+            dtype=np.float32,
+        )
+        for index, tile in enumerate(source.tiles):
+            values = source.maps[:, :, int(times.min()):int(times.max()) + 1,
+                                 int(beat_index), tile.branch_index, tile.radius_index]
+            display_xy_time_tile[..., index] = values[
+                plan.x_indexes[:, None, None], plan.y_indexes[None, :, None],
+                (times - times.min())[None, None, :],
+            ]
     display_time_tile_yx = display_xy_time_tile.transpose(2, 3, 1, 0)
     colored_tiles = _colorize_velocity(
         display_time_tile_yx,

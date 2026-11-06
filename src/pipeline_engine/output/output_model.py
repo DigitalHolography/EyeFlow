@@ -14,7 +14,7 @@ from types import MappingProxyType
 import numpy as np
 
 from data_manager.handles import FrozenMapping, StringArray
-from pipeline_engine.data.storage import ArrayReference, ValueReference
+from pipeline_engine.data.storage import ArrayReference, ValueReference, H5Array, H5ArrayReference, _H5ArrayBuilder
 
 
 class OutputError(ValueError):
@@ -153,10 +153,14 @@ class OutputDataset(OutputNode):
     def __setitem__(self, key, value):
         self.file._check_dataset_write(self.path)
         record = self.file._records[self.path]
-        array = np.array(self._value, copy=True)
-        array[key] = value
+        if isinstance(record.value, H5ArrayReference):
+            backing = self.file.storage.updated_h5_slice(record.value, key, value)
+        else:
+            array = np.array(self._value, copy=True)
+            array[key] = value
+            backing = self.file.storage.store(array)
         self.file._touch(self.path)
-        self.file._records[self.path] = replace(record, value=self.file.storage.store(array))
+        self.file._records[self.path] = replace(record, value=backing)
 
     def __array__(self, dtype=None, copy=None):
         array = np.asarray(self._value, dtype=dtype)
@@ -248,7 +252,13 @@ class OutputGroup(OutputNode):
 
     def create_dataset(self, name, data=None, shape=None, dtype=None, **options):
         if data is None:
-            data = np.full(shape, options.get("fillvalue", 0), dtype=dtype)
+            fill = options.get("fillvalue", 0)
+            dtype = np.dtype(dtype if dtype is not None else np.asarray(fill).dtype)
+            if dtype.kind in "buifc":
+                with self.file.build_arrays() as allocate:
+                    data = allocate(shape, dtype=dtype, fillvalue=fill, h5_options=options)
+            else:
+                data = np.full(shape, fill, dtype=dtype)
         elif dtype is not None:
             data = np.asarray(data, dtype=dtype)
         return self.store_dataset(name, data, options)
@@ -256,7 +266,7 @@ class OutputGroup(OutputNode):
     def store_dataset(self, name, data, options=None):
         path = self._path(name)
         self.file._check_dataset_write(path)
-        if not isinstance(data, (ArrayReference, ValueReference)):
+        if not isinstance(data, (ArrayReference, ValueReference, H5ArrayReference, H5Array)):
             array = np.asarray(data)
             if array.dtype.kind == "O" and not all(
                 isinstance(item, (str, bytes)) for item in array.flat
@@ -283,6 +293,46 @@ class OutputModel(OutputGroup):
         self._checkpoints = []
         self._versions = {"": 0}
         self._generation = 0
+
+    @contextmanager
+    def build_arrays(self):
+        """Construct bounded HDF5 payloads; acceptance still uses our checkpoint.
+
+        No output record exists until the finished value is handed off. Failure
+        closes and removes every unfinished payload, without publishing a path.
+        """
+        from input_output.writers.h5_storage import _DEFAULT_GZIP_LEVEL
+        from pipeline_engine.resources import ensure_memory_available
+
+        arrays = []
+
+        def allocate(shape, *, h5_options=None, dtype=np.float32, fillvalue=np.nan):
+            ensure_memory_available(16 * 2**20)
+            shape = (int(shape),) if np.isscalar(shape) else tuple(shape)
+            options = dict(h5_options or {})
+            options.pop("sparse_nan_chunks", None)
+            options.setdefault("chunks", True)
+            options.setdefault("compression", "gzip")
+            if options["compression"] == "gzip":
+                options.setdefault("compression_opts", _DEFAULT_GZIP_LEVEL)
+            options.setdefault("shuffle", True)
+            options["fillvalue"] = np.asarray(fillvalue, dtype=dtype)[()]
+            options["dtype"] = dtype
+            if not shape:
+                for key in ("chunks", "compression", "compression_opts", "shuffle"):
+                    options.pop(key, None)
+            array = _H5ArrayBuilder(self.storage, tuple(shape), options)
+            arrays.append(array)
+            return array
+
+        try:
+            yield allocate
+            for array in arrays:
+                array.close(success=True)
+        except BaseException:
+            for array in arrays:
+                array.close(success=False)
+            raise
 
     @property
     def records(self):
@@ -315,7 +365,7 @@ class OutputModel(OutputGroup):
             self._check_dataset_write(path)
             return
         owner = ("stage_journal" if not path and key in
-                 {"stage_status", "stage_failures", "stage_skips", "stage_products"} else record.metadata_owner)
+                 {"stage_status", "stage_failures", "stage_skips", "stage_products", "stage_timings"} else record.metadata_owner)
         if owner != self.current_owner:
             raise OutputOwnershipError(
                 f"Pipeline '{self.current_owner}' cannot modify metadata of group '{path or '/'}' owned by '{owner}'.")

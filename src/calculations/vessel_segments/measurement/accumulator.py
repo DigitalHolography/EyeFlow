@@ -27,6 +27,7 @@ class SegmentProfileAccumulator:
         retain_segment_maps: bool,
         compute_transverse_profiles: bool = True,
         compute_longitudinal_profiles: bool = True,
+        map_allocator=None,
     ) -> None:
         self.topology = topology
         self.frame_count = int(frame_count)
@@ -59,7 +60,7 @@ class SegmentProfileAccumulator:
         indexes = topology.valid_indexes().reshape((-1, 2))
         self.maps = (
             CompactSegmentMaps(
-                values=filled(
+                values=(filled if map_allocator is None else map_allocator)(
                     (indexes.shape[0], self.frame_count, canvas_side, canvas_side)
                 ),
                 indexes=indexes,

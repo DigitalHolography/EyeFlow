@@ -199,7 +199,10 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
             )
         output_path = run()
         if failure is None:
-            assert products["doppler_moments"].artery_segments is products["frequency_bands"].artery_segments
+            first = products["doppler_moments"].artery_segments.segment_signal
+            second = products["frequency_bands"].artery_segments.segment_signal
+            assert np.shares_memory(first, second)
+            assert not first.flags.writeable and not second.flags.writeable
         else:
             assert set(products) == {"frequency_bands"}
         assert caches[0] is caches[1]

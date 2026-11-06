@@ -3,6 +3,8 @@
 import json
 from enum import Enum
 from contextlib import nullcontext
+from os import getpid
+from time import perf_counter
 
 
 class StageState(str, Enum):
@@ -14,21 +16,31 @@ class StageState(str, Enum):
 
 
 class StageJournal:
-    keys = ("stage_status", "stage_failures", "stage_skips", "stage_products")
+    keys = ("stage_status", "stage_failures", "stage_skips", "stage_products", "stage_timings")
 
     def __init__(self, plan, scope):
         self.scope = scope
         self.statuses = {name: "pending" for name in plan.order}
         self.failures, self.skips, self.products = {}, {}, {}
+        self.timings = {}
+        self.created_at = perf_counter()
 
     def mark(self, stage, status, reason=None):
         status = StageState(status).value
         self.statuses[stage] = status
+        now = perf_counter()
+        timing = self.timings.setdefault(stage, {"process_id": getpid()})
+        if status == "running":
+            timing["start"] = now
+        else:
+            timing["end"] = now
+            if "start" in timing:
+                timing["wall_seconds"] = now - timing["start"]
         if reason is not None and status in {"failed", "skipped"}:
             (self.failures if status == "failed" else self.skips)[stage] = str(reason)
 
-    def committed(self, product, stage, paths):
-        self.products[product] = {"producer": stage, "datasets": list(paths)}
+    def committed(self, product, stage, paths, *, timing=None):
+        self.products[product] = {"producer": stage, "datasets": list(paths), **(timing or {})}
 
     def persist(self, model):
         self.apply(model, self.reconcile(model, self.attributes()))
@@ -43,7 +55,7 @@ class StageJournal:
 
     def attributes(self):
         return {key: json.dumps({self.scope: values}, sort_keys=True)
-                for key, values in zip(self.keys, (self.statuses, self.failures, self.skips, self.products))}
+                for key, values in zip(self.keys, (self.statuses, self.failures, self.skips, self.products, self.timings))}
 
     @classmethod
     def reconcile(cls, model, attributes, *, allowed_scope=None):

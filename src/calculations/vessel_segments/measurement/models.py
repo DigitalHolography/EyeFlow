@@ -69,7 +69,9 @@ class CompactSegmentMaps:
     indexes: np.ndarray
 
     def __post_init__(self) -> None:
-        values = np.asarray(self.values)
+        # Retained maps may be a bounded, array-like output backing. Validation
+        # needs metadata only; converting it here would recreate the dense heap.
+        values = self.values if hasattr(self.values, "shape") else np.asarray(self.values)
         indexes = np.asarray(self.indexes)
         if indexes.ndim != 2 or indexes.shape[1] != 2:
             raise ValueError("segment map indexes must have shape (segment, 2).")

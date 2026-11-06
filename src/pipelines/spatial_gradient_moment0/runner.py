@@ -36,7 +36,7 @@ class SpatialGradientProducts:
 
 def _inputs(ctx):
     inputs = load_vessel_topology_inputs(ctx)
-    ctx.dag.handoff("inputs", InvocationResource((inputs, cardiac_cycle_indexes(ctx))))
+    ctx.dag.handoff("inputs", (InvocationResource(inputs), cardiac_cycle_indexes(ctx)))
 
 
 def _profiles(ctx):
@@ -45,8 +45,8 @@ def _profiles(ctx):
         profile_settings=SegmentMeasurementSettings(pixel_size_mm=inputs.holodoppler.pixel_pitch.isotropic_mm))
     outputs = pack_spatial_gradient_profile_outputs(artery, vein, boundaries, index_base=0)
     products = SpatialGradientProducts(artery, vein, outputs)
-    ctx.state.set(SPATIAL_GRADIENT_PRODUCTS_STATE, products)
-    ctx.dag.handoff("profiles", InvocationResource(products))
+    accepted = ctx.dag.handoff("profiles", products)
+    ctx.state.set(SPATIAL_GRADIENT_PRODUCTS_STATE, accepted)
 
 
 def _pack_profiles(products, ctx):

@@ -7,12 +7,13 @@ import os
 import shutil
 import traceback
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from scratch_location import temporary_directory
 from threading import RLock
 from uuid import uuid4
+from time import perf_counter
 
 from input_output.output_manager import OutputManager
 from input_output.artifact_ownership import ArtifactOwnership, current_artifact_transaction
@@ -34,19 +35,24 @@ class ArtifactExportResult:
     paths: list[Path]
     messages: list[str]
     error: str | None = None
+    rendering_seconds: float = 0.0
+    started_at: float = 0.0
 
 
 def _run_exporter(exporter, snapshot, manager, kwargs):
+    started = perf_counter()
     messages = []
     with Logger.capture_messages(messages.append):
         try:
             result = exporter(snapshot, manager, **kwargs)
         except Exception:
-            return ArtifactExportResult([], messages, traceback.format_exc())
+            return ArtifactExportResult([], messages, traceback.format_exc(), perf_counter() - started, started)
     if isinstance(result, ArtifactExportResult):
         result.messages = messages + result.messages
+        result.rendering_seconds = perf_counter() - started
+        result.started_at = started
         return result
-    return ArtifactExportResult(list(result), messages)
+    return ArtifactExportResult(list(result), messages, rendering_seconds=perf_counter() - started, started_at=started)
 
 
 class ArtifactWorkers:
@@ -150,6 +156,7 @@ class ArtifactJob:
     owner: object
     future: Future | None = None  # completes after publication and logging
     status: str = "prepared"
+    timings: dict = field(default_factory=dict)
 
 
 class BackgroundArtifacts:
@@ -189,10 +196,16 @@ class BackgroundArtifacts:
             return dict(self._failures)
 
     @property
+    def timings(self):
+        with self._lock:
+            return {job.label: dict(job.timings) for job in self._jobs}
+
+    @property
     def pending(self) -> bool:
         return any(status in {"prepared", "running"} for status in self.statuses.values())
 
     def prepare(self, label, manager, exporter, snapshotter, **kwargs) -> ArtifactJob:
+        started = perf_counter()
         if label in self.statuses:
             raise ValueError(f"Duplicate background artifact job: {label}")
         temporary = temporary_directory(prefix="eyeflow-figures-")
@@ -209,6 +222,7 @@ class BackgroundArtifacts:
             exporter, kwargs,
             current_artifact_transaction() or self.ownership.transaction(manager.layout.ef_dir),
         )
+        job.timings.update(prepared_at=started, preparation_seconds=perf_counter() - started)
         with self._lock:
             self._jobs.append(job)
         return job
@@ -222,6 +236,7 @@ class BackgroundArtifacts:
         job.temporary.cleanup()
 
     def start(self, job: ArtifactJob) -> None:
+        job.timings["submitted_at"] = perf_counter()
         job.future = Future()
         with self._lock:
             job.status = "running"
@@ -244,6 +259,9 @@ class BackgroundArtifacts:
     def _complete(self, job, rendered):
         try:
             result = rendered.result()
+            job.timings.update(rendering_seconds=result.rendering_seconds,
+                               render_started_at=result.started_at,
+                               queue_seconds=max(0.0, result.started_at - job.timings["submitted_at"]))
             for message in result.messages:
                 source = f"{job.manager.layout.stem} | {job.label}: "
                 prefix, separator, body = message.partition("] ")
@@ -253,7 +271,9 @@ class BackgroundArtifacts:
                     Logger.log(f"{source}{message}")
             if result.error is not None:
                 raise RuntimeError(result.error)
+            started = perf_counter()
             self._publish(job, result.paths)
+            job.timings["publication_seconds"] = perf_counter() - started
             with self._lock:
                 job.status = "succeeded"
             Logger.log(
@@ -263,6 +283,7 @@ class BackgroundArtifacts:
         except Exception as exc:
             self._fail(job, exc)
         finally:
+            job.timings["finished_at"] = perf_counter()
             try:
                 job.temporary.cleanup()
             finally:

@@ -13,6 +13,7 @@ import json
 import subprocess
 import shutil
 from pathlib import Path
+from itertools import product
 from time import perf_counter
 from unittest.mock import patch
 
@@ -32,12 +33,39 @@ from utils.logger import Logger
 from input_output import resolve_selected_run_layouts
 
 
-def compare_hdf5(first, second):
+def _dataset_blocks(dataset, target_bytes=16 * 1024**2):
+    if not dataset.shape or not dataset.size:
+        yield ()
+        return
+    block = list(dataset.shape)
+    for axis, size in enumerate(block):
+        other_bytes = int(np.prod(block)) // size * dataset.dtype.itemsize
+        # Keep chunk boundaries so successive blocks do not decompress the same
+        # profile chunk repeatedly when its leading axis spans a whole segment.
+        chunk = dataset.chunks[axis] if dataset.chunks else 1
+        count = max(chunk, (target_bytes // other_bytes) // chunk * chunk)
+        block[axis] = min(size, count)
+        if int(np.prod(block)) * dataset.dtype.itemsize <= target_bytes:
+            break
+    for starts in product(*(range(0, size, step) for size, step in zip(dataset.shape, block))):
+        yield tuple(slice(start, min(start + step, size))
+                    for start, step, size in zip(starts, block, dataset.shape))
+
+
+def compare_hdf5(first, second, *, allowed_root_differences=()):
     """Check every value, scientific attribute and node, allowing source locations."""
     ignored = {"source_file", "holodoppler_source_file", "doppler_vision_source_file",
                "input_read_direct"}
+    ignored.update(allowed_root_differences)
     checked = dict(datasets=0, numeric_datasets=0, attributes=0, numeric_bytes=0)
     with h5py.File(first, "r") as left, h5py.File(second, "r") as right:
+        root_differences = []
+        for key in set(left.attrs) | set(right.attrs):
+            try:
+                assert key in left.attrs and key in right.attrs
+                np.testing.assert_equal(left.attrs[key], right.attrs[key])
+            except AssertionError:
+                root_differences.append(key)
         nodes = [""]
         other = [""]
         left.visit(nodes.append)
@@ -57,15 +85,17 @@ def compare_hdf5(first, second):
             if isinstance(a, h5py.Dataset):
                 if a.shape != b.shape or a.dtype != b.dtype:
                     raise AssertionError(f"Shape/dtype differs: {path}")
-                av, bv = a[()], b[()]
-                np.testing.assert_array_equal(av, bv, strict=True, err_msg=path)
-                if a.dtype.kind in "biufc":
-                    if np.asarray(av).tobytes() != np.asarray(bv).tobytes():
+                for block in _dataset_blocks(a):
+                    av, bv = a[block], b[block]
+                    np.testing.assert_array_equal(av, bv, strict=True, err_msg=path)
+                    if a.dtype.kind in "biufc" and np.asarray(av).tobytes() != np.asarray(bv).tobytes():
                         raise AssertionError(f"Numeric bits differ (including NaNs/zero signs): {path}")
+                if a.dtype.kind in "biufc":
                     checked["numeric_datasets"] += 1
                     checked["numeric_bytes"] += a.nbytes
                 checked["datasets"] += 1
-    return dict(**checked, equivalent=True, ignored_root_attributes=sorted(ignored))
+    return dict(**checked, equivalent=True, ignored_root_attributes=sorted(ignored),
+                root_attribute_differences=sorted(root_differences))
 
 
 @contextmanager
@@ -98,13 +128,18 @@ def main():
     parser.add_argument("--output", type=Path, required=True, help="New local trial directory")
     parser.add_argument("--settings", type=Path)
     parser.add_argument("--compare", type=Path, nargs=2, metavar=("BASELINE_H5", "CANDIDATE_H5"))
+    parser.add_argument("--allow-runtime-differences", action="store_true",
+                        help="Allow stage layout/product diagnostics and timing metadata to differ.")
     parser.add_argument("--strategy", choices=("npy", "npy-direct", "local-h5"), default="npy")
     args = parser.parse_args()
     if not is_local_path(args.output):
         parser.error("Use local benchmark output to isolate source I/O")
     args.output.mkdir(parents=True, exist_ok=False)
     if args.compare:
-        result = compare_hdf5(*args.compare)
+        result = compare_hdf5(*args.compare, allowed_root_differences=(
+            ("stage_status", "stage_products", "stage_timings", "artifact_timings")
+            if args.allow_runtime_differences else ()
+        ))
         (args.output / "equivalence.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         print(json.dumps(result, indent=2))
         return

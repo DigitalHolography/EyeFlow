@@ -27,6 +27,7 @@ class PendingOutput:
             write_root_attributes(self.model, {
                 "artifact_status": json.dumps(self.artifacts.statuses, sort_keys=True),
                 "artifact_failures": json.dumps(self.artifacts.failures, sort_keys=True),
+                "artifact_timings": json.dumps(self.artifacts.timings, sort_keys=True),
             })
             self.model.publish()
             self._finished = True

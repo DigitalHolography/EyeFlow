@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Literal
+from runtime_limits import cap_parallel_jobs, thread_allowance
 
 import h5py
 import numpy as np
@@ -26,7 +27,8 @@ from input_output.schema.doppler_view import (
 from pipeline_engine.data.storage import ArrayReference
 from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 
-from .calculator import create_retinal_motion_map
+from .calculator import create_retinal_motion_map, render_retinal_motion_map_video
+from calculations.temporal_reference import compute_mean_reference
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
 from .parameters import MotionMapConfig
 
@@ -90,6 +92,7 @@ def run_displacement_profiles(ctx):
 def _run_displacement_mask(
     ctx, mask_input, inputs, base_config, replay, temporary_path,
     field_paths_by_vessel, output_videos, *, multiple_masks=False,
+    raw_reference=None,
 ) -> None:
     output_dir = temporary_path / mask_input.name
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,12 +105,18 @@ def _run_displacement_mask(
         OutputType.AVI, f"{DISPLACEMENT_AVI_SUBFOLDER}/{video_filename}",
     )
     output_video.parent.mkdir(parents=True, exist_ok=True)
+    workers = cap_parallel_jobs(4) if (base_config.registration_method == "level_set_motion"
+                                      and base_config.registration_initialization == "zero") else 1
     outputs = create_retinal_motion_map(
         replace(base_config, output_dir=output_dir),
         analysis_mask_array=mask_input.mask,
         magnitude_video_path=output_video,
         h5_source=inputs.moment,
         frame_replay=replay,
+        raw_reference=raw_reference,
+        render_video=False,
+        registration_workers=workers,
+        native_threads=max(1, thread_allowance() // workers),
         log_label=f"Displacement {mask_input.name}",
     )
     field_path = Path(outputs["displacement_field"])
@@ -328,7 +337,8 @@ def vessel(name, names, ctx):
         inputs = DisplacementMapInputs(prepared.moment, masks, prepared.fps)
         fields, videos = {}, []
         _run_displacement_mask(ctx, masks[0], inputs, prepared.base, prepared.replay,
-                               prepared.directory, fields, videos, multiple_masks=len(names) > 1)
+                               prepared.directory, fields, videos, multiple_masks=len(names) > 1,
+                               raw_reference=ctx.dag.require("reference"))
     except Exception as exc:
         ctx.log_warning(f"Skipping displacement {name}: {exc}")
         ctx.dag.skip(str(exc))
@@ -340,8 +350,24 @@ def vessel(name, names, ctx):
         finally:
             array._mmap.close()
     ctx.dag.handoff(f"{name}_fields", references)
-    for video in videos:
-        ctx.log(f"Displacement magnitude video written to {video}.")
+
+
+def reference(ctx):
+    prepared = ctx.dag.require("prepared")
+    ctx.dag.handoff("reference", compute_mean_reference(prepared.replay, prepared.base.max_frames))
+
+
+def magnitude_video(name, names, ctx):
+    prepared = ctx.dag.require("prepared")
+    fields = ctx.dag.require(f"{name}_fields")
+    directory = Path(next(iter(fields.values())).filename).parent
+    filename = MAGNITUDE_VIDEO_FILENAME if len(names) == 1 else f"{name}_{MAGNITUDE_VIDEO_FILENAME}"
+    path = ctx.output.path_for(OutputType.AVI, f"{DISPLACEMENT_AVI_SUBFOLDER}/{filename}")
+    render_retinal_motion_map_video(
+        replace(prepared.base, output_dir=directory), magnitude_video_path=path,
+        log_label=f"Displacement {name}",
+    )
+    ctx.log(f"Displacement magnitude video written to {path}.")
 
 
 def finalize(config, names, ctx):
@@ -367,9 +393,11 @@ def analyze(retain_segment_maps, ctx):
         ctx.log_warning("Displacement profiles use frequency-band cardiac timing because valid Doppler-moments timing is unavailable.")
     scratch = ctx.runtime.scratch
     memory = DEFAULT_WORKING_MEMORY_MB if scratch is None else min(DEFAULT_WORKING_MEMORY_MB, scratch.memory_budget_bytes / 2**20)
-    analysis = analyze_displacement_vessels(registration["fields"], prepared_topologies(ctx),
-        retain_maps=retain_segment_maps, working_memory_mb=memory,
-        array_allocator=scratch.empty_float32 if scratch is not None else None)
+    with ctx.output.h5.build_arrays() as allocate:
+        analysis = analyze_displacement_vessels(registration["fields"], prepared_topologies(ctx),
+            retain_maps=retain_segment_maps, working_memory_mb=memory,
+            array_allocator=scratch.empty_float32 if scratch is not None else None,
+            map_allocator=allocate if retain_segment_maps else None)
     ctx.dag.handoff("analysis", {"analysis": analysis, "boundaries": timing.boundaries, "timing_attrs": timing.attrs,
                                "registration_method": registration["registration_method"]})
 
@@ -383,9 +411,13 @@ def profiles(ctx):
 
 def segment_maps(ctx):
     from .profile_outputs import pack_displacement_segment_map_outputs
+    from input_output.writers.h5_storage import velocity_map_h5_options
     value = ctx.dag.require("analysis")
-    ctx.dag.handoff("segment_maps", pack_displacement_segment_map_outputs(value["analysis"], value["registration_method"],
-        value["boundaries"], timing_attrs=value["timing_attrs"]))
+    with ctx.output.h5.build_arrays() as allocate:
+        outputs = pack_displacement_segment_map_outputs(value["analysis"], value["registration_method"],
+            value["boundaries"], timing_attrs=value["timing_attrs"],
+            array_allocator=lambda shape: allocate(shape, h5_options=velocity_map_h5_options(shape)))
+    ctx.dag.handoff("segment_maps", outputs)
 
 
 def packed(value, ctx):
@@ -397,11 +429,15 @@ def displacement_graph(config=None, *, options=()):
     names = ("artery", "vein") if config.mask_mode == "both" else (config.mask_mode,)
     return StageGraph((
         StageSpec("prepare", partial(prepare, config), products=(ProductSpec("prepared"),)),
-        *(StageSpec(name, partial(vessel, name, names), requires=("prepared",),
+        StageSpec("reference", reference, requires=("prepared",), products=(ProductSpec("reference"),)),
+        *(StageSpec(name, partial(vessel, name, names), requires=("prepared", "reference"),
                     products=(ProductSpec(f"{name}_fields", optional=True),)) for name in names),
         StageSpec("finalize", partial(finalize, config, names),
                   optional_requires=tuple(f"{name}_fields" for name in names),
                   products=(ProductSpec("registered_fields", exposed=True),)),
+        *(StageSpec(f"{name}_video", partial(magnitude_video, name, names),
+                    requires=("prepared", "registered_fields", f"{name}_fields"), artifact=True)
+          for name in names),
     ))
 
 

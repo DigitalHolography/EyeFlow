@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
+from math import prod
+from threading import get_ident
 
 import numpy as np
 from scratch_location import temporary_directory
@@ -36,6 +38,146 @@ class ValueReference:
 
         with Path(self.path).open("rb") as stream:
             return pickle.load(stream)
+
+
+@dataclass(frozen=True)
+class H5ArrayReference:
+    """Closed, run-owned numerical backing; transfer metadata, never array bytes."""
+
+    path: str
+    shape: tuple
+    dtype: np.dtype
+
+    def open(self):
+        return H5Array(self)
+
+
+class H5Array:
+    """Immutable array-like reads with no persistent HDF5 handles."""
+
+    def __init__(self, reference):
+        self._reference = reference
+
+    @property
+    def reference(self):
+        return self._reference
+
+    @property
+    def shape(self):
+        return self._reference.shape
+
+    @property
+    def dtype(self):
+        return self._reference.dtype
+
+    @property
+    def ndim(self):
+        return len(self.shape)
+
+    @property
+    def size(self):
+        return prod(self.shape)
+
+    @property
+    def nbytes(self):
+        return self.size * self.dtype.itemsize
+
+    def __getitem__(self, key):
+        import h5py
+
+        selectors = key if isinstance(key, tuple) else (key,)
+        if any(item is Ellipsis for item in selectors):
+            axis = next(i for i, item in enumerate(selectors) if item is Ellipsis)
+            selectors = (*selectors[:axis], *(slice(None),) * (self.ndim - len(selectors) + 1), *selectors[axis + 1:])
+        selectors = (*selectors, *(slice(None),) * (self.ndim - len(selectors)))
+        sizes = [len(range(*item.indices(size))) for item, size in zip(selectors, self.shape) if isinstance(item, slice)]
+        if prod(sizes) * self.dtype.itemsize > 64 * 2**20:
+            raise MemoryError("Read bounded slices of a large HDF5-backed product.")
+        with h5py.File(self.reference.path, "r") as source:
+            return source["data"][key]
+
+    def __array__(self, dtype=None, copy=None):
+        if self.nbytes > 64 * 2**20:
+            raise MemoryError("Read bounded slices of a large HDF5-backed product, not its full dense array.")
+        return np.asarray(self[()], dtype=dtype)
+
+    def copy_to(self, group, name):
+        import h5py
+
+        # HDF5 copies allocated chunks, including their filters and fill value.
+        # Missing chunks remain unallocated; Python never receives dense data.
+        with h5py.File(self.reference.path, "r") as source:
+            source.copy("data", group, name=name)
+        return group[name]
+
+
+class _H5ArrayBuilder(H5Array):
+    """A physical payload under construction, owned by OutputModel.build_arrays."""
+
+    def __init__(self, storage, shape, options):
+        import h5py
+
+        options = dict(options)
+        dtype = np.dtype(options.pop("dtype", np.float32))
+        reference = H5ArrayReference(str(storage.path(".h5")), tuple(shape), dtype)
+        super().__init__(reference)
+        self._storage = storage
+        self._thread = get_ident()
+        self._finished = False
+        self._dirty = False
+        self._file = None
+        try:
+            self._file = h5py.File(reference.path, "w", rdcc_nbytes=2**20)
+            self._file.create_dataset("data", shape=shape, dtype=dtype, **options)
+        except BaseException:
+            self.close(success=False)
+            raise
+        storage.metrics.add("h5_arrays", 1)
+        storage.metrics.add("h5_logical_bytes", self.nbytes)
+
+    @property
+    def reference(self):
+        if not self._finished:
+            raise RuntimeError("Unfinished HDF5 array cannot be accepted as a scientific product.")
+        return self._reference
+
+    def __getitem__(self, key):
+        if self._file is not None:
+            return self._file["data"][key]
+        return super().__getitem__(key)
+
+    def __setitem__(self, key, value):
+        from pipeline_engine.resources import ensure_memory_available
+
+        if self._file is None:
+            raise TypeError("Finished scientific array is immutable.")
+        if get_ident() != self._thread:
+            raise RuntimeError("Only the constructing thread may write an HDF5 array.")
+        values = np.asarray(value, dtype=self.dtype)
+        ensure_memory_available(min(values.nbytes, 64 * 2**20))
+        if shutil.disk_usage(Path(self._reference.path).parent).free < values.nbytes + 16 * 2**20:
+            raise OSError("Insufficient local scratch space for the next scientific output chunk.")
+        self._file["data"][key] = values
+        self._dirty = True
+        self._storage.metrics.add("h5_written_bytes", values.nbytes)
+
+    def fill(self, value):
+        # Initialization is the HDF5 fill-value declaration, not a page scan.
+        if self._file is None or self._dirty or not np.isnan(value):
+            raise ValueError("Only initial NaN fill is supported by an incremental array.")
+
+    def close(self, *, success):
+        if self._file is not None:
+            try:
+                self._file.close()
+            finally:
+                self._file = None
+        self._finished = success
+        path = Path(self._reference.path)
+        if success:
+            self._storage.metrics.add("h5_backing_bytes", path.stat().st_size)
+        else:
+            path.unlink(missing_ok=True)
 
 
 class ProductStorage:
@@ -70,7 +212,9 @@ class ProductStorage:
         return self.directory / f"{uuid4().hex}{suffix}"
 
     def store(self, value, *, category="retained"):
-        if isinstance(value, (ArrayReference, ValueReference)):
+        if isinstance(value, H5Array):
+            return value.reference
+        if isinstance(value, (ArrayReference, ValueReference, H5ArrayReference)):
             return value
         array = np.asarray(value)
         # Reuse owned resident snapshots as well as managed file references.
@@ -120,6 +264,24 @@ class ProductStorage:
         return ValueReference(str(path), tuple(shape) if shape is not None else None,
                               getattr(value, "dtype", None))
 
+    def updated_h5_slice(self, reference, key, value):
+        """Private chunk-preserving edit; checkpoint rollback retains old backing."""
+        import h5py
+        from pipeline_engine.resources import ensure_memory_available
+
+        ensure_memory_available(16 * 2**20)
+        if shutil.disk_usage(self.directory).free < Path(reference.path).stat().st_size + 16 * 2**20:
+            raise OSError("Insufficient local scratch space for a private dataset edit.")
+        path = self.path(".h5")
+        try:
+            with h5py.File(path, "w") as target:
+                reference.open().copy_to(target, "data")
+                target["data"][key] = value
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+        return H5ArrayReference(str(path), reference.shape, reference.dtype)
+
     def _release_resident(self, size, category):
         with self._resident_lock:
             if not self._closed:
@@ -128,6 +290,8 @@ class ProductStorage:
                     self.budget.release_memory(size, category)
 
     def store_array(self, array):
+        if isinstance(array, H5Array):
+            return array.reference
         if isinstance(array, np.ndarray) and not array.flags.writeable:
             with self._array_lock:
                 current = array
@@ -188,8 +352,12 @@ class ProductStorage:
         return ArrayReference(str(path), tuple(array.shape), array.dtype)
 
     def read(self, value):
+        if isinstance(value, H5ArrayReference):
+            self.metrics.add("h5_array_views", 1)
+            return value.open()
         if isinstance(value, (ArrayReference, ValueReference)):
             array = value.open()
+            self.metrics.add("array_mappings" if isinstance(value, ArrayReference) else "value_loads", 1)
             if isinstance(array, np.memmap):
                 self._maps.append(weakref.ref(array))
                 with self._array_lock:

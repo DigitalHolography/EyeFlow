@@ -32,7 +32,7 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor
+from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
 from pipeline_engine.context import PipelineInputs
 from pipeline_engine.planning.dag import PipelineDAG
@@ -199,6 +199,7 @@ def _execute_input(
     computation_cache: dict[object, object] = {}
 
     dag = PipelineDAG(pipelines)
+    selection = PipelineSelection(tuple(item.name for item in pipelines), tuple(target_names), pipeline_options)
     execution_variants: list[ExecutionVariant] = []
     variant_dependents = {
         name
@@ -222,7 +223,7 @@ def _execute_input(
     for descriptor in pipelines:
         identity = PipelineInvocationId(run_id, descriptor.name)
         registry.register_invocation(identity)
-        graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()))
+        graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()), selection=selection)
         if graph is not None:
             for stage in graph.stages:
                 for product in stage.products:
@@ -401,7 +402,7 @@ def _execute_input(
                     if descriptor.name not in variant_dependents:
                         continue
                     registry.remove_placeholder(executor.invocation_id(descriptor))
-                    graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()))
+                    graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()), selection=selection)
                     for variant in execution_variants:
                         identity = executor.invocation_id(descriptor, variant.name)
                         registry.register_invocation(identity)
@@ -523,6 +524,7 @@ def _write_artifact_status(work_h5, background_artifacts):
         work_h5.attrs["artifact_failures"] = json.dumps(
             background_artifacts.failures, sort_keys=True,
         )
+        work_h5.attrs["artifact_timings"] = json.dumps(background_artifacts.timings, sort_keys=True)
 
 
 def _write_execution_variant_status(
