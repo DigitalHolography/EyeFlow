@@ -20,6 +20,20 @@ from utils.logger import Logger
 
 
 class PipelineContextTests(unittest.TestCase):
+    def test_scientific_runners_reject_standalone_contexts(self):
+        from pipelines import load_pipeline_catalog
+
+        available, _ = load_pipeline_catalog()
+        descriptors = {item.name: item for item in available}
+        for name in (
+            "topology_core", "velocity", "velocity_analysis", "spatial_gradient_moment0",
+            "absolute_waveform_metrics", "waveform_shape_metrics", "blood_volume_rate",
+            "lowrank_waveform_decomposition", "low_freq_spectra", "displacement_map",
+            "displacement_profiles", "pdf_report",
+        ):
+            with self.subTest(pipeline=name), self.assertRaisesRegex(RuntimeError, f"Pipeline '{name}' requires the EyeFlow managed execution runtime"):
+                descriptors[name].instantiate().run(object())
+
     def test_missing_arrays_return_none_for_explicit_none_default(self) -> None:
         with h5py.File("context_missing_test.h5", "w", driver="core", backing_store=False) as h5file:
             source = RawH5SourceReader(h5file=h5file, label="HD")

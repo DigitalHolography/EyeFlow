@@ -1,6 +1,9 @@
-"""Hidden shared low-frequency spectral analysis after velocity estimation."""
+"""Selectable, once-per-run low-frequency spectral analysis."""
 
-from pipeline_engine.imports import pipeline
+from pipeline_engine import pipeline
+
+
+from .runner import spectral_graph, run_low_freq_spectra
 
 
 @pipeline(
@@ -10,11 +13,8 @@ from pipeline_engine.imports import pipeline
     dag_requires=["velocity_workflows", "capillary_analysis_zones"],
     dag_produces=["gap_spectrograms", "gap_per_beat_spectrograms"],
     input_slot="hd",
-    visibility="hidden",
-    auto_run_after="velocity",
     run_once=True,
+    graph_factory=spectral_graph,
 )
 def run(ctx):
-    from .runner import run_low_freq_spectra
-
     return run_low_freq_spectra(ctx)

@@ -18,7 +18,12 @@ from input_output.schema.doppler_view import (
 from pipeline_engine import PipelineDAG
 from pipeline_engine.context import PipelineInputs, PipelineState
 from pipelines import load_pipeline_catalog
-from pipelines.topology_core.runner import capillary_zones, run_topology_core
+from pipelines.topology_core.runner import capillary_zones
+from pipeline_engine import PipelineDescriptor, run_pipelines_to_output
+from pipeline_engine.execution.runtime import PipelineRunError
+from input_output.runs.layout import HoloRunLayout
+from input_output.output_manager import OutputManager
+from pathlib import Path
 from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 
 
@@ -51,9 +56,31 @@ def _ctx(hd, dv):
             dv=PipelineInputSource(RawH5SourceReader(h5file=dv, label="DV"), {}),
         ),
         state=PipelineState(),
+        options_for=lambda _pipeline: frozenset(),
         attrs={},
         require_inputs=lambda *slots: None,
     )
+
+
+def _run_topology(ctx):
+    hd, dv = ctx.inputs.hd.h5.h5file, ctx.inputs.dv.h5.h5file
+    hd.flush()
+    dv.flush()
+    descriptors, _ = load_pipeline_catalog()
+    topology = next(item for item in descriptors if item.name == "topology_core")
+    def observe(managed):
+        for key, value in managed.state.raw.items():
+            ctx.state.set(key, value)
+    observer = PipelineDescriptor("observe", "observe", True, dag_requires=("prepared_topology",),
+        pipeline_factory=lambda: SimpleNamespace(name="observe", run=observe))
+    manager = OutputManager(HoloRunLayout.from_holo(Path(hd.filename).with_suffix(".holo")))
+    output = run_pipelines_to_output(output_manager=manager, pipelines=[topology, observer],
+        holodoppler_h5=Path(hd.filename), doppler_vision_h5=Path(dv.filename), copy_hd_passthrough=False)
+    metrics = {}
+    with h5py.File(output) as file:
+        file.visititems(lambda name, node: metrics.update({name: (node[()], dict(node.attrs))})
+                        if isinstance(node, h5py.Dataset) else None)
+    return metrics
 
 
 def _write_capillary_sources(dv, shape):
@@ -103,7 +130,7 @@ def test_dv_logits_read_yx_and_publish_gap_exclusion_with_one_y_flip(source_pair
     assert not native[vessel_x, vessel_y]
     assert not native[height - 1 - vessel_y, vessel_x]
 
-    metrics = run_topology_core(ctx)
+    metrics = _run_topology(ctx)
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as output:
         PipelineH5Output(output).write_many(metrics)
@@ -136,7 +163,7 @@ def test_publishes_cutoff_gaps_with_dilated_vessels_and_aligns_all_sources(sourc
     assert not expected[above]  # The next representable value above 0.1 is excluded.
 
     ctx = _ctx(hd, dv)
-    metrics = run_topology_core(ctx)
+    metrics = _run_topology(ctx)
     np.testing.assert_array_equal(capillary_zones(ctx), expected)
     assert not capillary_zones(ctx).flags.writeable
     path = EyeFlowOutputPaths.active().segmentation.gaps
@@ -185,7 +212,7 @@ def test_missing_disc_mask_excludes_centered_physical_circle(source_pair, geomet
     expected = (distance_squared <= (0.4 * shape[1]) ** 2) & ~fallback_disc
     ctx = _ctx(hd, dv)
 
-    metrics = run_topology_core(ctx)
+    metrics = _run_topology(ctx)
 
     np.testing.assert_array_equal(capillary_zones(ctx), expected)
     path = EyeFlowOutputPaths.active().segmentation.gaps_legacy
@@ -205,7 +232,7 @@ def test_missing_vessel_sources_omit_mask_and_warn_without_losing_topology(sourc
         dv.create_dataset(DV_CHOROID_VESSEL_MASK_PATH, data=np.zeros(shape))
     ctx = _ctx(hd, dv)
     with patch("pipelines.topology_core.runner.Logger.log_warning") as warning:
-        metrics = run_topology_core(ctx)
+        metrics = _run_topology(ctx)
     path = EyeFlowOutputPaths.active().segmentation.gaps
     assert path not in metrics
     assert EyeFlowOutputPaths.active().segmentation.artery.mask in metrics
@@ -227,8 +254,8 @@ def test_invalid_capillary_inputs_fail_at_the_source_boundary(source_pair, path,
         "string": np.full(shape, b"mask"),
     }[defect]
     dv.create_dataset(path, data=values)
-    with pytest.raises((TypeError, ValueError), match="shape|2-D|finite|numeric"):
-        run_topology_core(_ctx(hd, dv))
+    with pytest.raises(PipelineRunError, match="shape|2-D|finite|numeric"):
+        _run_topology(_ctx(hd, dv))
 
 
 def test_capillary_zones_are_owned_by_existing_hidden_topology_pipeline():
@@ -253,7 +280,7 @@ def test_m0ff_vessel_union_gap_intersection_persistence_and_spectral_consumer(
     image[-12:, -15:] = 100
     hd.create_dataset(source_name, data=np.stack([image, image, image]))
     ctx = _ctx(hd, dv)
-    metrics = run_topology_core(ctx)
+    metrics = _run_topology(ctx)
     paths = EyeFlowOutputPaths.active()
     segmentation = paths.segmentation
     combined = capillary_zones(ctx)
@@ -314,8 +341,8 @@ def test_m0ff_shape_must_match_native_hd_axes(source_pair):
     hd, dv = source_pair
     shape = hd["moment0"].shape[-2:]
     hd.create_dataset("moment0ff", data=np.ones((2, *shape[::-1])))
-    with pytest.raises(ValueError, match="moment0ff spatial shape"):
-        run_topology_core(_ctx(hd, dv))
+    with pytest.raises(PipelineRunError, match="moment0ff spatial shape"):
+        _run_topology(_ctx(hd, dv))
 
 
 @pytest.mark.parametrize("empty", [False, True])
@@ -332,7 +359,7 @@ def test_shared_topology_publishes_gap_support_without_running_spectral_analysis
     hd.create_dataset("spectrograms", data=np.stack([
         np.stack([frame, frame + 5]), np.stack([frame + 10, frame + 15]),
     ]))
-    metrics = run_topology_core(_ctx(hd, dv))
+    metrics = _run_topology(_ctx(hd, dv))
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as output:
         PipelineH5Output(output).write_many(metrics)

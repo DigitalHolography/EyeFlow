@@ -12,7 +12,9 @@ from input_output.reports.pdf_data import extract_parameters_from_h5
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from input_output.schema.provenance import read_dataset_attrs
-from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
+from pipeline_engine import resolve_execution_graph
+from input_output.schema.output_payload import payload_array
 from pipelines import load_pipeline_catalog
 from pipelines.velocity.runner import (
     detect_velocity_cardiac_cycles,
@@ -40,7 +42,7 @@ def _dual_input(root):
     return holo, hd_path
 
 
-def _spec(holo, *, artifacts=False):
+def _spec(holo, *, artifacts=False, spectra=False):
     available, _ = load_pipeline_catalog()
     targets = [
         "velocity_analysis",
@@ -50,6 +52,8 @@ def _spec(holo, *, artifacts=False):
         "lowrank_waveform_decomposition",
     ]
     velocity_options = ["segments"]
+    if spectra:
+        targets.append("low_freq_spectra")
     if artifacts:
         targets.append("pdf_report")
         velocity_options += [
@@ -90,7 +94,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         dv.create_dataset("segmentation/Choroid/vessel_mask", data=np.zeros(shape))
     with (
         patch(
-            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
         patch(
@@ -98,7 +102,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
             wraps=gap_spectrograms_per_beat,
         ) as subdivide,
     ):
-        result = execute_run(_spec(holo))
+        result = execute_run(_spec(holo, spectra=True))
     assert result.succeeded, result.failures
     preprocess.assert_called_once()
     subdivide.assert_called_once()
@@ -215,11 +219,11 @@ def test_gap_uses_bandratio_without_moments_and_skips_empty_support(tmp_path, em
         patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat",
               wraps=gap_spectrograms_per_beat) as subdivide,
         patch(
-            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
     ):
-        result = execute_run(_spec(holo))
+        result = execute_run(_spec(holo, spectra=True))
     assert result.succeeded, result.failures
     if empty_gaps:
         subdivide.assert_not_called()
@@ -254,7 +258,7 @@ def test_malformed_spectra_do_not_disable_velocity_or_its_downstream_analysis(tm
         hd.create_dataset("spectrograms", data=np.ones((4, 4), dtype=np.float32))
     available, _ = load_pipeline_catalog()
     spec = resolve_run_spec(
-        input_paths=[holo], target_names=["velocity_analysis"], pipelines=available,
+        input_paths=[holo], target_names=["velocity_analysis", "low_freq_spectra"], pipelines=available,
         pipeline_options={"velocity_analysis": ()}, band_ratio_frequency_scale_hz=2,
     )
     result = execute_run(spec)
@@ -283,7 +287,7 @@ def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_pa
 
     available, _ = load_pipeline_catalog()
     spec = resolve_run_spec(
-        input_paths=[holo], target_names=["velocity_analysis"], pipelines=available,
+        input_paths=[holo], target_names=["velocity_analysis", "low_freq_spectra"], pipelines=available,
         pipeline_options={"velocity_analysis": ()},
         band_ratio_frequency_scale_hz=2,
     )
@@ -301,10 +305,20 @@ def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_pa
 
 def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_beats(tmp_path):
     holo, _ = _dual_input(tmp_path)
+    from pipelines.velocity_analysis import runner as shared_analysis
     events = []
     detected = {}
+    figure_inputs = {}
+    real_figures = shared_analysis.export_velocity_signals
+
+    def figures(output, artery, vein):
+        figure_inputs[output.h5.processing_root] = (payload_array(artery).copy(), payload_array(vein).copy())
+        return real_figures(output, artery, vein)
 
     def cycles(data, *, dt_seconds):
+        assert not data.maps.velocity.flags.writeable
+        with pytest.raises(ValueError):
+            data.maps.velocity[0, 0, 0] = -1
         method = data.provenance["velocity_estimation_method"]
         events.append(("cycles", method))
         result = detect_velocity_cardiac_cycles(data, dt_seconds=dt_seconds)
@@ -319,10 +333,15 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
     with (
         patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
-        patch("pipeline_engine.scratch._available_memory_bytes", return_value=0),
+        patch("pipeline_engine.data.scratch._available_memory_bytes", return_value=0),
+        patch.object(shared_analysis, "_run_velocity_per_beat_analysis", wraps=shared_analysis._run_velocity_per_beat_analysis) as per_beat,
+        patch.object(shared_analysis, "pack_velocity_per_beat_inputs", wraps=shared_analysis.pack_velocity_per_beat_inputs) as pack_inputs,
+        patch.object(shared_analysis, "export_velocity_signals", side_effect=figures),
     ):
-        result = execute_run(_spec(holo, artifacts=True))
+        spec = _spec(holo, artifacts=True)
+        result = execute_run(spec)
     assert result.succeeded, result.failures
+    assert per_beat.call_count == pack_inputs.call_count == 2
     assert not list(result.outputs[0].parent.parent.glob(".ef_scratch_*"))
     assert events == [
         ("estimate", "doppler_moments"),
@@ -331,6 +350,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
         ("cycles", "frequency_bands"),
     ]
     schema = EyeFlowOutputPaths.active()
+    inspected = resolve_execution_graph(spec, observed_output=result.outputs[0])
+    assert inspected["variant_discovery"]["successful"] == ["doppler_moments", "frequency_bands"]
     with h5py.File(result.outputs[0], "r") as output:
         assert "Segmentation" in output
         assert "velocity_estimation_method" not in output.attrs
@@ -343,6 +364,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             ("doppler_moments", "ProcessingMoments"),
             ("frequency_bands", "ProcessingBandRatio"),
         ):
+            for actual, paths in zip(figure_inputs[root], (schema.artery_per_beat_filtered, schema.vein_per_beat_filtered)):
+                np.testing.assert_array_equal(actual, output[processing_path(paths.segment_velocity_signal_band_limited, root)][:])
             assert output[root].attrs["velocity_estimation_method"] == method
             if method == "doppler_moments":
                 assert output[root].attrs["moment0_source_path"] == "/moment0"
@@ -360,6 +383,11 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
                 schema.waveform_shape_metrics_root,
                 schema.lowrank_waveform_decomposition_root,
                 schema.artery_velocity_profiles.transverse_velocity_profile_masked,
+                schema.vein_velocity_profiles.transverse_velocity_profile_masked,
+                schema.artery_velocity_profiles.transverse_velocity_profile_fft_masked,
+                schema.vein_velocity_profiles.transverse_velocity_profile_fft_masked,
+                f"{schema.velocity_profile_analysis_root}/Artery",
+                f"{schema.velocity_profile_analysis_root}/Vein",
             ):
                 assert processing_path(family, root) in output
 

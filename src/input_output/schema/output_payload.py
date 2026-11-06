@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -21,7 +22,7 @@ def dataset_parts(value: Any) -> tuple[Any, dict[str, Any] | None, dict[str, Any
     """Interpret every supported dataset payload in one place."""
     if isinstance(value, DatasetValue):
         return value.data, value.attrs, value.h5_options
-    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
+    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], Mapping):
         return value[0], value[1], None
     if hasattr(value, "data") and hasattr(value, "attrs"):
         return value.data, value.attrs, getattr(value, "h5_options", None)

@@ -149,8 +149,12 @@ def run_pde_registration(
     method: RegistrationMethod,
     iterations: int,
     field_sigma: float,
+    native_threads: int | None = None,
 ) -> tuple[np.ndarray, float]:
     registration = create_pde_registration_filter(method)
+    if native_threads is not None:
+        registration.SetNumberOfThreads(native_threads)
+        registration.SetNumberOfWorkUnits(native_threads)
     registration.SetNumberOfIterations(int(iterations))
     if hasattr(registration, "SetStandardDeviations"):
         registration.SetStandardDeviations(float(field_sigma))
@@ -171,12 +175,16 @@ def run_image_registration_method(
     update_sigma: float,
     metric_radius: int,
     learning_rate: float,
+    native_threads: int | None = None,
 ) -> tuple[np.ndarray, float]:
     _require_simpleitk()
     if method != "displacement_field":
         raise ValueError(f"Unsupported ImageRegistrationMethod transform: {method}")
 
     registration = sitk.ImageRegistrationMethod()
+    if native_threads is not None:
+        registration.SetNumberOfThreads(native_threads)
+        registration.SetNumberOfWorkUnits(native_threads)
     registration.SetMetricAsANTSNeighborhoodCorrelation(int(metric_radius))
     registration.SetInterpolator(sitk.sitkLinear)
     registration.SetOptimizerAsGradientDescent(
@@ -212,6 +220,7 @@ def estimate_registration_field(
     update_sigma: float,
     metric_radius: int,
     learning_rate: float,
+    native_threads: int | None = None,
 ) -> tuple[np.ndarray, float]:
     fixed_full = np.asarray(fixed_full, dtype=np.float32)
     moving_full = np.asarray(moving_full, dtype=np.float32)
@@ -262,6 +271,7 @@ def estimate_registration_field(
             method,
             iterations,
             field_sigma,
+            native_threads,
         )
     else:
         field_small, metric = run_image_registration_method(
@@ -274,6 +284,7 @@ def estimate_registration_field(
             update_sigma,
             metric_radius,
             learning_rate,
+            native_threads,
         )
 
     field = resize_displacement_to_full(field_small, fixed_full.shape)

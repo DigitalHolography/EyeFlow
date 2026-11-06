@@ -7,7 +7,7 @@ import numpy as np
 from calculations.vessel_segments.profiles.fft import DEFAULT_PROFILE_MASK_DILATION_PIXELS
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from input_output.writers.h5_storage import profile_h5_options
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from pipelines.profile_outputs import (
     profile_dataset,
     temporally_meaned_profile_dataset,
@@ -59,9 +59,9 @@ def _pack_vessel_profiles(
     velocity_attrs: dict[str, object] | None = None,
 ) -> dict[str, object]:
     profile = segments.profile
-    if profile.longitudinal is None:
+    if profile.transverse is None or profile.longitudinal is None:
         raise RuntimeError(
-            "Longitudinal profiles were not requested for velocity profile export."
+            "Cross-section profiles were not requested for velocity profile export."
         )
     valid_segments = np.asarray(profile.topology.valid_segments, dtype=bool)
     transverse_masked = np.asarray(

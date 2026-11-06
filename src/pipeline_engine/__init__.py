@@ -1,4 +1,4 @@
-from .base import (
+from pipeline_engine.planning.base import (
     PIPELINE_REGISTRY,
     DatasetValue,
     ExecutionVariant,
@@ -11,7 +11,7 @@ from .base import (
     registerPipeline,
     with_attrs,
 )
-from .context import (
+from pipeline_engine.context import (
     PipelineContext,
     PipelineH5Output,
     PipelineInputs,
@@ -19,13 +19,23 @@ from .context import (
     PipelineOutput,
     PipelineRuntime,
     PipelineState,
+    read_int_setting,
+    resolve_holodoppler_timing,
     RawH5SourceReader,
 )
-from .dag import PipelineDAG, PipelineExecutionPlan
-from .graphs import PipelineGraph, PipelineNode, PipelineProduct, current_pipeline_dag, handoff
-from .errors import format_pipeline_exception
-from .runtime import run_pipelines_to_output
-from .run_service import (
+from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
+from pipeline_engine.planning.inspection import export_execution_graph, resolve_execution_graph
+from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement
+from pipeline_engine.stage_graph import (
+    StageGraph,
+    StageSpec,
+    ProductSpec,
+    current_pipeline_dag,
+    handoff,
+)
+from pipeline_engine.execution.errors import format_pipeline_exception
+from pipeline_engine.execution.runtime import run_pipelines_to_output
+from pipeline_engine.execution.run_service import (
     ExpandedRunInputs,
     RunFailure,
     RunRequest,
@@ -43,14 +53,19 @@ __all__ = [
     "DatasetValue",
     "ExecutionVariant",
     "PipelineDAG",
-    "PipelineGraph",
-    "PipelineNode",
-    "PipelineProduct",
+    "StageGraph",
+    "StageSpec",
+    "ProductSpec",
+    "PipelineInvocationId",
+    "ProductId",
+    "ProductRequirement",
     "current_pipeline_dag",
     "handoff",
     "PipelineDescriptor",
     "PipelineOption",
     "PipelineExecutionPlan",
+    "export_execution_graph",
+    "resolve_execution_graph",
     "PipelineContext",
     "PipelineH5Output",
     "PipelineInputs",
@@ -58,6 +73,8 @@ __all__ = [
     "PipelineOutput",
     "PipelineRuntime",
     "PipelineState",
+    "read_int_setting",
+    "resolve_holodoppler_timing",
     "RawH5SourceReader",
     "ProcessPipeline",
     "ProcessResult",

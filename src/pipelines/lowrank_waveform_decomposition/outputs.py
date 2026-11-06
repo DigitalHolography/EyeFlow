@@ -77,6 +77,7 @@ def pack_lowrank_waveform_decomposition_outputs(
     *,
     vein_flag: bool = True,
     include_quadrants: bool = False,
+    include_global: bool = True,
     artery_segments=None,
     vein_segments=None,
 ) -> dict[str, object]:
@@ -107,16 +108,17 @@ def pack_lowrank_waveform_decomposition_outputs(
             f"{schema.lowrank_waveform_decomposition_root}/"
             f"{vessel_name}/{signal_name}"
         )
-        _compute_and_append_outputs(
-            outputs,
-            prefix,
-            calculator,
-            waveforms,
-            periods,
-            velocity_unit=velocity_unit_from_payload(
-                velocity_outputs[dataset_path]
-            ),
-        )
+        if include_global:
+            _compute_and_append_outputs(
+                outputs,
+                prefix,
+                calculator,
+                waveforms,
+                periods,
+                velocity_unit=velocity_unit_from_payload(
+                    velocity_outputs[dataset_path]
+                ),
+            )
 
         if not include_quadrants:
             continue

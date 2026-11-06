@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Literal
 
 import numpy as np
@@ -62,6 +63,7 @@ class VelocityAnalysis:
     vein_segments: VelocitySegmentResult | None
     per_beat_result: PerBeatAnalysisResult
     attrs: dict[str, object]
+    waveform_inputs: Mapping[str, object] | None = None
 
     def segments(self, vessel: VesselName) -> VelocitySegmentResult | None:
         """Return the extracted spatial segments for one vessel class."""

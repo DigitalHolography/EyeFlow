@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.velocity_analysis.builder import _segments_required
+from pipelines.velocity_analysis.runner import _segments_required
 
 
 def _dag() -> PipelineDAG:
@@ -40,13 +40,13 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     assert "velocity_analysis" in gradient
     assert "spatial_gradient_moment0" not in masked
     assert "velocity_analysis" in masked
-    assert tuple(name for name in neither if name != "low_freq_spectra") == (
+    assert neither == (
         "topology_core",
         "velocity",
         "velocity_analysis",
         "blood_volume_rate",
     )
-    assert neither.index("low_freq_spectra") > neither.index("velocity")
+    assert "low_freq_spectra" not in neither
 
 
 def test_spatial_gradient_alone_does_not_schedule_velocity_analysis() -> None:
@@ -81,4 +81,3 @@ def test_each_bvr_family_requests_canonical_segment_analysis() -> None:
 
     assert _segments_required(Context(("gradient_edges",)))
     assert _segments_required(Context(("masked_edges",)))
-

@@ -1,38 +1,46 @@
-"""Orchestrate low-rank waveform decomposition products."""
+"""Executable low-rank global and optional quadrant decomposition."""
 
+from functools import partial
+from dataclasses import replace
+
+from data_manager import InvocationResource
+from pipeline_engine import ProductSpec, StageGraph, StageSpec
+from pipeline_engine.context import require_managed_runtime
 from pipelines.velocity_analysis import velocity_analysis
-from pipelines.velocity_analysis.outputs import (
-    pack_velocity_per_beat_inputs,
-)
 
 from .outputs import pack_lowrank_waveform_decomposition_outputs
 
 LOWRANK_WAVEFORM_OUTPUTS_STATE = "lowrank_waveform_decomposition_outputs"
 
 
-def run_lowrank_waveform_decomposition(ctx) -> dict[str, object]:
-    """Calculate joint and per-beat low-rank products from segment waveforms."""
+def _inputs(ctx):
     analysis = velocity_analysis(ctx)
-    velocity_outputs = pack_velocity_per_beat_inputs(
-        analysis.per_beat_result,
-        velocity=analysis.velocity,
-    )
-    selected = ctx.options_for("lowrank_waveform_decomposition")
-    include_quadrants = "quadrants" in selected
-    outputs = pack_lowrank_waveform_decomposition_outputs(
-        velocity_outputs,
-        vein_flag=True,
-        include_quadrants=include_quadrants,
-        artery_segments=(
-            analysis.artery_segments if include_quadrants else None
-        ),
-        vein_segments=analysis.vein_segments if include_quadrants else None,
-    )
-    ctx.state.set(LOWRANK_WAVEFORM_OUTPUTS_STATE, outputs)
-    return outputs
+    values = analysis.waveform_inputs
+    ctx.dag.handoff("inputs", (replace(analysis, source_data=InvocationResource(analysis.source_data)), values))
 
 
-__all__ = [
-    "LOWRANK_WAVEFORM_OUTPUTS_STATE",
-    "run_lowrank_waveform_decomposition",
-]
+def _decompose(quadrants, ctx):
+    analysis, values = ctx.dag.require("inputs")
+    outputs = pack_lowrank_waveform_decomposition_outputs(values,
+        include_global=not quadrants, include_quadrants=quadrants,
+        artery_segments=analysis.artery_segments if quadrants else None,
+        vein_segments=analysis.vein_segments if quadrants else None)
+    outputs = ctx.dag.handoff("quadrants" if quadrants else "metrics", outputs)
+    ctx.state.set(LOWRANK_WAVEFORM_OUTPUTS_STATE,
+        {**ctx.state.get(LOWRANK_WAVEFORM_OUTPUTS_STATE, {}), **outputs})
+
+
+def lowrank_waveform_graph(*, options=()):
+    packed = lambda value, ctx: value
+    stages = [StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),)),
+              StageSpec("metrics", partial(_decompose, False), requires=("inputs",),
+                        products=(ProductSpec("metrics", pack=packed),))]
+    if "quadrants" in options:
+        stages.append(StageSpec("quadrants", partial(_decompose, True), requires=("inputs",),
+                                products=(ProductSpec("quadrants", pack=packed),)))
+    return StageGraph(tuple(stages))
+
+
+def run_lowrank_waveform_decomposition(ctx):
+    require_managed_runtime(ctx, "lowrank_waveform_decomposition")
+    return lowrank_waveform_graph(options=ctx.options_for("lowrank_waveform_decomposition"))

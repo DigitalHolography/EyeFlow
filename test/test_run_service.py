@@ -27,13 +27,8 @@ from app_settings import (  # noqa: E402
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.h5 import open_h5 as real_open_h5  # noqa: E402
-from pipeline_engine import (  # noqa: E402
-    ExecutionVariant,
-    PipelineDescriptor,
-    PipelineOption,
-    ProcessPipeline,
-)
-from pipeline_engine.run_service import (  # noqa: E402
+from pipeline_engine import ExecutionVariant, PipelineDescriptor, PipelineOption, ProcessPipeline
+from pipeline_engine.execution.run_service import (  # noqa: E402
     execute_run,
     expand_run_inputs,
     resolve_run_spec,
@@ -151,7 +146,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
             )
             with (
-                patch("pipeline_engine.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch("pipeline_engine.execution.runtime.open_h5", wraps=real_open_h5) as open_input,
                 patch(
                     "input_output.writers.h5_initialization.open_h5",
                     side_effect=AssertionError("Initialization reopened an input"),
@@ -193,6 +188,7 @@ class RunServiceTests(unittest.TestCase):
                 dag_produces=("variant_data",),
                 produces_execution_variants=True,
                 pipeline_factory=_VariantProducer,
+                execution_mode="process",
             )
             consumer = PipelineDescriptor(
                 name="variant_consumer",
@@ -200,17 +196,33 @@ class RunServiceTests(unittest.TestCase):
                 available=True,
                 dag_requires=("variant_data",),
                 pipeline_factory=_VariantConsumer,
+                execution_mode="process",
+            )
+
+            def report(ctx):
+                self.assertEqual(1, ctx.output.h5.read("ProcessingMoments/VariantValue/value"))
+                self.assertEqual(2, ctx.output.h5.read("ProcessingBandRatio/VariantValue/value"))
+                return {"Report/complete": 1}
+
+            report_pipeline = PipelineDescriptor(
+                name="variant_report", description="variant report", available=True,
+                dag_requires=("variant_data",), run_once=True,
+                wait_for_artifacts=True, execution_mode="process",
+                pipeline_factory=lambda: SimpleNamespace(
+                    name="variant_report", run=report, source_path=__file__,
+                ),
             )
             spec = resolve_run_spec(
                 input_paths=[holo],
-                target_names=["variant_consumer"],
-                pipelines=[producer, consumer],
+                target_names=["variant_consumer", "variant_report"],
+                pipelines=[producer, consumer, report_pipeline],
             )
 
             result = execute_run(spec)
 
             self.assertTrue(result.succeeded, result.failures)
             with h5py.File(result.outputs[0], "r") as output:
+                self.assertEqual(1, output["Report/complete"][()])
                 self.assertEqual(1, output["ProcessingMoments/VariantValue/value"][()])
                 self.assertEqual(2, output["ProcessingBandRatio/VariantValue/value"][()])
                 self.assertEqual(
@@ -247,7 +259,7 @@ class RunServiceTests(unittest.TestCase):
                 return output_manager.path_for(OutputType.H5)
 
             with patch(
-                "pipeline_engine.run_service.run_pipelines_to_output",
+                "pipeline_engine.execution.run_service.run_pipelines_to_output",
                 side_effect=fake_run,
             ):
                 result = execute_run(spec)
@@ -279,7 +291,7 @@ class RunServiceTests(unittest.TestCase):
                 raise RuntimeError("analysis failed")
 
             with patch(
-                "pipeline_engine.run_service.run_pipelines_to_output",
+                "pipeline_engine.execution.run_service.run_pipelines_to_output",
                 side_effect=fake_failure,
             ):
                 result = execute_run(spec)
@@ -308,7 +320,7 @@ class RunServiceTests(unittest.TestCase):
                 output_manager.prepare()
 
             with patch(
-                "pipeline_engine.run_service.run_pipelines_to_output",
+                "pipeline_engine.execution.run_service.run_pipelines_to_output",
                 side_effect=fake_run,
             ):
                 result = execute_run(spec)

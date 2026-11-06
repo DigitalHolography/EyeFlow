@@ -153,14 +153,13 @@ def test_interpolation_rejects_empty_source_dimensions(shape):
 
 @pytest.mark.parametrize("target_shape", [(128, 128), (170, 129), (700, 300)])
 def test_velocity_application_interpolates_to_video_dimensions_without_changing_export(target_shape):
-    from pipelines.low_freq_spectra.masks import gap_velocity_mask
 
     original = np.ones((512, 512), dtype=bool)
     original[100, 100] = False
     original[101, 103] = False
     original[102, 102] = False
     preserved = original.copy()
-    reduced = gap_velocity_mask(original, target_shape)
+    reduced = downsample_gap_zones(original, target_shape=target_shape)
     # Center coordinates select floor((output_index + 0.5) * input_size / output_size).
     rows = np.floor((np.arange(target_shape[0]) + .5) * 512 / target_shape[0]).astype(int)
     columns = np.floor((np.arange(target_shape[1]) + .5) * 512 / target_shape[1]).astype(int)
@@ -173,10 +172,9 @@ def test_velocity_application_interpolates_to_video_dimensions_without_changing_
 
 
 def test_velocity_application_preserves_matching_grid():
-    from pipelines.low_freq_spectra.masks import gap_velocity_mask
 
     source = np.ones((256, 256), dtype=bool)
-    same_grid = gap_velocity_mask(source, (256, 256))
+    same_grid = downsample_gap_zones(source, target_shape=(256, 256))
     np.testing.assert_array_equal(same_grid, source)
     assert not np.shares_memory(same_grid, source)
 

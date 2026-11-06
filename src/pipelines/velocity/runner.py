@@ -4,39 +4,36 @@ from __future__ import annotations
 
 from copy import copy
 from dataclasses import replace
-from time import perf_counter
 
 import numpy as np
 
 from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
     CardiacCycleAnalysis,
+    cardiac_cycles_from_available_vessel,
 )
-from input_output.writers.h5_output import PipelineH5Output
-from input_output.writers.h5 import delete_output_path
+from data_manager import InvocationResource
 from input_output.schema.eyeflow_output import (
     VELOCITY_WORKFLOW_FOLDERS,
     VELOCITY_WORKFLOW_ROOTS,
     processing_path,
 )
-from pipeline_engine.imports import ExecutionVariant
+from input_output.writers.h5_output import PipelineH5Output
+from pipeline_engine import ExecutionVariant, ProductSpec, StageGraph, StageSpec
+from pipeline_engine.context import require_managed_runtime
+from pipelines.vessel_inputs import load_vessel_topology_inputs
 from utils.logger import Logger
 from velocity_calibration import physical_velocity_provenance
 
-from .cardiac_cycle import detect_velocity_cardiac_cycles
 from .estimation import estimate_retinal_velocity
-from .models import RetinalVelocity, VelocityWorkflows
+from .models import RetinalVelocity, RetinalVelocityData, VelocityWorkflows
 from .outputs import pack_velocity_outputs
-from .signal_processing import build_velocity
-from .sources import load_velocity_inputs
+from .signal_processing import build_velocity, DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ
 
 VELOCITY_STATE = "velocity"
 VELOCITY_WORKFLOWS_STATE = "velocity_workflows"
 
 
-def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
-    """Compute selected methods with independent cycles and isolated workflow state."""
-
-    started = perf_counter()
+def _inputs(ctx):
     Logger.log("Starting velocity core processing...")
     sources = {}
     failures = {}
@@ -44,7 +41,7 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         method_ctx = copy(ctx)
         method_ctx.velocity_estimation_method = method
         try:
-            sources[method] = load_velocity_inputs(method_ctx)
+            sources[method] = load_vessel_topology_inputs(method_ctx)
         except Exception as exc:  # noqa: BLE001 - isolate a failed scientific workflow
             failures[method] = str(exc)
             Logger.log_warning(f"Skipping {method}: {exc}")
@@ -52,13 +49,25 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     if not sources:
         raise RuntimeError(f"No selected velocity workflow has usable inputs: {failures}")
     reference_shape = _source_shape(next(iter(sources.values())))
+    ctx.dag.handoff("inputs", (
+        {method: InvocationResource(source) for method, source in sources.items()},
+        failures, reference_shape,
+    ))
 
-    variants: list[ExecutionVariant] = []
-    outputs = {}
-    estimates = {
-        method: _estimate_available(ctx, source, reference_shape, failures)
-        for method, source in sources.items()
-    }
+
+def _estimates(ctx):
+    sources, initial_failures, reference_shape = ctx.dag.require("inputs")
+    failures = dict(initial_failures)
+    estimates = {method: _estimate_available(ctx, source, reference_shape, failures)
+                 for method, source in sources.items()}
+    ctx.dag.handoff("estimates", (estimates, failures))
+
+
+def _cycles(ctx):
+    sources, _, _ = ctx.dag.require("inputs")
+    estimates, initial_failures = ctx.dag.require("estimates")
+    failures = dict(initial_failures)
+    variants = []
     for method, velocity_data in estimates.items():
         if velocity_data is None:
             continue
@@ -94,35 +103,35 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             variants.append(
                 ExecutionVariant(
                     name=method,
-                    state={VELOCITY_STATE: result, "velocity_source": source},
+                    state={VELOCITY_STATE: result, "velocity_source": InvocationResource(source)},
                     output_namespace=root,
                     artifact_namespace=VELOCITY_WORKFLOW_FOLDERS[method],
                     provenance=provenance,
                 )
             )
-            packed = pack_velocity_outputs(result)
-            outputs.update(
-                {
-                    processing_path(path, root): value
-                    for path, value in packed.items()
-                }
-            )
-            if hasattr(ctx, "output"):
-                output = PipelineH5Output(
-                    ctx.runtime.work_h5, processing_root=root, provenance=provenance
-                )
-                output.set_attrs(provenance)
-                output.write_many(packed)
-        except Exception as exc:  # noqa: BLE001 - isolate a failed scientific workflow
+        except Exception as exc:
             failures[method] = str(exc)
-            variants = [variant for variant in variants if variant.name != method]
-            root = VELOCITY_WORKFLOW_ROOTS[method]
-            outputs = {
-                path: value for path, value in outputs.items() if not path.startswith(root + "/")
-            }
-            if hasattr(ctx, "output"):
-                delete_output_path(ctx.runtime.work_h5, root)
             Logger.log_warning(f"Skipping {method}: {exc}")
+    ctx.dag.handoff("workflows", (variants, failures))
+
+
+def _publish(ctx):
+    candidates, initial_failures = ctx.dag.require("workflows")
+    failures, variants = dict(initial_failures), []
+    for variant in candidates:
+        variant = replace(variant, state=dict(variant.state))
+        try:
+            packed = pack_velocity_outputs(variant.state[VELOCITY_STATE])
+            qualified = {processing_path(path, variant.output_namespace): value for path, value in packed.items()}
+            output = PipelineH5Output(ctx.runtime.work_h5, processing_root=variant.output_namespace,
+                                      provenance=variant.provenance)
+            output.set_attrs(variant.provenance)
+            ctx.dag.handoff(variant.name + "_outputs", qualified)
+        except Exception as exc:
+            failures[variant.name] = str(exc)
+            Logger.log_warning(f"Skipping {variant.name}: {exc}")
+        else:
+            variants.append(variant)
     if not variants:
         raise RuntimeError(f"No selected velocity workflow completed: {failures}")
     results = {variant.name: variant.state[VELOCITY_STATE] for variant in variants}
@@ -130,14 +139,28 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         moments=results.get("doppler_moments"),
         bandratio=results.get("frequency_bands"),
     ))
-    publish_variants = getattr(ctx, "publish_execution_variants", None)
-    if callable(publish_variants):
-        publish_variants(variants, failures=failures)
+    ctx.publish_execution_variants(variants, failures=failures)
     canonical = variants[0]
     for key, value in canonical.state.items():
         ctx.state.set(key, value)
-    Logger.log(f"Completed velocity core processing in {perf_counter() - started:.1f}s.")
-    return canonical.state[VELOCITY_STATE], outputs
+
+
+def velocity_graph(*, options=()):
+    return StageGraph((
+        StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),)),
+        StageSpec("estimates", _estimates, requires=("inputs",), products=(ProductSpec("estimates"),)),
+        StageSpec("cardiac_cycles", _cycles, requires=("inputs", "estimates"),
+                  products=(ProductSpec("workflows"),)),
+        StageSpec("publish", _publish, requires=("workflows",), products=tuple(
+            ProductSpec(method + "_outputs", pack=lambda value, ctx: value, optional=True)
+            for method in VELOCITY_WORKFLOW_ROOTS)),
+    ))
+
+
+def run_velocity(ctx):
+    require_managed_runtime(ctx, "velocity")
+    return velocity_graph(options=ctx.options_for("velocity"))
+
 
 def _source_shape(source):
     images = source.image_maps
@@ -244,3 +267,21 @@ __all__ = [
     "run_velocity",
     "velocity",
 ]
+
+
+def detect_velocity_cardiac_cycles(
+    velocity_data: RetinalVelocityData,
+    *,
+    dt_seconds: float,
+) -> tuple[CardiacCycleAnalysis, str]:
+    """Detect cycles from signed, background-corrected velocity in mm/s.
+
+    The detector owns low-pass filtering; pass the estimator's unfiltered
+    whole-vessel signals to avoid filtering them twice.
+    """
+    return cardiac_cycles_from_available_vessel(
+        velocity_data.artery.velocity,
+        velocity_data.vein.velocity,
+        dt_seconds=float(dt_seconds),
+        lowpass_freq_hz=DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
+    )

@@ -14,7 +14,7 @@ from ..writers.artifact_names import prefixed_artifact_path
 
 @contextmanager
 def extracted_zip_tree(zip_path: str | Path) -> Iterator[Path]:
-    from pipeline_engine.storage import temporary_directory
+    from scratch_location import temporary_directory
 
     with temporary_directory() as tmp_dir:
         target_root = Path(tmp_dir).resolve()

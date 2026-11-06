@@ -18,6 +18,8 @@ DV_ARTERY_MASK_PATH = "segmentation/Retina/artery_mask"
 DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
 DV_VESSEL_MASK_PATH = "segmentation/Retina/vessel_mask"
 DV_LABELED_VESSELS_PATH = "segmentation/Retina/labeled_vessels"
+DV_EYE_LATERALITY_PATH = "laterality/eye_laterality"
+DV_EYE_LATERALITY_CONFIDENCE_PATH = "laterality/eye_laterality_confidence"
 
 DOPPLER_VIEW_LAYOUT = SourceFileLayout(
     label="DV",

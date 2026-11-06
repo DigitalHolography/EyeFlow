@@ -16,10 +16,10 @@ shape, unit, layout, or writer behavior.
 | `.holo` companion resolution | `runs/layout.py` | `schema/base.py`, `run_service.py` |
 | Recursive run-folder discovery and batch expansion | `runs/discovery.py`, `runs/inputs.py` | GUI input controller and `run_service.py` |
 | External frame and mask readers | `readers/frame_sequences.py`, `readers/canonical.py` | `pipelines/displacement_map/`, `pipelines/vessel_inputs.py`, and focused tests |
-| Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/input_access.py` |
+| Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/context.py` |
 | HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `readers/h5.py` | `schema/base.py`, `src/retinal_source_data.py`, `readers/canonical.py` |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
-| HDF5 writes | `writers/h5_output.py`, `writers/h5.py`, `writers/h5_storage.py`, `writers/h5_initialization.py`, `schema/output_payload.py` | output-schema tests and producer tests |
+| HDF5 writes | `writers/h5_output.py`, `writers/h5.py`, `writers/h5_storage.py`, `writers/h5_initialization.py`, `schema/output_payload.py` | `writers/h5_publication.py` for managed output serialization; output-schema tests |
 | Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `scripts/migrate_artifacts.py` at the repository root for existing results |
 | Article figure styling | `src/plotting/article.py` | the producer's figure builder; writers save already formatted figures |
 | General ticks/legend/colorbar layout | `src/plotting/formatting.py` | article styles or non-article producer; no font/export policy is imposed |
@@ -60,12 +60,10 @@ consumers, tests, and documentation synchronized.
 owns payload conversion, compression, and bool representation;
 `writers/h5_initialization.py` owns root initialization and selected HD
 pass-through data. Avoid opening the primary HDF5 independently inside a pipeline.
-Managed runs use coordinator-owned dataset adapters for central source reads
-and an in-memory output structure. Use `readers/nodes.py` predicates when an API
-accepts both HDF5 and managed nodes. Source alignment and output path ownership
-remain in this package. Final serialization reuses the same storage policies;
-reports accept the assembled output view before the final HDF5 exists.
-See [parallel execution](../../docs/parallel_pipeline_execution.md).
+Use `readers/nodes.py` predicates for APIs accepting HDF5 and managed nodes.
+`writers/h5_publication.py` serializes the managed model with the same storage
+policies. See [execution design](../../docs/parallel_pipeline_execution.md) for
+source replay, report reads and publication lifetime.
 
 Large float32 map/profile payloads may request sparse NaN chunk storage; the
 published shape and values remain dense on read. Symmetric velocity-profile

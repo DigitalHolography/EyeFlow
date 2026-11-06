@@ -98,7 +98,7 @@ The important shared scientific chain is:
 
 ```text
 velocity      -> `velocity` + `cardiac_cycles` + `velocity_workflows`
-  -> low_freq_spectra (hidden, automatic, once per run; optional HD spectra)
+  -> low_freq_spectra (selectable, selected-only, once per run; optional HD spectra)
 topology_core -> `prepared_topology` + shared `capillary_analysis_zones`
         \          /
          velocity_analysis
@@ -122,28 +122,38 @@ navigation aid.
 
 ## Runtime ownership
 
-For each input, `run_pipelines_to_output` creates a coordinator-owned input
-service and in-memory output structure. HD/DV datasets are loaded centrally and
-staged once into local read-only storage when requested. Pipeline contexts use
-these dataset adapters; worker processes do not reopen the NAS source files.
+The formerly flat engine is grouped by responsibility:
 
-The scheduler starts dependency-ready process pipelines alongside coordinator
-work. `displacement_map` is the first process pipeline; small waveform metrics
-remain sequential. Existing workflow variants keep isolated state and output
-namespaces. Process results arrive through a bounded queue as stable local-file
-references. Private stage journals preserve completed products after unrelated
-failures, without restoring snapshots of the shared output file.
+```text
+pipeline_engine/
+  __init__.py, context.py, resources.py   public API and shared runtime contracts
+  planning/                             declarations and global dependency resolution
+  execution/                            run service, invocations, scheduling and workers
+  data/                                 input replay, payload/scratch storage, transfer and counters
+  output/                               output transactions and finalization lifetime
+  stage_graph/                          local graph definitions, planning and execution
+  product_exchange/                     identities, readiness and coordinator acceptance
+```
 
-Shared figure writers retain their bounded renderer pool and explicit artifact
-ownership. Renderers and calculations share CPU/RAM admission accounting. Reports
-run last and read the assembled output view and published images. The final HDF5
-is serialized locally and published after required exports complete; batch
-analysis can overlap the preceding input's finalization.
+`runtime` owns each input's sources, workflow state and accepted output model.
+`scheduler` chooses ready work; `process_executor` owns opt-in workers and receipt.
+`product_exchange/acceptance.py` accepts incremental commits on the coordinator
+thread and `ProductExchangeRegistry` owns cross-pipeline readiness. Both execution
+modes use the same invocation/checkpoint and executable stage-graph code.
+Inputs replay from read-only local storage. `PendingOutput` retains result
+payloads until exports and final HDF5 publication finish, including when completion
+overlaps the next input. Reports read the accepted model before publication.
 
-See [parallel pipeline execution](parallel_pipeline_execution.md) for input
-caching, queue events, stage commits, resource policy, local scratch selection
-and the initial process rollout. See [stage graphs and handoff](pipeline_stage_graphs.md)
-for pipeline-owned product/dependency declarations.
+The [execution design](parallel_pipeline_execution.md) defines ownership,
+failure recovery, resources and storage lifetime. The [stage graph API](pipeline_stage_graphs.md)
+defines pipeline-owned products and dependencies.
+
+Every production pipeline declares its executable graph in `runner.py`.
+Registration imports that factory; independent numerical algorithms and output
+packers remain separate. `velocity_analysis` publishes one accepted per-beat
+representation for all downstream waveform families, avoiding repeated FFT
+magnitude/phase packing. Shared gradient extraction still uses the existing
+source/settings-compatible computation cache.
 
 ## Scientific processing boundaries
 
@@ -174,10 +184,14 @@ for pipeline-owned product/dependency declarations.
   when `spatial_gradient_moment0` is selected directly.
 - `blood_volume_rate` composes either gradient-derived edges or mask-derived
   geometry with velocity products according to its enabled option families.
-- `displacement_map` is a separate registration analysis. It currently emits
-  per-vessel magnitude videos and retains temporary dense-field paths in run
-  state; the topology-based segment helper is not part of its runner. Do not
-  assume a waveform dependency merely because it uses the same inputs.
+- `displacement_map` is the early, dependency-free registration analysis. It
+  emits per-vessel magnitude videos and an exposed `registered_fields` product
+  backed by run-owned immutable storage. The separately selectable `displacement_profiles` pipeline runs
+  later, after topology and cardiac timing are ready, and publishes beat-resolved
+  profiles and metrics. Its disabled-by-default `segment_maps` option adds the
+  larger dense per-segment maps without delaying registration startup. Persisted
+  selections from the former `displacement_map.profiles` option migrate to the
+  new target and retain their segment-map selection.
 
 See [pipeline context](../src/pipelines/AGENTS.md) and
 [calculation context](../src/calculations/AGENTS.md) before scientific changes.
@@ -216,10 +230,10 @@ records the method and radius in output provenance.
 | Installed commands and package dependencies | `pyproject.toml` |
 | GUI and CLI dispatch | `src/launcher.py` |
 | Pipeline discovery | `src/pipelines/__init__.py` |
-| Pipeline metadata and registration | decorators in pipeline `__init__.py` files; types in `src/pipeline_engine/base.py` |
-| Dependency resolution | `src/pipeline_engine/dag.py` |
-| Run validation and batch policy | `src/pipeline_engine/run_service.py` |
-| Per-pipeline runtime/context | `src/pipeline_engine/runtime.py`, `src/pipeline_engine/context.py` |
+| Pipeline metadata and registration | decorators in pipeline `__init__.py` files; types in `src/pipeline_engine/planning/base.py` |
+| Dependency resolution | `src/pipeline_engine/planning/dag.py` |
+| Run validation and batch policy | `src/pipeline_engine/execution/run_service.py` |
+| Per-pipeline runtime/context | `src/pipeline_engine/execution/runtime.py`, `src/pipeline_engine/context.py` |
 | Default and persisted settings | `default_settings.json`, `src/app_settings.py` |
 | Companion input layout | `src/input_output/runs/layout.py` and source layouts in `src/input_output/schema/` |
 | HD/DV logical fields | `src/input_output/schema/holodoppler.py`, `src/input_output/schema/doppler_view.py` |

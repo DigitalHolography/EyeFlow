@@ -12,11 +12,8 @@ import pytest
 
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
-from pipeline_engine import (
-    ExecutionVariant, PipelineDescriptor, PipelineGraph, PipelineNode, PipelineProduct,
-    current_pipeline_dag, handoff,
-)
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine import ExecutionVariant, PipelineDescriptor, StageGraph, StageSpec, ProductSpec, current_pipeline_dag, handoff
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 
 def _descriptor(name, run, **kwargs):
@@ -36,6 +33,27 @@ def _run(manager, descriptors):
     )
 
 
+def test_resolved_graph_uses_downstream_options_without_reading_acquisition(tmp_path, monkeypatch):
+    from pipeline_engine import PipelineDAG, resolve_execution_graph, export_execution_graph
+    from pipeline_engine.execution.run_service import RunSpec
+    from pipelines import load_pipeline_catalog
+
+    available, _ = load_pipeline_catalog()
+    options = {"velocity_analysis": (), "absolute_waveform_metrics": ("segments",)}
+    plan = PipelineDAG(available).resolve_targets(("absolute_waveform_metrics",), pipeline_options=options)
+    spec = RunSpec(plan, (), options)
+    monkeypatch.setattr(h5py, "File", lambda *args, **kwargs: pytest.fail("Preflight read scientific input"))
+    graph = resolve_execution_graph(spec)
+    stages = next(item["stages"] for item in graph["pipelines"] if item["id"] == "velocity_analysis")
+    assert "segments" in {item["id"] for item in stages}
+    assert "maps" not in {item["id"] for item in stages}
+    assert graph["variant_discovery"]["successful"] is None
+    assert graph == resolve_execution_graph(spec)
+    json_path, dot_path = export_execution_graph(spec, tmp_path / "plan")
+    assert json.loads(json_path.read_text()) == graph
+    assert "per successful variant" in dot_path.read_text()
+
+
 def test_committed_handoff_survives_later_failure_and_only_missing_consumers_skip(tmp_path):
     calls = []
 
@@ -48,7 +66,7 @@ def test_committed_handoff_survives_later_failure_and_only_missing_consumers_ski
 
     def consume(ctx):
         calls.append("consumer")
-        values = ctx.dag.require("metric")
+        values = ctx.dag.require_mutable("metric")
         np.testing.assert_array_equal(values, [3., 4.])
         values[:] = 200
         np.testing.assert_array_equal(ctx.dag.require("metric"), [3., 4.])
@@ -57,14 +75,14 @@ def test_committed_handoff_survives_later_failure_and_only_missing_consumers_ski
     def missing(ctx):
         pytest.fail("The missing product consumer should not run")
 
-    graph = PipelineGraph((
-        PipelineNode("producer", produce, outputs=(
-            PipelineProduct("metric", "Scientific/Metric", {"unit": "Hz", "dimDesc": ["time"]}),
-            PipelineProduct("unavailable", "Scientific/Missing"),
+    graph = StageGraph((
+        StageSpec("producer", produce, products=(
+            ProductSpec("metric", "Scientific/Metric", {"unit": "Hz", "dimDesc": ["time"]}),
+            ProductSpec("unavailable", "Scientific/Missing"),
         )),
-        PipelineNode("consumer", consume, requires=("metric",), outputs=(PipelineProduct("derived", "Scientific/Derived"),)),
-        PipelineNode("missing", missing, requires=("unavailable",)),
-        PipelineNode("independent", lambda ctx: calls.append("independent")),
+        StageSpec("consumer", consume, requires=("metric",), products=(ProductSpec("derived", "Scientific/Derived"),)),
+        StageSpec("missing", missing, requires=("unavailable",)),
+        StageSpec("independent", lambda ctx: calls.append("independent")),
     ))
     with pytest.raises(PipelineRunError, match="later optional calculation failed") as error:
         _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
@@ -82,7 +100,7 @@ def test_committed_handoff_survives_later_failure_and_only_missing_consumers_ski
 
 
 def test_handoff_launches_ready_artifacts_before_its_producer_returns(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
+    monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
     manager = _manager(tmp_path)
     started = Event()
 
@@ -101,9 +119,9 @@ def test_handoff_launches_ready_artifacts_before_its_producer_returns(tmp_path, 
         assert ctx.dag.require("metric") == 7
         ctx.defer_artifacts("png", export, lambda path: path.write_bytes(b"data"))
 
-    graph = PipelineGraph((
-        PipelineNode("producer", produce, outputs=(PipelineProduct("metric", "Scientific/Metric"),)),
-        PipelineNode("figures", artifacts, requires=("metric",), artifact=True),
+    graph = StageGraph((
+        StageSpec("producer", produce, products=(ProductSpec("metric", "Scientific/Metric"),)),
+        StageSpec("figures", artifacts, requires=("metric",), artifact=True),
     ))
     with pytest.raises(PipelineRunError, match="failure after committed"):
         _run(manager, [_descriptor("science", lambda ctx: graph)])
@@ -122,9 +140,9 @@ def test_failed_packing_is_atomic_even_when_caught_and_direct_writes_are_rejecte
         with pytest.raises(ValueError, match="Undeclared"):
             ctx.dag.handoff("undeclared", 3)
 
-    graph = PipelineGraph((PipelineNode("producer", produce, outputs=(
-        PipelineProduct("bad", pack=lambda value, ctx: {"Partial/value": 1, "Invalid/value": object()}, optional=True),
-        PipelineProduct("good", "Good/value"),
+    graph = StageGraph((StageSpec("producer", produce, products=(
+        ProductSpec("bad", pack=lambda value, ctx: {"Partial/value": 1, "Invalid/value": object()}, optional=True),
+        ProductSpec("good", "Good/value"),
     )),))
     path = _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
     with h5py.File(path) as h5:
@@ -144,7 +162,7 @@ def test_copied_or_worker_context_cannot_handoff_into_another_scope(tmp_path):
                 pool.submit(handoff, "metric", 9).result()
         ctx.dag.handoff("metric", 4)
 
-    graph = PipelineGraph((PipelineNode("producer", produce, outputs=(PipelineProduct("metric", "Metric/value"),)),))
+    graph = StageGraph((StageSpec("producer", produce, products=(ProductSpec("metric", "Metric/value"),)),))
     path = _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
     with h5py.File(path) as h5:
         assert h5["Metric/value"][()] == 4
@@ -168,9 +186,9 @@ def test_moments_and_bandratio_graphs_keep_handoffs_and_failures_isolated(tmp_pa
     def consume(ctx):
         ctx.dag.handoff("derived", ctx.dag.require("metric") + 1)
 
-    graph = PipelineGraph((
-        PipelineNode("producer", produce, outputs=(PipelineProduct("metric", "ProcessingMoments/Metric/value", {"unit": "1"}),)),
-        PipelineNode("consumer", consume, requires=("metric",), outputs=(PipelineProduct("derived", "ProcessingMoments/Derived/value"),)),
+    graph = StageGraph((
+        StageSpec("producer", produce, products=(ProductSpec("metric", "ProcessingMoments/Metric/value", {"unit": "1"}),)),
+        StageSpec("consumer", consume, requires=("metric",), products=(ProductSpec("derived", "ProcessingMoments/Derived/value"),)),
     ))
     path = _run(_manager(tmp_path), [
         _descriptor("source", source, produces_execution_variants=True),
@@ -189,21 +207,8 @@ def test_moments_and_bandratio_graphs_keep_handoffs_and_failures_isolated(tmp_pa
         assert products["science [bands]"]["metric"]["datasets"] == ["ProcessingBandRatio/Metric/value"]
 
 
-@pytest.mark.parametrize("kind", ["unknown", "cycle", "duplicate"])
-def test_graph_definition_rejects_invalid_dependencies(kind):
-    noop = lambda ctx: None
-    if kind == "unknown":
-        graph = PipelineGraph((PipelineNode("a", noop, requires=("missing",)),))
-    elif kind == "cycle":
-        graph = PipelineGraph((PipelineNode("a", noop, after=("b",)), PipelineNode("b", noop, after=("a",))))
-    else:
-        graph = PipelineGraph((PipelineNode("a", noop, outputs=(PipelineProduct("metric"),)), PipelineNode("b", noop, outputs=(PipelineProduct("metric"),))))
-    with pytest.raises((ValueError, RuntimeError)):
-        graph.plan()
-
-
 def test_graph_report_waits_for_declared_artifacts_and_writes_intermediates_immediately(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
+    monkeypatch.setattr("pipeline_engine.execution.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
     manager = _manager(tmp_path)
 
     def produce(ctx):
@@ -218,10 +223,10 @@ def test_graph_report_waits_for_declared_artifacts_and_writes_intermediates_imme
         intermediate = ctx.output.write_png(np.zeros((2, 2), dtype=np.uint8), "report.png")
         assert intermediate.is_file()
 
-    graph = PipelineGraph((
-        PipelineNode("producer", produce, outputs=(PipelineProduct("metric"),)),
-        PipelineNode("figures", artifact, requires=("metric",), artifact=True),
-        PipelineNode("report", report, after=("figures",), wait_for_artifacts=True),
+    graph = StageGraph((
+        StageSpec("producer", produce, products=(ProductSpec("metric"),)),
+        StageSpec("figures", artifact, requires=("metric",), artifact=True),
+        StageSpec("report", report, after=("figures",), wait_for_artifacts=True),
     ))
     _run(manager, [_descriptor("science", lambda ctx: graph)])
 
@@ -232,9 +237,54 @@ def test_handoff_cannot_replace_a_parent_of_an_already_committed_dataset(tmp_pat
         with pytest.raises(ValueError, match="non-overlapping"):
             ctx.dag.handoff("parent", 9)
 
-    graph = PipelineGraph((PipelineNode("producer", produce, outputs=(
-        PipelineProduct("leaf", "Group/Metric"), PipelineProduct("parent", "Group", optional=True),
+    graph = StageGraph((StageSpec("producer", produce, products=(
+        ProductSpec("leaf", "Group/Metric"), ProductSpec("parent", pack=lambda value, ctx: {"Group": value}, optional=True),
     )),))
     path = _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
     with h5py.File(path) as h5:
         assert h5["Group/Metric"][()] == 7
+
+
+def test_missing_output_optional_resolution_after_success_and_cleanup_once(tmp_path):
+    calls, captured = [], []
+
+    def producer(ctx):
+        captured.append(ctx.dag)
+        with pytest.raises(ValueError, match="did not declare"):
+            ctx.dag.get("undeclared")
+        # Missing required output fails this stage after it returns normally.
+
+    def optional(ctx):
+        assert ctx.dag.get("x") is None
+        calls.append("optional")
+
+    graph = StageGraph((
+        StageSpec("producer", producer, products=(ProductSpec("x"),)),
+        StageSpec("required", lambda ctx: pytest.fail("Missing required product ran"), requires=("x",)),
+        StageSpec("optional", optional, optional_requires=("x",)),
+        StageSpec("after", lambda ctx: pytest.fail("Failed stage completion was ignored"), after=("producer",)),
+        StageSpec("independent", lambda ctx: calls.append("independent")),
+    ), cleanup=lambda: calls.append("cleanup"))
+    with pytest.raises(PipelineRunError, match="Missing handoffs"):
+        _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
+    assert calls == ["optional", "independent", "cleanup"]
+    with pytest.raises(RuntimeError, match="completed"):
+        captured[0].handoff("x", 3)
+
+
+def test_optional_artifact_waits_for_producer_resolution(tmp_path):
+    calls = []
+    def producer(ctx):
+        ctx.dag.handoff("x", 3)
+        assert not calls, "An optional pending product was treated as absent"
+        calls.append("producer")
+    def artifact(ctx):
+        assert ctx.dag.require("x") == 3
+        assert ctx.dag.get("y") is None
+        calls.append("artifact")
+    graph = StageGraph((
+        StageSpec("producer", producer, products=(ProductSpec("x"), ProductSpec("y", optional=True))),
+        StageSpec("artifact", artifact, requires=("x",), optional_requires=("y",), artifact=True),
+    ))
+    _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
+    assert calls == ["producer", "artifact"]

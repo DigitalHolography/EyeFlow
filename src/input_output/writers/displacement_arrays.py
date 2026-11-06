@@ -48,17 +48,24 @@ class OutputCaches:
         self.count += 1
 
     def flush(self) -> None:
-        self.magnitude.flush()
+        if self.magnitude is not None:
+            self.magnitude.flush()
         if self.field is not None:
             self.field.flush()
 
     def close(self) -> None:
-        self.magnitude.flush()
-        del self.magnitude
-
-        if self.field is not None:
-            self.field.flush()
-            del self.field
-            self.field = None
+        error = None
+        for name in ("magnitude", "field"):
+            array = getattr(self, name)
+            if array is not None:
+                try:
+                    array.flush()
+                except BaseException as exc:
+                    error = error or exc
+                finally:
+                    array._mmap.close()
+                    setattr(self, name, None)
+        if error is not None:
+            raise error
 
 

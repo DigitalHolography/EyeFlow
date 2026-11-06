@@ -69,7 +69,9 @@ class CompactSegmentMaps:
     indexes: np.ndarray
 
     def __post_init__(self) -> None:
-        values = np.asarray(self.values)
+        # Retained maps may be a bounded, array-like output backing. Validation
+        # needs metadata only; converting it here would recreate the dense heap.
+        values = self.values if hasattr(self.values, "shape") else np.asarray(self.values)
         indexes = np.asarray(self.indexes)
         if indexes.ndim != 2 or indexes.shape[1] != 2:
             raise ValueError("segment map indexes must have shape (segment, 2).")
@@ -117,12 +119,13 @@ class SegmentMeasurements:
 
     The existing ``topology`` field holds that plan, not native geometry;
     its ``native`` member provides the source-coordinate SegmentTopology.
-    ``longitudinal`` is ``None`` when its calculation was disabled.
+    ``transverse`` and ``longitudinal`` are ``None`` when their calculations
+    were disabled.
     """
 
     topology: SegmentSamplingPlan
     segment_signal: np.ndarray
-    transverse: MaskedArrays
+    transverse: MaskedArrays | None
     longitudinal: MaskedArrays | None
     mean_images: MaskedArrays
     sample_spacing_mm: float
@@ -140,7 +143,7 @@ class SegmentMeasurements:
             ("transverse", self.transverse),
             ("longitudinal", self.longitudinal),
         ):
-            if name == "longitudinal" and pair is None:
+            if pair is None:
                 continue
             if pair.unmasked.ndim != 4 or pair.unmasked.shape[:3] != expected_prefix:
                 raise ValueError(
@@ -173,6 +176,10 @@ class SegmentMeasurements:
         masked: bool,
     ) -> np.ndarray:
         if direction == "transverse":
+            if self.transverse is None:
+                raise RuntimeError(
+                    "Transverse profiles were not requested for this measurement."
+                )
             return self.transverse.select(masked=masked)
         if direction == "longitudinal":
             if self.longitudinal is None:

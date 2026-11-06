@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -56,10 +57,9 @@ def write_magnitude_avi(
     fixed_maximum: float,
     gamma: float,
     visualization_sigma: float,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[float, float]:
     """Render float displacement magnitudes as a grayscale MJPEG AVI."""
-    from tqdm import tqdm
-
     target = Path(path)
     if target.suffix.lower() != ".avi":
         raise ValueError("Magnitude AVI output path must end in '.avi'.")
@@ -80,7 +80,7 @@ def write_magnitude_avi(
         import cv2
 
     with MjpegAviWriter(target, width=width, height=height, fps=fps) as writer:
-        for index in tqdm(range(frame_count), desc="Écriture magnitude", unit="frame"):
+        for index in range(frame_count):
             image = np.asarray(magnitudes[index], dtype=np.float32)
             if visualization_sigma > 0:
                 image = cv2.GaussianBlur(
@@ -97,4 +97,6 @@ def write_magnitude_avi(
                 gray = np.round(normalized * 255.0).astype(np.uint8)
             gray[~mask] = 0
             writer.write_frame(gray)
+            if on_progress is not None:
+                on_progress(index + 1, frame_count)
     return minimum, maximum

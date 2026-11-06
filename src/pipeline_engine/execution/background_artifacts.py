@@ -1,0 +1,330 @@
+"""Isolated renderers, asynchronous publication, and rollback-safe artifact ownership."""
+
+from __future__ import annotations
+
+import multiprocessing
+import os
+import shutil
+import traceback
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from scratch_location import temporary_directory
+from threading import RLock
+from uuid import uuid4
+from time import perf_counter
+
+from input_output.output_manager import OutputManager
+from input_output.artifact_ownership import ArtifactOwnership, current_artifact_transaction
+from utils.logger import Logger
+
+
+def _initialize_renderer() -> None:
+    from runtime_limits import configure_native_threads, set_thread_allowance
+
+    configure_native_threads(1)
+    set_thread_allowance(1)
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
+
+
+@dataclass
+class ArtifactExportResult:
+    paths: list[Path]
+    messages: list[str]
+    error: str | None = None
+    rendering_seconds: float = 0.0
+    started_at: float = 0.0
+
+
+def _run_exporter(exporter, snapshot, manager, kwargs):
+    started = perf_counter()
+    messages = []
+    with Logger.capture_messages(messages.append):
+        try:
+            result = exporter(snapshot, manager, **kwargs)
+        except Exception:
+            return ArtifactExportResult([], messages, traceback.format_exc(), perf_counter() - started, started)
+    if isinstance(result, ArtifactExportResult):
+        result.messages = messages + result.messages
+        result.rendering_seconds = perf_counter() - started
+        result.started_at = started
+        return result
+    return ArtifactExportResult(list(result), messages, rendering_seconds=perf_counter() - started, started_at=started)
+
+
+class ArtifactWorkers:
+    """Bounded rendering and publication pools, reused across a batch of inputs."""
+
+    def __init__(self):
+        self._renderer = None
+        self._publisher = None
+        self._admission = None
+        self._lock = RLock()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if self._admission is not None:
+            self._admission.shutdown(wait=True)
+        if self._renderer is not None:
+            self._renderer.shutdown(wait=True, cancel_futures=True)
+        if self._publisher is not None:
+            self._publisher.shutdown(wait=True)
+
+    def submit(self, job, complete):
+        from runtime_limits import cap_parallel_jobs
+
+        with self._lock:
+            if self._renderer is None:
+                self._renderer = ProcessPoolExecutor(
+                    max_workers=cap_parallel_jobs(min(2, os.cpu_count() or 1)),
+                    mp_context=multiprocessing.get_context("spawn"),
+                    initializer=_initialize_renderer,
+                )
+                self._publisher = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="EyeFlowArtifactPublisher",
+                )
+                self._admission = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="EyeFlowExportAdmission",
+                )
+            from pipeline_engine.resources import current_resources
+            budget = current_resources()
+            self._admission.submit(self._submit_admitted, job, complete, budget)
+
+    def _submit_admitted(self, job, complete, budget):
+        from time import monotonic
+
+        admitted = False
+        started = monotonic()
+        try:
+            request = budget.default_request(threads=1) if budget else None
+            if budget:
+                budget.acquire(request.threads, request.memory)
+                admitted = True
+                if monotonic() - started > .1:
+                    Logger.log(
+                        f"[RESOURCES] Export {job.label} delayed {monotonic() - started:.2f}s."
+                    )
+            rendered = self._renderer.submit(
+                _run_exporter, job.exporter, job.snapshot, job.manager, job.kwargs,
+            )
+        except Exception as exc:
+            if admitted:
+                budget.release(request.threads, request.memory)
+            rendered = Future()
+            rendered.set_exception(exc)
+            self._schedule_completion(job, complete, rendered)
+            return
+
+        def finished(future):
+            # Publication only copies files; return compute slots before it.
+            try:
+                if admitted:
+                    budget.release(request.threads, request.memory)
+            finally:
+                self._schedule_completion(job, complete, future)
+        rendered.add_done_callback(finished)
+
+    def _schedule_completion(self, job, complete, rendered):
+        def finish():
+            try:
+                complete(job, rendered)
+            except BaseException as exc:
+                if job.future is not None and not job.future.done():
+                    job.future.set_exception(exc)
+
+        try:
+            self._publisher.submit(finish)
+        except Exception:
+            # Pool shutdown/submission failure must still settle the job.
+            finish()
+
+
+@dataclass
+class ArtifactJob:
+    label: str
+    temporary: TemporaryDirectory
+    snapshot: Path
+    manager: OutputManager
+    destination: Path
+    exporter: object
+    kwargs: dict
+    owner: object
+    future: Future | None = None  # completes after publication and logging
+    status: str = "prepared"
+    timings: dict = field(default_factory=dict)
+
+
+class BackgroundArtifacts:
+    """Per-file artifact jobs over an optional shared batch worker pool.
+
+    HDF5 handles stay on their owning thread. The publisher owns only staged
+    files and in-memory job status. Every artifact has an explicit producing
+    invocation, so rollback never touches another invocation's files.
+    """
+
+    def __init__(self, workers: ArtifactWorkers | None = None) -> None:
+        self._workers = workers or ArtifactWorkers()
+        self._owns_workers = workers is None
+        self._jobs: list[ArtifactJob] = []
+        self._lock = RLock()
+        self.ownership = ArtifactOwnership()
+        self._failures: dict[str, str] = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.collect(wait=True)
+        if self._owns_workers:
+            self._workers.__exit__(*exc)
+        for job in self._jobs:
+            job.temporary.cleanup()
+
+    @property
+    def statuses(self) -> dict[str, str]:
+        with self._lock:
+            return {job.label: job.status for job in self._jobs}
+
+    @property
+    def failures(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._failures)
+
+    @property
+    def timings(self):
+        with self._lock:
+            return {job.label: dict(job.timings) for job in self._jobs}
+
+    @property
+    def pending(self) -> bool:
+        return any(status in {"prepared", "running"} for status in self.statuses.values())
+
+    def prepare(self, label, manager, exporter, snapshotter, **kwargs) -> ArtifactJob:
+        started = perf_counter()
+        if label in self.statuses:
+            raise ValueError(f"Duplicate background artifact job: {label}")
+        temporary = temporary_directory(prefix="eyeflow-figures-")
+        root = Path(temporary.name)
+        staged = replace(manager, layout=replace(manager.layout, _root_dir=root / "render"))
+        snapshot = root / "snapshot"
+        try:
+            snapshotter(snapshot)
+        except BaseException:
+            temporary.cleanup()
+            raise
+        job = ArtifactJob(
+            label, temporary, snapshot, staged, manager.layout.ef_dir,
+            exporter, kwargs,
+            current_artifact_transaction() or self.ownership.transaction(manager.layout.ef_dir),
+        )
+        job.timings.update(prepared_at=started, preparation_seconds=perf_counter() - started)
+        with self._lock:
+            self._jobs.append(job)
+        return job
+
+    def cancel(self, job: ArtifactJob) -> None:
+        with self._lock:
+            if job.status != "prepared":
+                raise RuntimeError("Only unsubmitted artifact jobs can be cancelled.")
+            self._jobs.remove(job)
+            job.status = "cancelled"
+        job.temporary.cleanup()
+
+    def start(self, job: ArtifactJob) -> None:
+        job.timings["submitted_at"] = perf_counter()
+        job.future = Future()
+        with self._lock:
+            job.status = "running"
+        Logger.log(f"[EXPORT] {job.manager.layout.stem} | {job.label}: generating artifacts in background.")
+        try:
+            self._workers.submit(job, self._complete)
+        except Exception as exc:
+            try:
+                self._fail(job, exc)
+            finally:
+                job.future.set_result(None)
+
+    def collect(self, *, wait: bool = False) -> None:
+        if wait:
+            with self._lock:
+                futures = [job.future for job in self._jobs if job.future is not None]
+            for future in futures:
+                future.result()
+
+    def _complete(self, job, rendered):
+        try:
+            result = rendered.result()
+            job.timings.update(rendering_seconds=result.rendering_seconds,
+                               render_started_at=result.started_at,
+                               queue_seconds=max(0.0, result.started_at - job.timings["submitted_at"]))
+            for message in result.messages:
+                source = f"{job.manager.layout.stem} | {job.label}: "
+                prefix, separator, body = message.partition("] ")
+                if message.startswith("[") and separator:
+                    Logger.log(f"{prefix}] {source}{body}")
+                else:
+                    Logger.log(f"{source}{message}")
+            if result.error is not None:
+                raise RuntimeError(result.error)
+            started = perf_counter()
+            self._publish(job, result.paths)
+            job.timings["publication_seconds"] = perf_counter() - started
+            with self._lock:
+                job.status = "succeeded"
+            Logger.log(
+                f"[EXPORT COMPLETE] {job.manager.layout.stem} | {job.label}: "
+                f"{len(result.paths)} artifact file(s) written."
+            )
+        except Exception as exc:
+            self._fail(job, exc)
+        finally:
+            job.timings["finished_at"] = perf_counter()
+            try:
+                job.temporary.cleanup()
+            finally:
+                job.future.set_result(None)
+
+    def _fail(self, job: ArtifactJob, exc: Exception) -> None:
+        message = str(exc)
+        if exc.__cause__ is not None:
+            message = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        with self._lock:
+            job.status = "failed"
+            self._failures[job.label] = message
+        job.temporary.cleanup()
+        Logger.log_error(f"[EXPORT FAILED] {job.manager.layout.stem} | {job.label}: {message}")
+
+    def _publish(self, job, paths):
+        staged_root = job.manager.layout.ef_dir.resolve()
+        destination = job.destination.resolve()
+        published = []
+        try:
+            for source in paths:
+                source = Path(source).resolve()
+                target = destination / source.relative_to(staged_root)
+                if not target.resolve().is_relative_to(destination):
+                    raise ValueError(f"Invalid artifact destination: {target}")
+                target = target.resolve()
+                # Keep the temporary basename short: repeating the destination
+                # name can exceed Windows MAX_PATH even when the target fits.
+                temporary = target.with_name(f".ef-{uuid4().hex[:16]}.partial")
+                if target.exists():
+                    raise FileExistsError(f"Artifact already exists: {target}")
+                job.owner.reserve(target, writing=True)
+                job.owner.reserve(temporary, writing=True)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copyfile(source, temporary)
+                    os.replace(temporary, target)
+                    published.append(target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+        except BaseException:
+            for path in published:
+                path.unlink(missing_ok=True)
+            raise

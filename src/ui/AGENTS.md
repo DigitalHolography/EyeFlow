@@ -46,7 +46,7 @@ a controller.
 
 For a layout-only change, inspect one view and the controller fields it binds;
 the calculation and I/O packages are irrelevant. For run workflow changes,
-inspect `controllers/run.py`, `pipeline_engine/run_service.py`, and
+inspect `controllers/run.py`, `pipeline_engine/execution/run_service.py`, and
 `test_run_service.py`. For pipeline-library behavior, inspect its controller,
 descriptor/DAG interfaces, and `test_pipeline_library_dependencies.py`. For
 settings import/mode behavior, inspect the settings controller,

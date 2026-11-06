@@ -6,6 +6,8 @@ import numpy as np
 
 # Small arrays save less payload than the per-dataset chunk index costs.
 _MIN_COMPRESSION_BYTES = 4096
+# Level 4 retains lossless storage without level 9's substantial publication cost.
+_DEFAULT_GZIP_LEVEL = 4
 # The virtual mapping itself costs several KiB; use it only when the unique
 # frequencies can repay that metadata overhead.
 _MIN_MIRRORED_FFT_SAVINGS_BYTES = 32 * 1024
@@ -14,7 +16,7 @@ _MIN_MIRRORED_FFT_SAVINGS_BYTES = 32 * 1024
 def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     """Compress profiles in chunks aligned to one segment."""
     options: dict[str, object] = {
-        "compression": "gzip", "compression_opts": 9, "shuffle": True,
+        "compression": "gzip", "compression_opts": _DEFAULT_GZIP_LEVEL, "shuffle": True,
     }
     if len(shape) not in (4, 5) or not all(shape):
         return options
@@ -32,7 +34,7 @@ def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
 def velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     """Compress per-beat maps while retaining segment-oriented chunks."""
     options: dict[str, object] = {
-        "compression": "gzip", "compression_opts": 9, "shuffle": True,
+        "compression": "gzip", "compression_opts": _DEFAULT_GZIP_LEVEL, "shuffle": True,
     }
     if len(shape) in (6, 7) and all(shape):
         target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
@@ -52,7 +54,7 @@ def velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
 
 def segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     options: dict[str, object] = {
-        "dtype": np.bool_, "compression": "gzip", "compression_opts": 9,
+        "dtype": np.bool_, "compression": "gzip", "compression_opts": _DEFAULT_GZIP_LEVEL,
         "shuffle": True,
     }
     if len(shape) == 4 and all(shape):
@@ -137,6 +139,9 @@ def _create_dataset(
 ):
     if hasattr(group, "store_dataset"):
         return group.store_dataset(dataset_key, payload, h5_options)
+    from pipeline_engine.data.storage import H5Array
+    if isinstance(payload, H5Array):
+        return payload.copy_to(group, dataset_key)
     if isinstance(payload, str):
         return group.create_dataset(
             dataset_key,
@@ -157,7 +162,7 @@ def _create_dataset(
             "gzip" if payload.nbytes >= _MIN_COMPRESSION_BYTES else None,
         )
         if options["compression"] == "gzip":
-            options.setdefault("compression_opts", 9)
+            options.setdefault("compression_opts", _DEFAULT_GZIP_LEVEL)
         if options["compression"] is not None:
             options.setdefault("shuffle", True)
     if isinstance(payload, np.ndarray) and payload.dtype.kind in {"U", "O"}:

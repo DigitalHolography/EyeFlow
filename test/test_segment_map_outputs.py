@@ -25,6 +25,7 @@ from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     prepare_segment_velocity_maps_per_beat,
 )
 from pipelines.velocity_analysis.outputs.segment_maps import pack_segment_map_outputs  # noqa: E402
+from pipelines.topology_core.outputs import pack_rotated_segment_masks
 
 
 class SegmentMapOutputTests(unittest.TestCase):
@@ -38,7 +39,13 @@ class SegmentMapOutputTests(unittest.TestCase):
         )
         boundaries = np.asarray([0, 2, 5], dtype=np.int32)
 
-        actual = interpolate_velocity_maps_per_beat(maps, boundaries)
+        allocated = []
+        def allocate(shape):
+            output = np.empty(shape, dtype=np.float32)
+            allocated.append(output)
+            return output
+        actual = interpolate_velocity_maps_per_beat(maps, boundaries, array_allocator=allocate)
+        self.assertIs(actual, allocated[0])
         expected = interpft_real(maps[0, 0, 0:3, 1, 2], 5)[:-1]
 
         self.assertEqual((3, 2, 4, 2, 1, 1), actual.shape)
@@ -136,6 +143,9 @@ class SegmentMapOutputTests(unittest.TestCase):
             artery_maps,
             vein_maps,
         )
+        metrics.update(pack_rotated_segment_masks({
+            "artery": artery.profile.topology, "vein": vein.profile.topology,
+        }))
         schema = EyeFlowOutputPaths.active()
 
         self.assertEqual(4, len(metrics))
@@ -179,7 +189,7 @@ class SegmentMapOutputTests(unittest.TestCase):
             )
             self.assertEqual(np.bool_, artery_masks.dtype)
             self.assertEqual("gzip", artery_maps.compression)
-            self.assertEqual(9, artery_maps.compression_opts)
+            self.assertEqual(4, artery_maps.compression_opts)
             self.assertEqual((4, 3, 4, 1, 1, 1), artery_maps.chunks)
 
 
