@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import os
 import shutil
+from time import perf_counter
 from math import prod
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -22,7 +23,13 @@ _RAM_BUDGET_FRACTION = 0.5
 class RunArrayStorage:
     """Keep modest arrays in RAM and spill larger arrays to local scratch."""
 
-    def __init__(self, output_dir: Path, *, memory_budget_bytes: int | None = None) -> None:
+    def __init__(
+        self,
+        output_dir: Path,
+        *,
+        memory_budget_bytes: int | None = None,
+        metrics=None,
+    ) -> None:
         self.output_dir = Path(output_dir)
         self.budget = current_resources()
         if memory_budget_bytes is None:
@@ -32,6 +39,7 @@ class RunArrayStorage:
                 if available is not None else _FALLBACK_RAM_BUDGET_BYTES
             )
         self.memory_budget_bytes = int(memory_budget_bytes)
+        self.metrics = metrics
         if self.memory_budget_bytes < 0:
             raise ValueError("memory_budget_bytes must be non-negative.")
         self._resident_bytes = 0
@@ -51,6 +59,7 @@ class RunArrayStorage:
 
     def empty_float32(self, shape: tuple[int, ...]) -> np.ndarray:
         """Allocate one writable float32 array under the run's shared RAM budget."""
+        allocation_started = perf_counter()
         if self._closed:
             raise RuntimeError("Run scratch storage is closed.")
         size_bytes = prod(shape) * np.dtype(np.float32).itemsize
@@ -64,7 +73,11 @@ class RunArrayStorage:
         if (self._resident_bytes + size_bytes <= self.memory_budget_bytes
                 and (self.budget is None or self.budget.reserve_memory(size_bytes))):
             self._resident_bytes += size_bytes
-            return np.empty(shape, dtype=np.float32)
+            array = np.empty(shape, dtype=np.float32)
+            if self.metrics is not None:
+                self.metrics.add("scratch_resident_allocation_seconds", perf_counter() - allocation_started)
+                self.metrics.add("scratch_resident_allocation_bytes", size_bytes)
+            return array
 
         if self._directory is None:
             self._directory = temporary_directory("eyeflow-arrays-")
@@ -80,6 +93,9 @@ class RunArrayStorage:
         except OSError as exc:
             raise OSError(f"Could not create local run scratch storage: {exc}") from exc
         self._maps.append(array)
+        if self.metrics is not None:
+            self.metrics.add("scratch_disk_allocation_seconds", perf_counter() - allocation_started)
+            self.metrics.add("scratch_disk_allocation_bytes", size_bytes)
         Logger.log(f"Retaining {size_bytes / 1024**2:.1f} MiB array in run scratch storage.")
         return array
 

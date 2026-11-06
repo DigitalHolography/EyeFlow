@@ -2,6 +2,7 @@
 
 import pickle
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 import cloudpickle
@@ -29,12 +30,14 @@ def dump_result(value, storage):
             return None
 
     path = storage.path(".pickle")
+    started = perf_counter()
     try:
         with path.open("wb") as stream:
             Pickler(stream, protocol=5).dump(value)
     except BaseException:
         path.unlink(missing_ok=True)
         raise
+    storage.metrics.add("manifest_serialization_seconds", perf_counter() - started)
     storage.metrics.add("serializations", 1)
     storage.metrics.add("manifest_bytes", path.stat().st_size)
     return str(path)
@@ -59,5 +62,8 @@ def load_result(path, storage, inputs, *, owner_root=None):
                 raise pickle.UnpicklingError("Unknown EyeFlow transfer reference")
             return references[key]
 
+    started = perf_counter()
     with Path(path).open("rb") as stream:
-        return Unpickler(stream).load()
+        result = Unpickler(stream).load()
+    storage.metrics.add("manifest_deserialization_seconds", perf_counter() - started)
+    return result

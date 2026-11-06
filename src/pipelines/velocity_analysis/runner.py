@@ -492,9 +492,12 @@ def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None
 @contextmanager
 def _logged_stage(label: str):
     started = perf_counter()
-    Logger.log(f"Starting {label}...")
+    Logger.log_perf(f"START pipeline=velocity_analysis stage={label} at={started:.6f}")
     yield
-    Logger.log(f"Completed {label} in {perf_counter() - started:.1f}s.")
+    Logger.log_perf(
+        f"END pipeline=velocity_analysis stage={label} at={perf_counter():.6f} "
+        f"duration={perf_counter() - started:.3f}s"
+    )
 
 
 def _context_attrs(

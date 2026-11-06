@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
+from time import perf_counter
 from uuid import uuid4
 
 from app_settings import (
@@ -107,7 +108,9 @@ def run_pipelines_to_output(
         pending = PendingOutput(work_h5, background_artifacts, owns_artifacts=wait_for_exports)
         try:
             with ExitStack() as stack:
-                scratch = stack.enter_context(RunArrayStorage(output_manager.layout.ef_dir))
+                scratch = stack.enter_context(
+                    RunArrayStorage(output_manager.layout.ef_dir, metrics=storage.metrics)
+                )
                 return _execute_input(
                     work_h5=work_h5,
                     output_h5_path=output_h5_path,
@@ -165,7 +168,21 @@ def _execute_input(
     background_artifacts: BackgroundArtifacts,
     wait_for_exports: bool,
 ) -> Path:
+    input_open_started = perf_counter()
+    Logger.log_perf(
+        f"START pipeline=run variant=shared stage=input_hdf5_open "
+        f"at={input_open_started:.6f}"
+    )
     hd_h5, dv_h5 = _open_input_h5_sources(stack, holodoppler_h5, doppler_vision_h5)
+    Logger.log_perf(
+        f"END pipeline=run variant=shared stage=input_hdf5_open "
+        f"at={perf_counter():.6f} wall={perf_counter() - input_open_started:.3f}s"
+    )
+    initialize_started = perf_counter()
+    Logger.log_perf(
+        f"START pipeline=run variant=shared stage=output_initialization "
+        f"at={initialize_started:.6f}"
+    )
     with work_h5.checkpoint():
         _initialize_work_h5(
             work_h5=work_h5,
@@ -180,6 +197,15 @@ def _execute_input(
             hd_source_h5=hd_h5,
             dv_source_h5=dv_h5,
         )
+    Logger.log_perf(
+        f"END pipeline=run variant=shared stage=output_initialization "
+        f"at={perf_counter():.6f} wall={perf_counter() - initialize_started:.3f}s"
+    )
+    replay_started = perf_counter()
+    Logger.log_perf(
+        f"START pipeline=run variant=shared stage=input_replay_setup "
+        f"at={replay_started:.6f}"
+    )
     input_service = InputService({"hd": hd_h5, "dv": dv_h5}, work_h5.storage,
                                  multiprocessing.get_context("spawn"))
     stack.callback(input_service.close)
@@ -195,6 +221,10 @@ def _execute_input(
         dv=PipelineInputSource(RawH5SourceReader(h5file=dv_h5, label="DV"), dv_config),
     )
     initialize_acquisition_metadata(work_h5, shared_inputs.hd)
+    Logger.log_perf(
+        f"END pipeline=run variant=shared stage=input_replay_setup "
+        f"at={perf_counter():.6f} wall={perf_counter() - replay_started:.3f}s"
+    )
     context_vars: dict[str, object] = {}
     computation_cache: dict[object, object] = {}
 

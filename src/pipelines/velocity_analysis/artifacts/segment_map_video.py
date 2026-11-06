@@ -125,8 +125,8 @@ def export_segment_velocity_map_avis(
         )
         sources.append(source)
         if source is not None:
-            Logger.log(
-                f"Prepared {vessel} segment AVI source: "
+            Logger.log_perf(
+                f"pipeline=velocity_analysis stage={vessel}_segment_avi_snapshot "
                 f"shape={source.maps.shape}, "
                 f"input={source.maps.nbytes / (1024**3):.2f} GiB, "
                 f"candidates={stats.candidate_count}, tiles={len(source.tiles)}, "
@@ -144,9 +144,9 @@ def export_segment_velocity_map_avis(
         raise ValueError("Segment velocity-map sources must use the same unit.")
     velocity_range = _global_velocity_range(available_sources)
     velocity_label = available_sources[0].velocity_label
-    Logger.log(
-        "Resolved shared segment AVI velocity range in "
-        f"{perf_counter() - range_started:.3f}s: "
+    Logger.log_perf(
+        "pipeline=velocity_analysis stage=segment_avi_shared_velocity_range "
+        f"duration={perf_counter() - range_started:.3f}s "
         f"[{velocity_range[0]:.3f}, {velocity_range[1]:.3f}] "
         f"{velocity_label}."
     )
@@ -197,8 +197,8 @@ def export_segment_velocity_map_avis(
                         video.write_frame(frame)
         performance = video.performance_stats
         output_bytes = video.path.stat().st_size
-        Logger.log(
-            f"Completed {source.vessel} segment AVI: "
+        Logger.log_perf(
+            f"pipeline=velocity_analysis stage={source.vessel}_segment_avi_render "
             f"frames={video.frame_count}, size={source.video_side}x{source.video_side}, "
             f"output={output_bytes / (1024**2):.1f} MiB, "
             f"render={render_seconds:.3f}s, "
@@ -219,8 +219,8 @@ def export_segment_velocity_map_avis(
         ) as executor:
             paths = list(executor.map(export_source, available_sources))
     output_bytes = sum(Path(path).stat().st_size for path in paths)
-    Logger.log(
-        "Segment AVI export totals: "
+    Logger.log_perf(
+        "pipeline=velocity_analysis stage=segment_avi_export_totals "
         f"wall={perf_counter() - export_wall_started:.3f}s, "
         f"process CPU={process_time() - export_cpu_started:.3f}s, "
         f"output={output_bytes / (1024**2):.1f} MiB."

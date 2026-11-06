@@ -48,7 +48,8 @@ def run_worker(spec, events):
         directory=Path(spec.directory) / "products", budget=spec.memory_account
     )
     scratch = RunArrayStorage(
-        Path(spec.directory), memory_budget_bytes=spec.memory_account.memory_limit
+        Path(spec.directory), memory_budget_bytes=spec.memory_account.memory_limit,
+        metrics=storage.metrics,
     )
     scratch.budget = spec.memory_account
     files = {

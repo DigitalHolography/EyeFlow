@@ -33,6 +33,7 @@ from pipeline_engine.execution.run_service import (  # noqa: E402
     expand_run_inputs,
     resolve_run_spec,
 )
+from utils.logger import Logger  # noqa: E402
 from ui.controllers.run import RunController  # noqa: E402
 
 
@@ -132,6 +133,37 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
 
 
 class RunServiceTests(unittest.TestCase):
+    def test_performance_summary_includes_pipeline_stage_and_publication(self) -> None:
+        from pipeline_engine import StageGraph, StageSpec
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+
+            def run(ctx):
+                del ctx
+                return StageGraph((StageSpec("calculate", lambda stage_ctx: None),))
+
+            descriptor = PipelineDescriptor(
+                name="timed", description="timed pipeline", available=True,
+                pipeline_factory=lambda: SimpleNamespace(
+                    name="timed", run=run, source_path=__file__,
+                ),
+            )
+            spec = resolve_run_spec(
+                input_paths=[holo], target_names=["timed"], pipelines=[descriptor],
+            )
+            messages = []
+            with patch.object(Logger, "_current", Logger(on_log=messages.append)):
+                result = execute_run(spec)
+
+            self.assertTrue(result.succeeded, result.failures)
+            self.assertTrue(any("[PERF] START pipeline=timed variant=shared stage=calculate" in msg
+                                for msg in messages))
+            self.assertTrue(any("[PERF] SUMMARY pipeline=timed stage=calculate" in msg
+                                for msg in messages))
+            self.assertTrue(any("stage=hdf5_serialization" in msg for msg in messages))
+            self.assertTrue(any("[PERF] SUMMARY accounted_wall=" in msg for msg in messages))
+
     def test_runtime_opens_each_input_once_during_initialization(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

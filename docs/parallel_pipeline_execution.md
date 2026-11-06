@@ -72,3 +72,28 @@ resource initialization.
 receipt loss, acceptance rollback and exit/resource ordering. Reproduce synthetic
 copy, manifest, IPC and RSS measurements with
 `python scripts/benchmark_execution_ownership.py --processes`.
+
+## Performance diagnostics
+
+Run logs use `[PERF]` records with `perf_counter()` timestamps and durations in
+seconds. Pipeline and stage records identify the pipeline, execution variant,
+and stage; stage timings distinguish callback work from CPU admission,
+dependency dispatch, and artifact waits. Handoff records split snapshots,
+packing, and output commits. Aggregate storage metrics report source staging,
+array copying, serialization, and final HDF5 publication.
+
+Background artifact records separate snapshot preparation, admission/renderer
+queueing, rendering, file copies, and publication. `stage_timings` and
+`artifact_timings` remain the authoritative persisted timing data. The run-end
+summary sorts the slowest pipeline/stage/artifact spans and estimates accounted
+wall time as the interval union of stage and artifact spans; nested and
+concurrent spans are therefore not added together. The remainder is reported
+as unaccounted wall time, commonly including setup and finalization.
+
+The shared `Logger` shows `DEBUG` and `PERF` records by default in development,
+and only `INFO`/`WARNING`/`ERROR` records in frozen builds. Set
+`EYEFLOW_DIAGNOSTICS=1` to enable diagnostic records in a packaged build;
+`EYEFLOW_PERF_LOGGING=1` independently enables performance records;
+`EYEFLOW_LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING`, or `ERROR` as a minimum
+severity. Startup configuration is inherited by spawned workers and artifact
+renderers, so filtering is consistent across the run and UI.

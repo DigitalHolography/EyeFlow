@@ -10,6 +10,7 @@ from time import perf_counter
 import h5py
 
 from .h5_storage import _create_dataset
+from utils.logger import Logger
 
 
 def _write_attributes(node, record):
@@ -49,27 +50,56 @@ def publish_output_model(model):
         else nullcontext()
     )
     try:
-        with admission, h5py.File(local, "w") as output:
-            for path, record in sorted(
-                model.records.items(), key=lambda pair: (pair[0].count("/"), pair[0])
-            ):
-                if record.kind == "group":
-                    node = output.require_group(path) if path else output
-                else:
-                    parent, _, name = path.rpartition("/")
-                    group = output.require_group(parent) if parent else output
-                    node = _create_dataset(
-                        group,
-                        name,
-                        model.storage.read(record.value),
-                        h5_options=record.options,
-                    )
-                _write_attributes(node, record)
+        admission_started = perf_counter()
+        with admission:
+            serialization_started = perf_counter()
+            model.storage.metrics.add(
+                "h5_publication_admission_wait_seconds", serialization_started - admission_started
+            )
+            Logger.log_perf(
+                f"START pipeline=run variant=shared stage=hdf5_serialization "
+                f"at={serialization_started:.6f} output={final.name}"
+            )
+            with h5py.File(local, "w") as output:
+                for path, record in sorted(
+                    model.records.items(), key=lambda pair: (pair[0].count("/"), pair[0])
+                ):
+                    if record.kind == "group":
+                        node = output.require_group(path) if path else output
+                    else:
+                        parent, _, name = path.rpartition("/")
+                        group = output.require_group(parent) if parent else output
+                        node = _create_dataset(
+                            group,
+                            name,
+                            model.storage.read(record.value),
+                            h5_options=record.options,
+                        )
+                    _write_attributes(node, record)
         final.parent.mkdir(parents=True, exist_ok=True)
-        model.storage.metrics.add("h5_serialization_seconds", perf_counter() - started)
+        serialized_at = perf_counter()
+        model.storage.metrics.add("h5_serialization_seconds", serialized_at - serialization_started)
+        Logger.log_perf(
+            f"END pipeline=run variant=shared stage=hdf5_serialization "
+            f"at={serialized_at:.6f} wall={serialized_at - serialization_started:.3f}s"
+        )
+        copy_started = perf_counter()
+        Logger.log_perf(
+            f"START pipeline=run variant=shared stage=hdf5_publication "
+            f"at={copy_started:.6f} output={final.name}"
+        )
         shutil.copyfile(local, incoming)
+        copy_seconds = perf_counter() - copy_started
+        model.storage.metrics.add("h5_publication_copy_seconds", copy_seconds)
+        replace_started = perf_counter()
         os.replace(incoming, final)
+        model.storage.metrics.add("h5_publication_replace_seconds", perf_counter() - replace_started)
     finally:
         model.storage.metrics.add("final_publication_seconds", perf_counter() - started)
+        Logger.log_perf(
+            f"END pipeline=run variant=shared stage=hdf5_publication "
+            f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s "
+            f"copy={model.storage.metrics.snapshot().get('h5_publication_copy_seconds', 0.0):.3f}s"
+        )
         incoming.unlink(missing_ok=True)
         local.unlink(missing_ok=True)

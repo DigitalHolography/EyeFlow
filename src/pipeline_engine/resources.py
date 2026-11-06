@@ -271,7 +271,10 @@ class ResourceBudget(MemoryAccount):
             with use_thread_allowance(admitted):
                 delay = monotonic() - started
                 if delay > 0.1:
-                    Logger.log(f"[RESOURCES] Compute admission delayed {delay:.2f}s.")
+                    Logger.log_perf(
+                        f"pipeline=runtime variant=shared stage=compute_admission "
+                        f"wait={delay:.3f}s"
+                    )
                 yield
         finally:
             _RESERVATION.reset(token)

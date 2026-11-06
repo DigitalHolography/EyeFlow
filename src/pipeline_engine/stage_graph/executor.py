@@ -37,7 +37,11 @@ class StageAccess:
         execution = self._executor
         execution.scope.validate()
         execution.products.validate_read(execution.scope.stage, name)
-        return execution.data.read(execution.products.require(name))
+        started = perf_counter()
+        try:
+            return execution.data.read(execution.products.require(name))
+        finally:
+            execution._add_stage_timing("product_read_seconds", perf_counter() - started)
 
     def get(self, name, default=None):
         execution = self._executor
@@ -49,7 +53,11 @@ class StageAccess:
         execution = self._executor
         execution.scope.validate()
         execution.products.validate_read(execution.scope.stage, name)
-        return execution.data.writable(execution.products.require(name))
+        started = perf_counter()
+        try:
+            return execution.data.writable(execution.products.require(name))
+        finally:
+            execution._add_stage_timing("mutable_product_copy_seconds", perf_counter() - started)
 
     def handoff(self, name, value):
         return self._executor.handoff(name, value)
@@ -75,6 +83,10 @@ class StageGraphExecutor:
         self.api = StageAccess(self)
         self._checkpoints, self._paths = [], {}
         self._writing = False
+        self.pipeline_name = context.runtime.pipeline_name
+        self.variant_name = (
+            context.execution_variant.name if context.execution_variant is not None else "shared"
+        )
         for alias, handle in context.product_inputs.items():
             if handle is not None:
                 self.products.record_accepted(alias, handle)
@@ -82,9 +94,21 @@ class StageGraphExecutor:
                 self.products.record_failed(alias, "Upstream product unavailable.")
 
     def _record(self, paths=()):
-        self.journal.persist(self.context.runtime.work_h5)
-        self._advance_checkpoints(paths)
-        self.context.output.h5.flush()
+        started = perf_counter()
+        try:
+            self.journal.persist(self.context.runtime.work_h5)
+            self._advance_checkpoints(paths)
+            self.context.output.h5.flush()
+        finally:
+            self.data.storage.metrics.add("stage_journal_write_seconds", perf_counter() - started)
+
+    def _add_stage_timing(self, name, duration):
+        stage = self.scope.stage
+        if stage is None:
+            return
+        timing = self.journal.timings.get(stage)
+        if timing is not None:
+            timing[name] = timing.get(name, 0.0) + duration
 
     def _advance_checkpoints(self, paths=()):
         for checkpoint in self._checkpoints:
@@ -99,6 +123,10 @@ class StageGraphExecutor:
         if spec.validate:
             spec.validate(value)
         started = perf_counter()
+        Logger.log_perf(
+            f"START pipeline={self.pipeline_name} variant={self.variant_name} "
+            f"stage={stage.id} operation=handoff product={name} at={started:.6f}"
+        )
         handle = self.data.accept(value, transportable=spec.exposed)
         snapshot = self.data.read(handle)
         snapshotted = perf_counter()
@@ -131,6 +159,15 @@ class StageGraphExecutor:
             "dataset_bytes": sum(self.context.runtime.work_h5[path].size *
                                  self.context.runtime.work_h5[path].dtype.itemsize for path in paths),
         })
+        handoff_timing = self.journal.products[name]
+        Logger.log_perf(
+            f"END pipeline={self.pipeline_name} variant={self.variant_name} "
+            f"stage={stage.id} operation=handoff product={name} at={perf_counter():.6f} "
+            f"wall={perf_counter() - started:.3f}s "
+            f"snapshot={handoff_timing['snapshot_seconds']:.3f}s "
+            f"packing={handoff_timing['packing_seconds']:.3f}s "
+            f"output_commit={handoff_timing['commit_seconds']:.3f}s"
+        )
         self._record()
         self.data.storage.metrics.add("local_acceptance_seconds", perf_counter() - started)
         # Transport and coordinator acceptance are collaborators, never store policy.
@@ -163,6 +200,11 @@ class StageGraphExecutor:
                         self.journal.mark(name, "skipped", "Unavailable dependencies: " + ", ".join(missing))
                         self._record()
                         emit("StageSkipped", stage=name, error=self.journal.skips[name])
+                        Logger.log_perf(
+                            f"pipeline={self.pipeline_name} variant={self.variant_name} "
+                            f"stage={name} status=skipped at={self.journal.timings[name]['end']:.6f} "
+                            f"reason=unavailable_dependencies"
+                        )
                         self.artifacts.dispatch(self._run_stage)
                     else:
                         self._run_stage(stage)
@@ -191,6 +233,10 @@ class StageGraphExecutor:
             self.journal.mark(stage.id, "skipped", "Required artifact export failed.")
             self._record()
             emit("StageSkipped", stage=stage.id, error=self.journal.skips[stage.id])
+            Logger.log_perf(
+                f"pipeline={self.pipeline_name} variant={self.variant_name} "
+                f"stage={stage.id} status=skipped artifact_wait={perf_counter() - wait_started:.3f}s"
+            )
             return
         artifact_waited = perf_counter() - wait_started
         previous_figure = ctx._figure_job, ctx._figure_count
@@ -202,8 +248,12 @@ class StageGraphExecutor:
             *(self.products.resolved_at[name] for name in (*stage.requires, *stage.optional_requires)),
             *(self.journal.timings[name]["end"] for name in stage.after)])
         timing.update(ready_at=ready_at, dependency_wait_seconds=ready_at - self.journal.created_at,
-                      dispatch_wait_seconds=max(0.0, timing["start"] - ready_at),
+                      dispatch_wait_seconds=max(0.0, timing["start"] - ready_at - artifact_waited),
                       artifact_wait_seconds=artifact_waited)
+        Logger.log_perf(
+            f"START pipeline={self.pipeline_name} variant={self.variant_name} "
+            f"stage={stage.id} at={timing['start']:.6f}"
+        )
         self._record()
         emit("StageStarted", stage=stage.id, journal=self.journal.attributes())
         try:
@@ -249,3 +299,15 @@ class StageGraphExecutor:
         emit({"failed": "StageFailed", "skipped": "StageSkipped", "succeeded": "StageFinished"}[self.journal.statuses[stage.id]],
              stage=stage.id, error=self.journal.failures.get(stage.id) or self.journal.skips.get(stage.id))
         self.artifacts.dispatch(self._run_stage)
+        Logger.log_perf(
+            f"END pipeline={self.pipeline_name} variant={self.variant_name} "
+            f"stage={stage.id} status={self.journal.statuses[stage.id]} "
+            f"at={self.journal.timings[stage.id].get('end', perf_counter()):.6f} "
+            f"wall={self.journal.timings[stage.id].get('wall_seconds', 0.0):.3f}s "
+            f"callback={self.journal.timings[stage.id].get('callback_wall_seconds', 0.0):.3f}s "
+            f"resource_wait={self.journal.timings[stage.id].get('resource_wait_seconds', 0.0):.3f}s "
+            f"artifact_wait={self.journal.timings[stage.id].get('artifact_wait_seconds', 0.0):.3f}s "
+            f"dispatch_wait={self.journal.timings[stage.id].get('dispatch_wait_seconds', 0.0):.3f}s "
+            f"product_read={self.journal.timings[stage.id].get('product_read_seconds', 0.0):.3f}s "
+            f"mutable_copy={self.journal.timings[stage.id].get('mutable_product_copy_seconds', 0.0):.3f}s"
+        )

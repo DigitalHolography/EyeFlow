@@ -583,8 +583,9 @@ def estimate_retinal_velocity(
                 f"({frame_slice.stop}/{frame_count} frames)."
             )
 
-    Logger.log(
-        f"Completed chunked velocity estimation in {perf_counter() - estimation_started:.1f}s."
+    Logger.log_perf(
+        f"pipeline=velocity variant=shared stage=estimation "
+        f"duration={perf_counter() - estimation_started:.3f}s"
     )
 
     provenance = _build_velocity_provenance(

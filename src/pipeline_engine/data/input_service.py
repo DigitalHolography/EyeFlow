@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import RLock, Thread
+from time import perf_counter
 
 import numpy as np
 
@@ -28,7 +29,7 @@ class InputClient:
     def read(self, slot, path):
         key = (slot, path)
         if key not in self.cache:
-            self.requests.put((self.identity, slot, path))
+            self.requests.put((self.identity, slot, path, perf_counter()))
             value, error = self.responses.get()
             if error:
                 raise OSError(error)
@@ -233,11 +234,14 @@ class InputService:
             request = self.requests.get()
             if request is None:
                 return
-            identity, slot, path = request
+            identity, slot, path, requested_at = request
+            self.storage.metrics.add("input_queue_wait_seconds", max(0.0, perf_counter() - requested_at))
             try:
                 key = self.aliases[slot, path]
                 if key not in self.cache:
+                    started = perf_counter()
                     self.cache[key] = self._stage(self.sources[slot][path])
+                    self.storage.metrics.add("input_hdf5_read_and_staging_seconds", perf_counter() - started)
                     self.source_reads[key] = self.source_reads.get(key, 0) + 1
                     self.storage.metrics.add("source_reads", 1)
                 response = self.cache[key], None
@@ -249,7 +253,9 @@ class InputService:
         # Array persistence slices the source; only small metadata crosses IPC.
         if dataset.dtype.kind in "biufcSU" and dataset.nbytes >= 4096:
             return self.storage.store_array(dataset)
+        read_started = perf_counter()
         value = np.asarray(dataset[()])
+        self.storage.metrics.add("input_hdf5_small_read_seconds", perf_counter() - read_started)
         if value.dtype.kind == "O":
             return self.storage.store_value(value)
         return self.storage.store(value, category="input")

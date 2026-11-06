@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from queue import Empty, Queue
 from threading import Event, Thread
-from time import monotonic
+from time import monotonic, perf_counter
 from uuid import uuid4
 import pickle
 
@@ -45,6 +45,7 @@ class ProcessExecutor:
         self._stop = Event()
         self._acks = {}
         self.active = {}
+        self._admission_wait_started = {}
         self._closed = False
         self._receiver = Thread(target=self._receive, name="EyeFlowResults", daemon=True)
         self._receiver.start()
@@ -80,7 +81,11 @@ class ProcessExecutor:
             else:
                 self._incoming.put(event)
             self.model.storage.metrics.add("ipc_events", 1)
-            self.model.storage.metrics.add("ipc_bytes", len(pickle.dumps(event, protocol=5)))
+            serialization_started = perf_counter()
+            payload_bytes = len(pickle.dumps(event, protocol=5))
+            self.model.storage.metrics.add("ipc_event_serialization_seconds",
+                                           perf_counter() - serialization_started)
+            self.model.storage.metrics.add("ipc_bytes", payload_bytes)
             self._acks[event.invocation].put(TransportReceipt(event.commit_id))
 
     def invocation_id(self, pipeline, variant=None):
@@ -92,8 +97,15 @@ class ProcessExecutor:
 
     def start(self, pipeline):
         request = self.budget.default_request(threads=min(4, max(1, self.budget.cpu_limit // 2)))
+        self._admission_wait_started.setdefault(pipeline.name, perf_counter())
         if not self.budget.try_acquire(request.threads, request.memory):
             return False
+        admission_wait = perf_counter() - self._admission_wait_started.pop(pipeline.name)
+        self.model.storage.metrics.add("process_admission_wait_seconds", admission_wait)
+        Logger.log_perf(
+            f"pipeline={pipeline.name} variant=shared stage=process_admission "
+            f"wait={admission_wait:.3f}s"
+        )
         try:
             self.active[pipeline.name] = self._launch(pipeline, request.threads, request.memory)
         except BaseException:

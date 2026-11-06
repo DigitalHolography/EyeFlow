@@ -106,9 +106,9 @@ def analyze_velocity_segment_profiles(
             fft_profiles=accumulator,
         )
         if accumulator is not None:
-            Logger.log(
-                f"Completed {name} optional velocity-profile FFT in "
-                f"{accumulator.elapsed_seconds:.2f}s."
+            Logger.log_perf(
+                f"pipeline=velocity_analysis stage={name}_optional_velocity_profile_fft "
+                f"duration={accumulator.elapsed_seconds:.3f}s"
             )
     return results
 

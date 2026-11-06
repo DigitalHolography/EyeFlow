@@ -96,8 +96,8 @@ def analyze_segment_profiles(
         topologies = dict(prepared_topologies)
         if set(topologies) != set(masks):
             raise ValueError("prepared_topologies must match vessel mask names.")
-    Logger.log(
-        f"Completed topology preparation in {perf_counter() - topology_started:.2f}s."
+    Logger.log_perf(
+        f"stage=segment_topology_preparation duration={perf_counter() - topology_started:.3f}s"
     )
 
     results: dict[str, SegmentMeasurements] = {}
@@ -151,9 +151,9 @@ def analyze_segment_profiles(
         )
         if backend is not None:
             backend.cupy.cuda.get_current_stream().synchronize()
-        Logger.log(
-            f"Completed {name} segment profile measurements in "
-            f"{perf_counter() - measurement_started:.2f}s."
+        Logger.log_perf(
+            f"stage={name}_segment_profile_measurement "
+            f"duration={perf_counter() - measurement_started:.3f}s"
         )
     return results
 

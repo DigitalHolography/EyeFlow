@@ -197,6 +197,7 @@ def execute_run(
     from pipeline_engine.resources import ResourceBudget, current_resources
 
     budget = current_resources() or ResourceBudget()
+    Logger.log_perf(f"START pipeline=run variant=shared stage=batch at={started_at:.6f}")
     with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
         max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
     ) as completions:
@@ -205,7 +206,10 @@ def execute_run(
             on_pipeline_start=on_pipeline_start, on_progress=on_progress,
             should_stop=should_stop,
         )
-    Logger.log_info(f"Total execution time: {perf_counter() - started_at:.2f} s")
+    Logger.log_perf(
+        f"END pipeline=run variant=shared stage=batch "
+        f"at={perf_counter():.6f} wall={perf_counter() - started_at:.3f}s"
+    )
     return result
 
 
@@ -253,6 +257,7 @@ def _execute_batch(
         Logger.log(f"[OUTPUT] {final_path}")
 
         artifacts = BackgroundArtifacts(workers)
+        file_started_at = perf_counter()
         numerical_error = None
         finalizers: list[PendingOutput] = []
         try:
@@ -299,7 +304,8 @@ def _execute_batch(
             )
         try:
             pending.append(completions.submit(
-                _finish_file, input_layout.input_path, final_path, artifacts, numerical_error, finalizers,
+                _finish_file, input_layout.input_path, final_path, artifacts, numerical_error,
+                finalizers, file_started_at,
             ))
         except BaseException:
             _discard_file_output(artifacts, finalizers)
@@ -316,21 +322,34 @@ def _discard_file_output(artifacts, outputs):
             retained.callback(output.close)
 
 
-def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=()):
+def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=(), started_at=None):
     """Serialize the retained output model only after sidecars are published."""
     import h5py
 
+    metrics = finalizers[0].model.storage.metrics if finalizers else None
     try:
         with ExitStack() as retained, artifacts:
             for output in finalizers:
                 retained.callback(output.close)
+            artifact_wait_started = perf_counter()
+            Logger.log_perf(
+                f"START pipeline=run variant=shared stage=background_artifact_join "
+                f"at={artifact_wait_started:.6f}"
+            )
             artifacts.collect(wait=True)
+            Logger.log_perf(
+                f"END pipeline=run variant=shared stage=background_artifact_join "
+                f"at={perf_counter():.6f} wall={perf_counter() - artifact_wait_started:.3f}s"
+            )
             for output in finalizers:
                 output.finish()
             if not finalizers and artifacts.statuses and output_path.is_file():
                 with h5py.File(output_path, "r+") as h5:
                     h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)
                     h5.attrs["artifact_failures"] = json.dumps(artifacts.failures, sort_keys=True)
+            _log_performance_summary(
+                input_path, output_path, started_at, artifacts, metrics,
+            )
             errors = [numerical_error] if numerical_error else []
             for name, error in artifacts.failures.items():
                 message = f"{name}: {error}"
@@ -341,11 +360,128 @@ def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers
                 Logger.log_error(str(failure))
                 return failure
     except Exception as exc:
+        try:
+            _log_performance_summary(input_path, output_path, started_at, artifacts, metrics)
+        except Exception as summary_exc:
+            Logger.log_error(f"Could not produce performance summary for {input_path.name}: {summary_exc}")
         failure = RunFailure(input_path, str(exc))
         Logger.log_error(str(failure))
         return failure
     Logger.log(f"Completed run for {input_path.name}: {output_path}")
     return None
+
+
+def _log_performance_summary(input_path, output_path, started_at, artifacts, metrics):
+    import h5py
+
+    finished_at = perf_counter()
+    wall_seconds = max(0.0, finished_at - started_at) if started_at is not None else 0.0
+    stage_timings = {}
+    artifact_timings = artifacts.timings
+    if output_path.is_file():
+        with h5py.File(output_path, "r") as output:
+            if "stage_timings" in output.attrs:
+                stage_timings = json.loads(output.attrs["stage_timings"])
+            if "artifact_timings" in output.attrs:
+                artifact_timings = json.loads(output.attrs["artifact_timings"])
+
+    stage_rows, pipeline_rows, intervals = [], [], []
+    for scope, stages in stage_timings.items():
+        scope_starts, scope_ends = [], []
+        for stage, timing in stages.items():
+            duration = float(timing.get("wall_seconds", 0.0))
+            stage_rows.append((duration, scope, stage, timing))
+            if "start" in timing and "end" in timing:
+                start, end = float(timing["start"]), float(timing["end"])
+                if end >= start:
+                    scope_starts.append(start)
+                    scope_ends.append(end)
+                    intervals.append((start, end))
+        if scope_starts:
+            pipeline_rows.append((max(scope_ends) - min(scope_starts), scope))
+
+    artifact_rows = []
+    for label, timing in artifact_timings.items():
+        start = timing.get("prepared_at")
+        end = timing.get("finished_at")
+        duration = max(0.0, float(end) - float(start)) if start is not None and end is not None else 0.0
+        artifact_rows.append((duration, label, timing))
+        if start is not None and end is not None and float(end) >= float(start):
+            intervals.append((float(start), float(end)))
+
+    Logger.log_perf(
+        f"SUMMARY run={input_path.name} wall={wall_seconds:.3f}s "
+        f"pipelines={len(pipeline_rows)} stages={len(stage_rows)} artifacts={len(artifact_rows)}"
+    )
+    for duration, scope in sorted(pipeline_rows, reverse=True)[:10]:
+        Logger.log_perf(f"SUMMARY pipeline={scope} wall={duration:.3f}s")
+    for duration, scope, stage, timing in sorted(stage_rows, reverse=True)[:10]:
+        Logger.log_perf(
+            f"SUMMARY pipeline={scope} stage={stage} wall={duration:.3f}s "
+            f"callback={float(timing.get('callback_wall_seconds', 0.0)):.3f}s "
+            f"resource_wait={float(timing.get('resource_wait_seconds', 0.0)):.3f}s "
+            f"artifact_wait={float(timing.get('artifact_wait_seconds', 0.0)):.3f}s"
+        )
+    for duration, label, timing in sorted(artifact_rows, reverse=True):
+        Logger.log_perf(
+            f"SUMMARY artifact={label} wall={duration:.3f}s "
+            f"admission_queue={float(timing.get('admission_queue_seconds', 0.0)):.3f}s "
+            f"resource_wait={float(timing.get('resource_admission_wait_seconds', 0.0)):.3f}s "
+            f"render_queue={float(timing.get('renderer_queue_seconds', 0.0)):.3f}s "
+            f"render={float(timing.get('rendering_seconds', 0.0)):.3f}s "
+            f"publication={float(timing.get('publication_seconds', 0.0)):.3f}s"
+        )
+
+    clipped = sorted(
+        (max(started_at, start), min(finished_at, end))
+        for start, end in intervals
+        if started_at is not None and end >= started_at and start <= finished_at
+    )
+    covered = 0.0
+    if clipped:
+        merged_start, merged_end = clipped[0]
+        for start, end in clipped[1:]:
+            if start <= merged_end:
+                merged_end = max(merged_end, end)
+            else:
+                covered += merged_end - merged_start
+                merged_start, merged_end = start, end
+        covered += merged_end - merged_start
+    unaccounted = max(0.0, wall_seconds - covered)
+    threshold = max(1.0, wall_seconds * 0.1)
+    Logger.log_perf(
+        f"SUMMARY accounted_wall={min(covered, wall_seconds):.3f}s "
+        f"unaccounted_wall={unaccounted:.3f}s threshold={threshold:.3f}s"
+    )
+    Logger.log_perf(
+        "SUMMARY note=operation durations may overlap; only the interval-union "
+        "accounted_wall value is overlap-adjusted"
+    )
+    if unaccounted > threshold:
+        Logger.log_perf(
+            f"WARNING significant unaccounted execution time for {input_path.name}: "
+            f"{unaccounted:.3f}s ({unaccounted / wall_seconds:.0%} of wall time). "
+            "Stage/artifact intervals exclude run setup, inter-stage coordination, and finalization."
+        )
+
+    if metrics is not None:
+        values = metrics.snapshot()
+        Logger.log_perf(
+            "SUMMARY storage "
+            f"source_reads={int(values.get('source_reads', 0))} "
+            f"array_copies={int(values.get('array_copies', 0))} "
+            f"array_copied_bytes={int(values.get('array_copied_bytes', 0))} "
+            f"scratch_resident_bytes={int(values.get('scratch_resident_allocation_bytes', 0))} "
+            f"scratch_disk_bytes={int(values.get('scratch_disk_allocation_bytes', 0))} "
+            f"h5_array_bytes={int(values.get('h5_logical_bytes', 0))} "
+            f"value_serializations={int(values.get('value_serializations', 0))} "
+            f"manifest_serializations={int(values.get('serializations', 0))}"
+        )
+        for name in sorted(
+            key for key, value in values.items()
+            if key.endswith("_seconds") and value > 0
+        ):
+            Logger.log_perf(f"SUMMARY operation={name} duration={values[name]:.3f}s")
 
 
 def _resolve_pipeline_options(

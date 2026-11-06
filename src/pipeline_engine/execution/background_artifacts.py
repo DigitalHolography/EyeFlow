@@ -39,20 +39,31 @@ class ArtifactExportResult:
     started_at: float = 0.0
 
 
-def _run_exporter(exporter, snapshot, manager, kwargs):
+def _run_exporter(label, exporter, snapshot, manager, kwargs):
     started = perf_counter()
     messages = []
     with Logger.capture_messages(messages.append):
+        Logger.log_perf(f"START artifact={label} stage=render at={started:.6f}")
         try:
             result = exporter(snapshot, manager, **kwargs)
         except Exception:
-            return ArtifactExportResult([], messages, traceback.format_exc(), perf_counter() - started, started)
+            duration = perf_counter() - started
+            Logger.log_perf(
+                f"END artifact={label} stage=render status=failed "
+                f"at={perf_counter():.6f} wall={duration:.3f}s"
+            )
+            return ArtifactExportResult([], messages, traceback.format_exc(), duration, started)
+        duration = perf_counter() - started
+        Logger.log_perf(
+            f"END artifact={label} stage=render status=succeeded "
+            f"at={perf_counter():.6f} wall={duration:.3f}s"
+        )
     if isinstance(result, ArtifactExportResult):
         result.messages = messages + result.messages
-        result.rendering_seconds = perf_counter() - started
+        result.rendering_seconds = duration
         result.started_at = started
         return result
-    return ArtifactExportResult(list(result), messages, rendering_seconds=perf_counter() - started, started_at=started)
+    return ArtifactExportResult(list(result), messages, rendering_seconds=duration, started_at=started)
 
 
 class ArtifactWorkers:
@@ -96,23 +107,34 @@ class ArtifactWorkers:
             self._admission.submit(self._submit_admitted, job, complete, budget)
 
     def _submit_admitted(self, job, complete, budget):
-        from time import monotonic
-
         admitted = False
-        started = monotonic()
+        admission_started = perf_counter()
         try:
+            resource_wait_started = perf_counter()
             request = budget.default_request(threads=1) if budget else None
             if budget:
                 budget.acquire(request.threads, request.memory)
                 admitted = True
-                if monotonic() - started > .1:
-                    Logger.log(
-                        f"[RESOURCES] Export {job.label} delayed {monotonic() - started:.2f}s."
-                    )
+            renderer_submitted_at = perf_counter()
+            job.timings.update(
+                admission_queue_seconds=admission_started - job.timings["submitted_at"],
+                resource_admission_wait_seconds=renderer_submitted_at - resource_wait_started,
+                admission_wait_seconds=renderer_submitted_at - job.timings["submitted_at"],
+                renderer_submitted_at=renderer_submitted_at,
+            )
+            if job.timings["resource_admission_wait_seconds"] > .1:
+                Logger.log_perf(
+                    f"artifact={job.label} stage=resource_admission "
+                    f"wait={job.timings['resource_admission_wait_seconds']:.3f}s"
+                )
             rendered = self._renderer.submit(
-                _run_exporter, job.exporter, job.snapshot, job.manager, job.kwargs,
+                _run_exporter, job.label, job.exporter, job.snapshot, job.manager, job.kwargs,
             )
         except Exception as exc:
+            job.timings["admission_wait_seconds"] = perf_counter() - job.timings["submitted_at"]
+            job.timings["admission_queue_seconds"] = max(
+                0.0, admission_started - job.timings["submitted_at"]
+            )
             if admitted:
                 budget.release(request.threads, request.memory)
             rendered = Future()
@@ -225,6 +247,13 @@ class BackgroundArtifacts:
         job.timings.update(prepared_at=started, preparation_seconds=perf_counter() - started)
         with self._lock:
             self._jobs.append(job)
+        Logger.log_perf(
+            f"START artifact={label} stage=snapshot_preparation at={started:.6f}"
+        )
+        Logger.log_perf(
+            f"END artifact={label} stage=snapshot_preparation "
+            f"at={perf_counter():.6f} wall={job.timings['preparation_seconds']:.3f}s"
+        )
         return job
 
     def cancel(self, job: ArtifactJob) -> None:
@@ -241,6 +270,10 @@ class BackgroundArtifacts:
         with self._lock:
             job.status = "running"
         Logger.log(f"[EXPORT] {job.manager.layout.stem} | {job.label}: generating artifacts in background.")
+        Logger.log_perf(
+            f"START artifact={job.label} stage=queue_wait "
+            f"at={job.timings['submitted_at']:.6f}"
+        )
         try:
             self._workers.submit(job, self._complete)
         except Exception as exc:
@@ -261,7 +294,12 @@ class BackgroundArtifacts:
             result = rendered.result()
             job.timings.update(rendering_seconds=result.rendering_seconds,
                                render_started_at=result.started_at,
-                               queue_seconds=max(0.0, result.started_at - job.timings["submitted_at"]))
+                               queue_seconds=max(
+                                   0.0, result.started_at - job.timings["submitted_at"]
+                               ),
+                               renderer_queue_seconds=max(
+                                   0.0, result.started_at - job.timings["renderer_submitted_at"]
+                               ))
             for message in result.messages:
                 source = f"{job.manager.layout.stem} | {job.label}: "
                 prefix, separator, body = message.partition("] ")
@@ -272,8 +310,16 @@ class BackgroundArtifacts:
             if result.error is not None:
                 raise RuntimeError(result.error)
             started = perf_counter()
+            job.timings["publication_started_at"] = started
+            Logger.log_perf(f"START artifact={job.label} stage=publication at={started:.6f}")
             self._publish(job, result.paths)
             job.timings["publication_seconds"] = perf_counter() - started
+            Logger.log_perf(
+                f"END artifact={job.label} stage=publication at={perf_counter():.6f} "
+                f"wall={job.timings['publication_seconds']:.3f}s "
+                f"file_copy={job.timings.get('copy_seconds', 0.0):.3f}s "
+                f"atomic_replace={job.timings.get('atomic_replace_seconds', 0.0):.3f}s"
+            )
             with self._lock:
                 job.status = "succeeded"
             Logger.log(
@@ -284,6 +330,17 @@ class BackgroundArtifacts:
             self._fail(job, exc)
         finally:
             job.timings["finished_at"] = perf_counter()
+            Logger.log_perf(
+                f"END artifact={job.label} status={job.status} "
+                f"at={job.timings['finished_at']:.6f} "
+                f"preparation={job.timings.get('preparation_seconds', 0.0):.3f}s "
+                f"admission_queue={job.timings.get('admission_queue_seconds', 0.0):.3f}s "
+                f"resource_wait={job.timings.get('resource_admission_wait_seconds', 0.0):.3f}s "
+                f"renderer_queue={job.timings.get('renderer_queue_seconds', 0.0):.3f}s "
+                f"render={job.timings.get('rendering_seconds', 0.0):.3f}s "
+                f"publication={job.timings.get('publication_seconds', 0.0):.3f}s "
+                f"file_copy={job.timings.get('copy_seconds', 0.0):.3f}s"
+            )
             try:
                 job.temporary.cleanup()
             finally:
@@ -319,8 +376,17 @@ class BackgroundArtifacts:
                 job.owner.reserve(temporary, writing=True)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 try:
+                    copy_started = perf_counter()
                     shutil.copyfile(source, temporary)
+                    job.timings["copy_seconds"] = (
+                        job.timings.get("copy_seconds", 0.0) + perf_counter() - copy_started
+                    )
+                    replace_started = perf_counter()
                     os.replace(temporary, target)
+                    job.timings["atomic_replace_seconds"] = (
+                        job.timings.get("atomic_replace_seconds", 0.0)
+                        + perf_counter() - replace_started
+                    )
                     published.append(target)
                 finally:
                     temporary.unlink(missing_ok=True)

@@ -58,7 +58,13 @@ def _run_pipeline_descriptor(
         if execution_variant is not None and processing_root
         else pipeline.name
     )
+    variant_name = execution_variant.name if execution_variant is not None else "shared"
+    started_at = perf_counter()
     Logger.log(f"[START] {label}")
+    Logger.log_perf(
+        f"START pipeline={pipeline.name} variant={variant_name} "
+        f"stage=invocation at={started_at:.6f}"
+    )
     ctx = PipelineContext(
         work_h5=work_h5,
         holodoppler_h5=holodoppler_h5,
@@ -97,9 +103,19 @@ def _run_pipeline_descriptor(
     except Exception as exc:
         ctx._cancel_artifacts()
         Logger.log_error(f"{pipeline.name}: {exc}")
+        Logger.log_perf(
+            f"END pipeline={pipeline.name} variant={variant_name} "
+            f"stage=invocation status=failed at={perf_counter():.6f} "
+            f"wall={perf_counter() - started_at:.3f}s"
+        )
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
     except BaseException:
         ctx._cancel_artifacts()
+        Logger.log_perf(
+            f"END pipeline={pipeline.name} variant={variant_name} "
+            f"stage=invocation status=interrupted at={perf_counter():.6f} "
+            f"wall={perf_counter() - started_at:.3f}s"
+        )
         raise
     # Publish the invocation snapshot only after its outer checkpoint accepts
     # every legacy result. Stage graphs publish their earlier handoffs separately.
@@ -110,14 +126,27 @@ def _run_pipeline_descriptor(
         Logger.log(f"[OK] {label}: calculations complete; artifact exports continue in background.")
     else:
         Logger.log(f"[OK] {label}")
+    Logger.log_perf(
+        f"END pipeline={pipeline.name} variant={variant_name} "
+        f"stage=invocation status={result.status} at={perf_counter():.6f} "
+        f"wall={perf_counter() - started_at:.3f}s"
+    )
     return result
 
 
 def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     """Calculate and persist a descriptor within its output checkpoint."""
     budget = current_resources()
+    admission_started = perf_counter()
     with budget.compute() if budget else nullcontext():
+        compute_started = perf_counter()
         result = pipeline.run(ctx)
+    Logger.log_perf(
+        f"pipeline={pipeline.name} "
+        f"variant={ctx.execution_variant.name if ctx.execution_variant is not None else 'shared'} "
+        f"stage=setup callback={perf_counter() - compute_started:.3f}s "
+        f"resource_wait={compute_started - admission_started:.3f}s"
+    )
     from pipeline_engine.stage_graph import StageGraph
     from pipeline_engine.stage_graph.executor import StageGraphExecutor
 
@@ -137,11 +166,16 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
         )
     if result is not None:
         write_started = perf_counter()
-        Logger.log(f"Starting {pipeline.name} HDF5 output write...")
+        variant_name = ctx.execution_variant.name if ctx.execution_variant is not None else "shared"
+        Logger.log_perf(
+            f"START pipeline={pipeline.name} variant={variant_name} "
+            f"stage=output_serialization at={write_started:.6f}"
+        )
         apply_pipeline_result(ctx, result)
-        Logger.log(
-            f"Completed {pipeline.name} HDF5 output write in "
-            f"{perf_counter() - write_started:.1f}s."
+        Logger.log_perf(
+            f"END pipeline={pipeline.name} variant={variant_name} "
+            f"stage=output_serialization at={perf_counter():.6f} "
+            f"wall={perf_counter() - write_started:.3f}s"
         )
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)

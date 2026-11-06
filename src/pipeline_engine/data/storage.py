@@ -11,6 +11,7 @@ from threading import RLock
 from uuid import uuid4
 from math import prod
 from threading import get_ident
+from time import perf_counter
 
 import numpy as np
 from scratch_location import temporary_directory
@@ -117,6 +118,7 @@ class _H5ArrayBuilder(H5Array):
     def __init__(self, storage, shape, options):
         import h5py
 
+        allocation_started = perf_counter()
         options = dict(options)
         dtype = np.dtype(options.pop("dtype", np.float32))
         reference = H5ArrayReference(str(storage.path(".h5")), tuple(shape), dtype)
@@ -134,6 +136,7 @@ class _H5ArrayBuilder(H5Array):
             raise
         storage.metrics.add("h5_arrays", 1)
         storage.metrics.add("h5_logical_bytes", self.nbytes)
+        storage.metrics.add("h5_array_allocation_seconds", perf_counter() - allocation_started)
 
     @property
     def reference(self):
@@ -157,7 +160,9 @@ class _H5ArrayBuilder(H5Array):
         ensure_memory_available(min(values.nbytes, 64 * 2**20))
         if shutil.disk_usage(Path(self._reference.path).parent).free < values.nbytes + 16 * 2**20:
             raise OSError("Insufficient local scratch space for the next scientific output chunk.")
+        write_started = perf_counter()
         self._file["data"][key] = values
+        self._storage.metrics.add("h5_array_write_seconds", perf_counter() - write_started)
         self._dirty = True
         self._storage.metrics.add("h5_written_bytes", values.nbytes)
 
@@ -239,7 +244,9 @@ class ProductStorage:
             return self.store_value(array)
         with self._resident_lock:
             self._resident[category] = self._resident.get(category, 0) + array.nbytes
+        copy_started = perf_counter()
         result = np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
+        self.metrics.add("resident_array_copy_seconds", perf_counter() - copy_started)
         self.metrics.add("array_copies", 1)
         self.metrics.add("array_copied_bytes", array.nbytes)
         result.flags.writeable = False
@@ -252,12 +259,14 @@ class ProductStorage:
         import cloudpickle
 
         path = self.path(".pickle")
+        started = perf_counter()
         try:
             with path.open("wb") as stream:
                 cloudpickle.dump(value, stream, protocol=5)
         except BaseException:
             path.unlink(missing_ok=True)
             raise
+        self.metrics.add("value_serialization_seconds", perf_counter() - started)
         self.metrics.add("value_serializations", 1)
         self.metrics.add("value_bytes", path.stat().st_size)
         shape = getattr(value, "shape", None)
@@ -290,6 +299,13 @@ class ProductStorage:
                     self.budget.release_memory(size, category)
 
     def store_array(self, array):
+        started = perf_counter()
+        try:
+            return self._store_array(array)
+        finally:
+            self.metrics.add("array_store_seconds", perf_counter() - started)
+
+    def _store_array(self, array):
         if isinstance(array, H5Array):
             return array.reference
         if isinstance(array, np.ndarray) and not array.flags.writeable:
@@ -333,9 +349,19 @@ class ProductStorage:
                     1, 16 * 2**20 // max(1, (array.dtype.itemsize * int(np.prod(array.shape[1:]))))
                 )
                 for first in range(0, array.shape[0], stride):
-                    output[first : first + stride] = array[first : first + stride]
+                    read_started = perf_counter()
+                    chunk = array[first : first + stride]
+                    self.metrics.add("array_copy_read_seconds", perf_counter() - read_started)
+                    write_started = perf_counter()
+                    output[first : first + stride] = chunk
+                    self.metrics.add("array_copy_write_seconds", perf_counter() - write_started)
             else:
-                output[...] = array
+                read_started = perf_counter()
+                chunk = array[...]
+                self.metrics.add("array_copy_read_seconds", perf_counter() - read_started)
+                write_started = perf_counter()
+                output[...] = chunk
+                self.metrics.add("array_copy_write_seconds", perf_counter() - write_started)
             output.flush()
             self.metrics.add("array_copies", 1)
             self.metrics.add("array_copied_bytes", array.nbytes)
