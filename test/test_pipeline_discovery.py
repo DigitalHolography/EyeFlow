@@ -32,7 +32,7 @@ class PipelineDiscoveryTests(unittest.TestCase):
             (sample_pipeline / "__init__.py").write_text(
                 "\n".join(
                     [
-                        "from pipeline_engine.imports import pipeline",
+                        "from pipeline_engine import pipeline",
                         "",
                         '@pipeline(name="runtime_sample", description="Runtime sample")',
                         "def run(ctx):",

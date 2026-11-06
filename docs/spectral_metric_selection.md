@@ -86,7 +86,7 @@ this document preserves the selection evidence in the repository.
 
 ## Regular execution and numerical definitions
 
-The existing hidden `low_freq_spectra` pipeline produces these outputs after
+The selectable `low_freq_spectra` pipeline produces these outputs when selected after
 the shared spectral preprocessing and beat alignment. CLI and GUI both use
 the existing execution path. Missing calibration or beat timing follows the
 existing optional-output policy. Calculations use raw `MedianBeat` and

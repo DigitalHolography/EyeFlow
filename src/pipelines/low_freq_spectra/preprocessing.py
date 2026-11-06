@@ -8,7 +8,7 @@ from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
 from utils.logger import Logger
 
-from .masks import gap_velocity_mask
+from calculations.topology import downsample_gap_zones
 from .spatial_reduction import DEFAULT_READ_BUFFER_BYTES, SpatialReducer, spectral_batches
 
 
@@ -29,7 +29,7 @@ def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):
         )
         return None
 
-    native_mask = gap_velocity_mask(analysis_zones, tuple(spectrograms.shape[-2:]))
+    native_mask = downsample_gap_zones(analysis_zones, target_shape=tuple(spectrograms.shape[-2:]))
     pixel_count = int(np.count_nonzero(native_mask))
     if pixel_count == 0:
         Logger.log_warning("Skipping gap analysis: the reduced application gap mask is empty.")

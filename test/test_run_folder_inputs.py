@@ -5,7 +5,7 @@ from test_run_service import _descriptor
 from test_stem_list_inputs import _write_companion_h5_files
 
 from input_output import discover_run_inputs, holo_input_status, is_run_directory
-from pipeline_engine.run_service import expand_run_inputs, resolve_run_spec
+from pipeline_engine.execution.run_service import expand_run_inputs, resolve_run_spec
 
 
 def _run_folder(parent, stem="scan"):

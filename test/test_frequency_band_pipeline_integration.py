@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 
 

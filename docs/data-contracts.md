@@ -1,5 +1,10 @@
 # Data contracts
 
+Large optional segment maps are constructed in bounded chunks through
+`OutputModel.build_arrays()`. Closed HDF5 backing is reused at handoff and final
+publication; absent segments use NaN fill values without dense initialization.
+Only finished payloads enter the existing output checkpoint and become immutable.
+
 This is the authoritative documentation layer for data moving into, through,
 and out of EyeFlow. Executable path constants in `src/input_output/schema/`
 remain the final source of truth.
@@ -195,7 +200,7 @@ Arbitrary positive target dimensions and noninteger scale ratios are supported;
 matching grids use a copy. The mask stays Boolean and is not averaged or reduced
 using all-true blocks. `calculations.topology.downsample_gap_zones` owns this
 array transform and receives the target shape explicitly; it does not read HDF5.
-`pipelines.low_freq_spectra.masks.gap_velocity_mask` adapts it to the video's spatial
+`calculations.topology.downsample_gap_zones` adapts it to the video's spatial
 shape. Gap preprocessing prepares this reduced mask in native HD `(y, x)`
 coordinates once. Spectral frames stay in exported coordinates; their spatial
 axes are not flipped or transposed for scalar reductions. This selects exactly
@@ -284,10 +289,8 @@ outputs, segmentation, and other pipeline
 work remain available. An unavailable/legacy spectra source omits this
 product with a warning. Physical capillary velocity remains deferred.
 
-The hidden `low_freq_spectra` pipeline owns all spectral stages. Its
-`auto_run_after="velocity"` declaration automatically adds it to any plan that
-already schedules velocity, without making it a selectable target or pulling
-velocity into unrelated runs. It declares `velocity_workflows` and
+The selectable `low_freq_spectra` pipeline owns all spectral stages and runs only
+when selected. It declares `velocity_workflows` and
 `capillary_analysis_zones` dependencies, owns the `gap_spectrograms` and
 `gap_per_beat_spectrograms` products, and executes once in the shared output
 namespace (`run_once=True`). Missing or legacy-group `/spectrograms` skips all
@@ -901,6 +904,22 @@ in the output HDF5.
 
 ## Output ownership and schema
 
+Managed scientific datasets have one producing invocation. Its uncommitted
+dataset may be edited or replaced within the transaction. After commit, data,
+shape, dtype and attributes are immutable: the producer gets
+`OutputImmutableError` on mutation/deletion, and other producers get
+`OutputOwnershipError`. Dataset/group path collisions raise
+`OutputPathConflictError`. These checks belong to `OutputModel`.
+
+Groups are shared structural namespaces. New children may be inserted beneath
+existing groups without changing committed siblings. Deleting a group containing
+committed datasets is forbidden. Group creation records its metadata owner;
+only that owner may change its attributes, and only runtime may designate a new
+metadata owner. Runtime owns workflow provenance and acquisition timing; topology
+owns shared rotated segment masks when velocity maps are requested.
+`StageJournal` owns root stage diagnostics; runtime owns other run metadata.
+No dataset revision or tombstone protocol exists.
+
 The output root is `<stem>_EF`. `execute_run` removes an existing output root
 before a new attempt, so a failed run leaves only that attempt's partial files.
 Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
@@ -911,6 +930,17 @@ velocity-analysis variant. Existing filename lookup remains a fallback. The
 primary file is `h5/<stem>_EF.h5`.
 Displacement magnitude videos use MJPEG AVI files under
 `avi/displacement_maps/`, with one file for each selected vessel mask.
+The separately selectable `displacement_profiles` pipeline writes beat-resolved
+products under `/ProcessingWidth/Displacement/Profiles` and derived peak/area
+products under `/ProcessingWidth/Displacement/Metrics`. Its disabled-by-default
+`segment_maps` option additionally writes
+`/ProcessingWidth/Displacement/Map/<RegistrationMethod>/<Vessel>/PerSegment` with
+axes `(x, y, time, beat, branch, radius, displacement_orientation)` and local
+components `local_x`, `local_y`. Moments cardiac timing is preferred, with
+frequency-band timing used only when valid moments timing is unavailable. No
+displacement HDF5 family is written when `displacement_profiles` is not selected.
+Retained profile and map arrays use the run scratch allocator and spill to local
+storage when the shared RAM budget cannot admit them.
 
 All artifact basenames start with `<stem>_`, including PNG, EPS, AVI, MP4,
 PDF, auxiliary HDF5, and archive outputs. The shared artifact naming helper
@@ -934,6 +964,8 @@ families are:
 - `/ProcessingMoments/SpatialGradientMetrics` for a directly selected spatial-gradient
   target, and `/ProcessingMoments/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
+- `/Segmentation/Laterality/{EyeLaterality,EyeLateralityConfidence}` for the
+  corresponding DopplerView laterality datasets when present;
 - `/Segmentation/Gaps/Legacy` for the original vessel/disc/cutoff support,
   `/Segmentation/Gaps/GapsFromM0ff` for dark regions of the enhanced HD temporal
   median after vessel dilation, and `/Segmentation/Gaps/Mask` for the intersection

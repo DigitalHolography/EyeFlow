@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 
 import numpy as np
 
@@ -17,19 +17,25 @@ from calculations.vessel_segments.sampling import (
     prepare_sampling_plans,
     resolve_segment_rotations,
 )
-from calculations.vessel_segments.sampling.cache import topology_source_id
+from calculations.vessel_segments.sampling.cache import topology_source_id, TopologyCacheKey
+from data_manager import InvocationResource
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.doppler_view import (
     DV_CHOROID_VESSEL_MASK_PATH,
     DV_RETINAL_VESSEL_LOGITS_PATH,
 )
-from pipeline_engine.imports import read_int_setting
+from pipeline_engine import read_int_setting, ProductSpec, StageGraph, StageSpec
+from pipeline_engine.context import require_managed_runtime
 from pipelines.vessel_inputs import load_vessel_topology_inputs
 from utils.logger import Logger
 
-from .cache import run_topology_cache
 from .gap_masks import gaps_from_m0ff
-from .outputs import pack_capillary_analysis_zones, pack_gap_mask, pack_topology_outputs
+from .outputs import (
+    pack_capillary_analysis_zones,
+    pack_gap_mask,
+    pack_topology_outputs,
+    pack_rotated_segment_masks,
+)
 
 TOPOLOGY_CORE_STATE = "topology_core.prepared"
 CAPILLARY_ANALYSIS_ZONES_STATE = "topology_core.capillary_analysis_zones"
@@ -37,15 +43,24 @@ _DEFAULT_NUMBER_OF_RADII_IN_FOV = 25
 _TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT = 0.95
 
 
-def run_topology_core(ctx) -> dict[str, object]:
-    """Prepare vessel topology and the shared capillary analysis support."""
+def _inputs(ctx):
+    ctx.dag.handoff("inputs", InvocationResource(load_vessel_topology_inputs(ctx)))
 
-    inputs = load_vessel_topology_inputs(ctx)
-    images = inputs.image_maps
-    segmentation = inputs.segmentation
+
+def _gaps(ctx):
+    inputs = ctx.dag.require("inputs")
+    legacy, disc = _prepare_capillary_zones(inputs)
+    zones, outputs = _prepare_gap_masks(ctx, inputs, legacy, disc)
+    if legacy is not None:
+        outputs.update(pack_capillary_analysis_zones(legacy, disc))
+    accepted_zones, _ = ctx.dag.handoff("gaps", (zones, outputs))
+    ctx.state.set(CAPILLARY_ANALYSIS_ZONES_STATE, accepted_zones)
+
+
+def _sampling(ctx):
+    inputs = ctx.dag.require("inputs")
+    images, segmentation = inputs.image_maps, inputs.segmentation
     vessels = segmentation.vessels
-    legacy_zones, capillary_disc = _prepare_capillary_zones(inputs)
-    capillary_zones, gap_outputs = _prepare_gap_masks(ctx, inputs, legacy_zones, capillary_disc)
     number_of_radii = read_int_setting(
         ctx,
         default=_DEFAULT_NUMBER_OF_RADII_IN_FOV,
@@ -88,21 +103,33 @@ def run_topology_core(ctx) -> dict[str, object]:
         name: resolve_segment_rotations(topology, topology_reference)
         for name, topology in prepared.items()
     }
-    ctx.state.set(TOPOLOGY_CORE_STATE, prepared)
-    if capillary_zones is not None:
-        capillary_zones.setflags(write=False)
-    ctx.state.set(CAPILLARY_ANALYSIS_ZONES_STATE, capillary_zones)
-    metrics = pack_topology_outputs(
-        vessels.artery,
-        vessels.vein,
-        segmentation.optic_disc,
-        prepared,
-        inputs.holodoppler.pixel_pitch,
-    )
-    if legacy_zones is not None:
-        metrics.update(pack_capillary_analysis_zones(legacy_zones, capillary_disc))
-    metrics.update(gap_outputs)
-    return metrics
+    accepted = ctx.dag.handoff("topology", prepared)
+    ctx.state.set(TOPOLOGY_CORE_STATE, accepted)
+
+
+def _pack_topology(prepared, ctx):
+    inputs = ctx.dag.require("inputs")
+    vessels = inputs.segmentation.vessels
+    outputs = pack_topology_outputs(vessels.artery, vessels.vein, inputs.segmentation.optic_disc,
+                                    prepared, inputs.holodoppler.pixel_pitch)
+    if "segment_velocity_maps" in ctx.options_for("velocity_analysis"):
+        outputs.update(pack_rotated_segment_masks(prepared))
+    return outputs
+
+
+def topology_graph(*, options=()):
+    return StageGraph((
+        StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),)),
+        StageSpec("gaps", _gaps, requires=("inputs",),
+                  products=(ProductSpec("gaps", pack=lambda value, ctx: value[1]),)),
+        StageSpec("sampling", _sampling, requires=("inputs",),
+                  products=(ProductSpec("topology", pack=_pack_topology),)),
+    ))
+
+
+def run_topology_core(ctx):
+    require_managed_runtime(ctx, "topology_core")
+    return topology_graph(options=ctx.options_for("topology_core"))
 
 
 def _prepare_gap_masks(ctx, inputs, legacy, optic_disc):
@@ -232,3 +259,23 @@ __all__ = [
     "prepared_topologies",
     "run_topology_core",
 ]
+
+
+TOPOLOGY_CACHE_STATE = "topology.prepared"
+
+
+def run_topology_cache(
+    run_state: MutableMapping[str, object],
+) -> dict[TopologyCacheKey, object]:
+    """Return the sampling-plan dictionary owned by one pipeline run."""
+
+    found = run_state.get(TOPOLOGY_CACHE_STATE)
+    if found is None:
+        cache: dict[TopologyCacheKey, object] = {}
+        run_state[TOPOLOGY_CACHE_STATE] = cache
+        return cache
+    if not isinstance(found, dict):
+        raise TypeError(
+            f"Run state '{TOPOLOGY_CACHE_STATE}' must contain a dictionary."
+        )
+    return found

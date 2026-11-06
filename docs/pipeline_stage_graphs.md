@@ -1,161 +1,106 @@
-# Pipeline-owned stage graphs
+# Executable stage graphs
 
-A pipeline can return a `PipelineGraph` instead of a result mapping. Its own
-package defines the graph, calculations, products, packers and export callbacks.
-The engine supplies execution and uses the existing `PipelineDAG` planner;
-scientific definitions do not belong in the engine or the global catalog.
-Legacy function pipelines remain supported with one invocation transaction.
-
-`pipelines/low_freq_spectra/stages.py` is the first production example. Its
-source, sampling, frequency calibration, spatial reduction, beat products, QC
-and figure nodes have separate dependency and commit boundaries.
-
-## Handoff instead of large return objects
+Pipeline packages declare an immutable `StageGraph`; the engine plans and runs
+it through the managed invocation path. Graph factories can be inspected without
+execution. Production runners reject
+direct calls with `Pipeline 'NAME' requires the EyeFlow managed execution runtime.`
 
 ```python
-from pipeline_engine.imports import PipelineGraph, PipelineNode, PipelineProduct
+from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 
 def calculate(ctx):
-    metric = compute_metric(ctx.dag.require("spectrum"))
-    ctx.dag.handoff("metric", metric)
-    # Additional work can follow. A later exception does not undo metric.
+    ctx.dag.handoff("metric", compute(ctx.dag.require("source")))
 
-def pack_metric(value, ctx):
-    paths = EyeFlowOutputPaths.active()
-    return {
-        f"{paths.spectrograms_masked_metrics_root}/F50":
-            (value, {"unit": "kHz", "dimDesc": []}),
-    }
-
-node = PipelineNode(
-    "metric", calculate,
-    requires=("spectrum",),
-    outputs=(PipelineProduct("metric", pack=pack_metric),),
-)
+graph = StageGraph((
+    StageSpec("source", load_source, products=(ProductSpec("source"),)),
+    StageSpec("metric", calculate, requires=("source",), products=(
+        ProductSpec("metric", pack=pack_metric, exposed=True),
+    )),
+))
 ```
 
-The pipeline returns `PipelineGraph((source_node, node, figure_node))`.
-Stage functions return `None`; they publish products explicitly. A deeply nested
-helper can import `handoff` or `current_pipeline_dag()` instead of accepting
-the whole context. These resolve an invocation-local `ContextVar`, not a singleton.
+Callbacks return `None`; `ctx.dag.handoff` accepts a product and returns its
+immutable consumer view, which can also be published through run state.
+`ProductSpec.path` and `pack(value, ctx)` are alternative output declarations;
+logical product IDs are independent of HDF5 paths. `graph.plan()` exposes ordered
+stages, producers and dependency queries. Invalid definitions fail preflight.
 
-A product may specify `path` and `attrs` for a single dataset, or `pack(value,
-ctx)` for a mapping of schema paths to existing `DatasetValue`/`(data, attrs)`
-payloads. Packing remains scientific pipeline code. Shared HDF5 writers retain
-their serialization, units, axis metadata, compression and provenance policies.
-An optional `validate(value)` callback owns product-specific numerical checks;
-the engine does not change NaN, sign or boundary policies.
+| Dependency | Required behavior |
+|---|---|
+| `requires` | Product must be accepted; later producer failure does not invalidate it. |
+| `optional_requires` | Wait for producer resolution; absence permits `ctx.dag.get` fallback. |
+| `after` | Named stage must finish successfully. |
 
-On handoff the engine validates the declared producer, snapshots the value,
-packs and atomically commits its datasets to the managed output model, advances
-the stage journal for those paths, and makes the logical product available.
-Large payloads use local array references; the final HDF5 is written at run
-finalization. Direct callers using a real HDF5 retain immediate writes. Duplicate
-handoffs and overlapping dataset paths within a graph are rejected. Failed
-packing leaves no partial product, including when the caller catches its error.
-Managed direct HDF5 writes from graph stages are rejected; use handoff.
+Missing mandatory handoffs fail the producer. Missing required inputs skip the
+consumer; `ProductSpec(optional=True)` allows omission and `ctx.dag.skip(reason)`
+records expected absence. Independent stages continue after failure.
 
-Handed values and values returned by `require()` are copied so subsequent
-caller/consumer mutations cannot change another stage's product. Use handoff
-for reduced calculated products, not lazy HD datasets or full source videos;
-typed input handles remain on the owning execution context.
+## Ownership and outcomes
 
-## Dependencies and partial success
+`DataManager` snapshots products into `ProductStorage`; readers share immutable
+arrays, while `require_mutable` makes a private copy. Mutable result envelopes
+are private per read. `InvocationResource` holds local readers/buffers that close
+at graph completion and cannot cross process boundaries.
 
-- `requires` names products that must have been handed off.
-- `optional_requires` orders a node after those producers, but allows it to run
-  if they fail or omit a product. Read them with `ctx.dag.get(name, default)`.
-- `after` requires successful completion of another named node, useful when
-  completion itself matters rather than an earlier partial handoff.
-- `PipelineProduct(optional=True)` permits a stage to omit that product.
-- `ctx.dag.skip(reason)` records expected missing input without failing the run.
+A handoff validates and packs the product, accepts its output checkpoint, then
+records availability and diagnostics. Later failures roll back pending output,
+state bindings and owned artifacts while retaining earlier commits. State
+changes must rebind through `ctx.state.set`; in-place mutations are not tracked.
+See [output ownership](data-contracts.md#output-ownership-and-schema) for dataset
+immutability, shared groups and metadata owners.
 
-Read access is restricted to a node's declared products. The planner validates
-missing producers, duplicate names, self-dependencies and cycles before running
-the graph. A failed producer can still have committed products. Consumers of
-those products continue; consumers of missing products skip. Independent nodes
-also continue. A failed stage reports an incomplete parent pipeline after safe
-nodes finish, preserving committed data and exports.
+| Invocation outcome | Meaning |
+|---|---|
+| `succeeded` | Required work completed; optional absence or legitimate no-output callbacks are allowed. |
+| `partial` | Required work was blocked, but independent products were accepted. |
+| `skipped` | Required work was blocked without an own accepted product. |
+| `failed` | A stage raised or omitted a mandatory handoff. Earlier products remain usable. |
 
-Root JSON attributes `stage_status`, `stage_failures` and `stage_skips` record
-outcomes per pipeline and execution variant. Existing external pipeline
-dependencies remain whole-pipeline dependencies; this change does not silently
-relax an unmigrated consumer's requirements.
-`stage_products` records each handed-off name, producer and actual HDF5 paths,
-including products committed by a stage that subsequently failed.
+## Artifacts and diagnostics
 
-## Artifact nodes and ownership
+Ready `artifact=True` stages may start during handoff. `wait_for_artifacts=True`
+waits for declared ancestors' exports and skips the consumer if an export fails.
+Existing `BackgroundArtifacts` owns rendering; numerical stages remain serial.
 
-Mark a node `artifact=True` to run it as soon as its declared products are ready,
-including during the producing function's handoff. It can call shared figure
-writers or `ctx.defer_artifacts(...)` with a pipeline-specific snapshot exporter.
-Only immutable snapshots go to worker processes, never live HDF5 handles.
-Exports start after the corresponding commit. A later calculation failure
-cannot cancel them or remove their files.
+Graph scope enforces context identity, owning thread and lifetime. `StageJournal`
+owns root `stage_status`, `stage_failures`, `stage_skips` and `stage_products`,
+merging qualified invocation scopes without overwriting other pipelines.
+Invocation-local reader adapters and scratch intermediates use `InvocationResource`;
+they remain local and do not serialize full working arrays at each stage.
+Durable datasets still pass through the authoritative output transaction. Only
+explicitly exposed scientific products may cross process boundaries.
 
-Shared PNG, EPS, paired article figures and image writers capture exports
-automatically during managed execution. They preserve existing paths and
-formatting. Figure construction stays with the producer; rendering/encoding
-runs in isolated Agg processes. Spectral exports use a reduced HDF5 snapshot
-so their figure construction also happens in the worker.
+Production factories and callbacks live together in each package's `runner.py`:
 
-Consumers such as reports declare `wait_for_artifacts=True`. Within a stage
-graph, declare the relevant product/`after` dependencies as well; the consumer
-joins those upstream export jobs. Top-level `pdf_report` joins the file's jobs.
-Other numerical nodes do not wait for exports.
+| Pipeline | Calculation flow and optional branches |
+|---|---|
+| `low_freq_spectra` | source, sampling, calibration, spatial reductions, beats, QC, figures |
+| `displacement_map` | prepare replay; shared raw reference; artery/vein fields; publish fields; separate AVI exports |
+| `displacement_profiles` | analysis, profiles; optional segment maps |
+| `topology_core` | inputs, gap support, shared sampling topology |
+| `spatial_gradient_moment0` | inputs, cached gradient profiles, lumen figures; persist only when targeted |
+| `absolute_waveform_metrics` | shared waveform inputs, global/selected segment metrics; optional quadrants reuse those metrics |
+| `waveform_shape_metrics` | shared waveform inputs, global/selected segment metrics; optional quadrants reuse those metrics |
+| `lowrank_waveform_decomposition` | shared waveform inputs, decomposition; optional independent quadrant decompositions |
+| `blood_volume_rate` | inputs, selected gradient/mask branches, corresponding figures |
+| `velocity` | selected inputs, all estimates, method-specific cardiac cycles, workflow publication |
+| `velocity_analysis` | inputs, optional segments, per-beat analysis, continuous/shared waveform publication; selected maps/profiles/fits/FFTs/quadrants and artifacts |
+| `pdf_report` | one atomic report render after upstream artifact completion |
 
-OutputManager and shared writers record explicit artifact ownership. Checkpoint
-rollback removes only files reserved by its uncommitted invocation/segment.
-There is no directory scan inferring ownership from creation time. Direct file
-writes that bypass managed writers/reservations cannot be automatically owned;
-custom writers must call `register_artifact_path(path, writing=True)`.
+Profile FFT accumulation stays fused with segment extraction to avoid replaying
+the velocity volume; its selected output stage publishes the retained result.
+Velocity method failures retain their established per-workflow outcome policy.
+See [process execution](parallel_pipeline_execution.md) for global readiness,
+transport and resource lifetime.
 
-The batch reuses at most two rendering processes and permits analysis of the
-next file while exports of the preceding file finish. At most two unfinished
-inputs are retained to bound snapshot accumulation. The asynchronous completion
-log identifies the input and producer. A file's final completion log and the
-batch return wait for its exports and final metadata. Stop-between-files stops
-new analysis and drains exports for inputs already started.
-
-## Velocity and execution scope
-
-Every file and pipeline invocation has a new graph execution. The moments and
-band-ratio variants also get separate contexts, product dictionaries, status
-records and artifact namespaces. Logical HDF5 paths pass through the existing
-`PipelineH5Output` namespace mapping, so a `ProcessingMoments/...` declaration
-is mapped to `ProcessingBandRatio/...` in that workflow.
-
-Copying a context clears its graph handle. A copied context cannot publish into
-the original graph, and a handle from an inactive/different invocation is
-rejected. Handoffs execute on the owning pipeline thread; compute threads return
-their results to it. HDF5 commit and scheduling are never performed by rendering
-processes. Tests cover partial handoffs in one velocity workflow while the
-other workflow succeeds with the same product names.
-
-## Verification
-
-Focused tests cover atomic and duplicate handoffs, invalid dependency graphs,
-committed data surviving later failures, early export dispatch, report barriers,
-artifact ownership, mutation isolation and velocity-variant separation. The
-full dual-workflow run with PNG/EPS exports and PDF reports also passes.
-
-The representative synthetic `(640,64,128,128)` HD fixture was replayed through
-the graph. All **149 scientific datasets**, including 127 metrics, were exactly
-equal in dtype and values to the prior reduced reference. The engine additionally
-writes its ordinary `app_versions` provenance dataset. One local run took
-11.34 seconds without figures, including engine initialization and checkpoints;
-that is not directly comparable to earlier isolated calculation-stage timings.
-The result and summary are under
-`.tmp/spectral_performance/stage_graph_640_final/`.
-
-```powershell
-.\.venv\Scripts\python.exe benchmarks/benchmark_spectral_stage_graph.py `
-  --hd .tmp/spectral_performance/representative_640/synthetic_HD.h5 `
-  --reference .tmp/spectral_performance/cpu_parallel_640/profile.h5 `
-  --output .tmp/spectral_graph_new
-```
-
-The benchmark uses a synthetic mask/cardiac timing and suppresses figure export;
-it does not measure a patient's full workflow or NAS performance. The frozen
-launcher supports multiprocessing dispatch, but an installer rebuild was not
-part of this verification.
+Inspect a resolved selection without executing calculations with
+`eyeflow-cli --data scan.holo --pipelines targets.txt --inspect-graph plan`.
+This writes `plan.json` and `plan.dot`; add `--observed-output result.h5` to
+include recorded statuses, timings, product sizes, failures and artifact jobs.
+Graph construction uses the same resolved selection as execution, including
+downstream segment requirements. Successful velocity variants remain dynamic
+until observed. DOT boundary diamonds are dependency ports, not runtime stages;
+independent branches do not imply concurrent execution. Stage wall durations
+include nested artifact callbacks; product snapshot/packing/commit and deferred
+rendering timings are recorded separately. Neither export requires Graphviz or
+AtomicViz at runtime.

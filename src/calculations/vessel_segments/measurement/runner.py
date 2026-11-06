@@ -36,6 +36,7 @@ def analyze_segment_profiles(
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
     retain_segment_maps: bool = False,
+    compute_transverse_profiles: bool = True,
     compute_longitudinal_profiles: bool = True,
     transverse_mask_dilation_pixels: int | Mapping[str, int] = 0,
     prepared_topologies: Mapping[str, SegmentSamplingPlan] | None = None,
@@ -44,11 +45,12 @@ def analyze_segment_profiles(
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
     segment_observer_factory: SegmentObserverFactory | None = None,
+    map_allocator=None,
 ) -> dict[str, SegmentMeasurements]:
     """Measure profiles from a time-varying scalar map for each vessel mask.
 
-    Disable longitudinal profiles when consumers need only transverse profiles
-    and segment signals; omitted arrays are represented by ``None``.
+    Disable either profile direction when consumers need only segment signals;
+    omitted arrays are represented by ``None``.
     """
 
     settings = SegmentMeasurementSettings.from_value(profile_settings)
@@ -94,8 +96,8 @@ def analyze_segment_profiles(
         topologies = dict(prepared_topologies)
         if set(topologies) != set(masks):
             raise ValueError("prepared_topologies must match vessel mask names.")
-    Logger.log(
-        f"Completed topology preparation in {perf_counter() - topology_started:.2f}s."
+    Logger.log_perf(
+        f"stage=segment_topology_preparation duration={perf_counter() - topology_started:.3f}s"
     )
 
     results: dict[str, SegmentMeasurements] = {}
@@ -138,18 +140,20 @@ def analyze_segment_profiles(
             segments,
             settings,
             retain_segment_maps=retain_segment_maps,
+            compute_transverse_profiles=compute_transverse_profiles,
             compute_longitudinal_profiles=compute_longitudinal_profiles,
             segment_observer=observer,
             transverse_mask_dilation_pixels=_dilation_pixels(
                 transverse_mask_dilation_pixels,
                 name,
             ),
+            map_allocator=map_allocator,
         )
         if backend is not None:
             backend.cupy.cuda.get_current_stream().synchronize()
-        Logger.log(
-            f"Completed {name} segment profile measurements in "
-            f"{perf_counter() - measurement_started:.2f}s."
+        Logger.log_perf(
+            f"stage={name}_segment_profile_measurement "
+            f"duration={perf_counter() - measurement_started:.3f}s"
         )
     return results
 
@@ -161,9 +165,11 @@ def _measure_segment_profiles_from_prepared(
     settings: SegmentMeasurementSettings,
     *,
     retain_segment_maps: bool,
+    compute_transverse_profiles: bool,
     compute_longitudinal_profiles: bool,
     segment_observer: SegmentObserver | None,
     transverse_mask_dilation_pixels: int,
+    map_allocator=None,
 ) -> SegmentMeasurements:
     geometry = prepared_topology.native
     frame_count = int(signal_map.shape[0])
@@ -172,18 +178,22 @@ def _measure_segment_profiles_from_prepared(
         prepared_topology,
         frame_count=frame_count,
         retain_segment_maps=retain_segment_maps,
+        compute_transverse_profiles=compute_transverse_profiles,
         compute_longitudinal_profiles=compute_longitudinal_profiles,
+        map_allocator=map_allocator,
     )
 
     for segment in prepared_segments:
         index = (segment.ring_index, segment.branch_index)
         rotated = segment.rotated
         rotated_mask = prepared_topology.rotated_masks[index]
-        profile_mask = dilate_segment_masks(
-            rotated_mask,
-            iterations=transverse_mask_dilation_pixels,
-            horizontal_only=True,
-        )
+        profile_mask = rotated_mask
+        if compute_transverse_profiles or segment_observer is not None:
+            profile_mask = dilate_segment_masks(
+                rotated_mask,
+                iterations=transverse_mask_dilation_pixels,
+                horizontal_only=True,
+            )
         if segment_observer is not None:
             segment_observer(
                 index[0],

@@ -35,12 +35,7 @@ from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
 )
-from pipeline_engine import (
-    execute_run,
-    expand_run_inputs,
-    resolve_run_spec,
-    selectable_pipeline_registry,
-)
+from pipeline_engine import execute_run, expand_run_inputs, resolve_run_spec, selectable_pipeline_registry
 from utils.logger import Logger
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
@@ -155,7 +150,11 @@ def run_cli(
     zip_outputs: bool = False,
     zip_name: str | None = None,
     copy_hd_passthrough: bool | None = None,
+    inspect_graph: Path | None = None,
+    observed_output: Path | None = None,
 ) -> int:
+    if inspect_graph is not None and zip_outputs:
+        raise ValueError("Graph inspection and ZIP execution are separate operations.")
     registry = _build_pipeline_registry()
     target_registry = selectable_pipeline_registry(registry.values())
     settings_store = AppSettingsStore()
@@ -208,6 +207,12 @@ def run_cli(
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )
+        if inspect_graph is not None:
+            from pipeline_engine import export_execution_graph
+
+            for path in export_execution_graph(spec, inspect_graph, observed_output=observed_output):
+                print(f"Execution graph: {path}")
+            return 0
         result = execute_run(spec)
         processed_outputs = list(result.outputs)
         archive_failed = False
@@ -317,7 +322,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="Include HD registration and Zernike data in the result H5.",
     )
+    parser.add_argument("--inspect-graph", type=Path,
+                        help="Export the resolved JSON/DOT plan to this filename prefix and exit.")
+    parser.add_argument("--observed-output", type=Path,
+                        help="Annotate --inspect-graph with a completed or partial EyeFlow HDF5 run.")
     args = parser.parse_args(argv)
+    if args.observed_output is not None and args.inspect_graph is None:
+        parser.error("--observed-output requires --inspect-graph")
 
     try:
         return run_cli(
@@ -327,6 +338,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             zip_outputs=args.zip,
             zip_name=args.zip_name,
             copy_hd_passthrough=args.copy_hd_passthrough,
+            inspect_graph=args.inspect_graph,
+            observed_output=args.observed_output,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Error: {exc}", file=sys.stderr)

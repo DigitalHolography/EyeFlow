@@ -21,7 +21,7 @@ Small pipelines may be one module. Larger pipelines use:
 ```text
 pipeline_name/
   __init__.py       declaration only
-  runner.py         orchestration and state ownership
+  runner.py         executable graph, stage callbacks, managed entry and state ownership
   sources.py        typed input assembly, when needed
   outputs.py        schema packing/artifact export
   calculator.py     product-specific calculation, when not broadly reusable
@@ -36,14 +36,14 @@ availability rather than unrelated import crashes.
 | Group | Responsibility and important upstream state |
 |---|---|
 | `velocity` (hidden) | Physical retinal velocity and cardiac timing; produces `velocity`, `cardiac_cycles`, and typed `velocity_workflows` |
-| `low_freq_spectra` (hidden) | Automatically follows velocity once per run when HD spectral video is available; owns shared spatial/gap spectra, beat alignment, filters, and spectral metrics |
+| `low_freq_spectra` (selectable) | Runs once when selected and HD spectral video is available; owns shared spatial/gap spectra, beat alignment, filters, and spectral metrics |
 | `topology_core` (hidden) | Canonical artery/vein prepared topology and combined legacy/intensity gap mask; produces `prepared_topology` and `capillary_analysis_zones` |
 | `velocity_analysis` | Shared per-beat/segment/profile state plus selectable persisted continuous, quadrant, profile-fit, FFT, map, and movie products; requires velocity and topology |
 | `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
 | `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `velocity_analysis` |
 | `pdf_report` | Report assembly after waveform and shape outputs |
-| `displacement_map` | Separate image-registration path producing magnitude videos and run-local dense-field artifacts |
+| `displacement_map` / `displacement_profiles` | Early independent image registration producing magnitude videos and run-local dense fields; later shared-timing profiles/metrics with separately gated per-segment maps |
 
 The declarations in each package are authoritative if this table drifts.
 
@@ -89,7 +89,7 @@ interpolated support skips gap analysis with a warning; segmentation and other
 pipeline work continue. Nonfinite included samples produce NaN per pair;
 finite negative gap spatial medians are clamped to zero after reduction and before
 beat subdivision. Gap provenance records `spatial_aggregation_method="median"`.
-Individual raw pixels are not clipped. The hidden `low_freq_spectra`
+Individual raw pixels are not clipped. The selectable `low_freq_spectra`
 pipeline runs once after velocity and passes detected moments timing to gap analysis,
 falling back to detected band-ratio timing when moments timing is unavailable,
 producing `/ProcessingSpectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.
@@ -231,8 +231,8 @@ Missing moment0ff falls back to Legacy; missing Legacy permits the intensity
 mask with the same disc constraints. Preserve native HD
 axes, finite-sample temporal medians, and lower-left output serialization.
 `low_freq_spectra` declares that dependency alongside `velocity_workflows`.
-The pipeline automatically enters plans that schedule velocity, stays hidden from
-selection, and skips absent/legacy-group spectra. Runtime source assembly keeps
+The pipeline runs only when selected and skips absent/legacy-group spectra.
+Runtime source assembly keeps
 spectra validation independent of velocity/topology; malformed spectra fail only
 the spectral descriptor and preserve safe velocity analyses.
 Physical capillary velocity remains deferred.
@@ -283,6 +283,8 @@ Retain clear method, calibration, and unit provenance for their results.
 ## State and output rules
 
 - Give shared state keys one owning runner and a declared producer DAG key.
+- Hand off scientific values normally and publish the accepted return value to
+  shared state. Reserve `InvocationResource` for local input/replay resources.
 - Use typed objects for multi-field state and validate type/shape in consumers.
 - Put durable products in the HDF5 result, not only in `ctx.state` or figures.
 - Use `EyeFlowOutputPaths.active()` for centralized output families.
@@ -299,8 +301,8 @@ Retain clear method, calibration, and unit provenance for their results.
 | Change | Read/inspect | Usually skip |
 |---|---|---|
 | New pipeline or option | `CONTRIBUTING.md`, package `__init__.py`, runner, DAG tests | GUI views; discovery is automatic |
-| Velocity source/semantics | `vessel_inputs.py`, velocity sources/runner/estimator, data contracts | displacement internals |
-| Per-beat/segment output | velocity-analysis builder and packers, output schema, profile/segment tests | settings UI |
+| Velocity source/semantics | `vessel_inputs.py`, velocity runner/estimator, data contracts | displacement internals |
+| Per-beat/segment output | velocity-analysis runner and packers, output schema, profile/segment tests | settings UI |
 | Spatial-gradient lumen metric | spatial-gradient package, vessel-segment sampling/measurement, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |

@@ -12,7 +12,7 @@ import numpy as np
 
 from calculations.vessel_segments.profiles.fits import quadratic as fitting
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.base import PIPELINE_REGISTRY, DatasetValue
+from pipeline_engine.planning.base import PIPELINE_REGISTRY, DatasetValue
 from pipeline_engine.context import PipelineH5Output
 from pipelines import load_pipeline_catalog
 from pipelines.velocity_analysis.outputs.profile_analysis import (

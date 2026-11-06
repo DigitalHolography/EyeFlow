@@ -13,7 +13,7 @@ data into reusable calculation inputs and pack results into the EyeFlow schema.
 
 | Scientific task | Start with | Important consumers/tests |
 |---|---|---|
-| Cardiac-cycle detection | `blood_flow_velocity/signal_analysis/cardiac_cycle/` | `pipelines/velocity/cardiac_cycle.py`; `test_cardiac_cycle_analysis.py`, `test_velocity_pipeline.py` |
+| Cardiac-cycle detection | `blood_flow_velocity/signal_analysis/cardiac_cycle/` | `pipelines/velocity/runner.py`; `test_cardiac_cycle_analysis.py`, `test_velocity_pipeline.py` |
 | Per-beat resampling | `blood_flow_velocity/signal_analysis/per_beat/` | velocity analysis and waveform metrics; `test_per_beat_runner.py` |
 | Waveform morphology/metrics | `blood_flow_velocity/signal_analysis/waveform/` | shape/absolute/low-rank pipelines; their focused tests |
 | Native branch, annulus, segment geometry | `topology/` | topology core; segment, orientation, mask-area, quadrant, and optic-disc tests |
@@ -49,7 +49,7 @@ It must not import `vessel_segments`, measurement execution, or the compute back
 | `sampling/extraction.py` | Padded scalar or component-valued map patches |
 | `sampling/transforms.py` | CPU/GPU interpolation, rotation, and mask transforms |
 | `sampling/streaming.py` | Ordered temporal chunks, halos, and scratch-memory planning |
-| `sampling/cache.py` | Pure plan-cache identity; run-state ownership stays in `pipelines/topology_core/cache.py` |
+| `sampling/cache.py` | Pure plan-cache identity; run-state ownership stays in `pipelines/topology_core/runner.py` |
 | `measurement/` | Scalar-map measurement settings, streaming accumulation, and `SegmentMeasurements` |
 | `profiles/reductions.py`, `per_beat.py` | Array-based spatial reductions and temporal resampling |
 | `profiles/fft.py` | Transverse FFT magnitude profiles and `SegmentFftAccumulator` |

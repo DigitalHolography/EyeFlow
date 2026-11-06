@@ -80,11 +80,9 @@ class WaveformShapeMetricsTests(unittest.TestCase):
                 "velocity_analysis",
                 "waveform_shape_metrics",
             ),
-            tuple(name for name in metrics_plan.names if name != "low_freq_spectra"),
+            metrics_plan.names,
         )
-        self.assertGreater(
-            metrics_plan.names.index("low_freq_spectra"), metrics_plan.names.index("velocity"),
-        )
+        self.assertNotIn("low_freq_spectra", metrics_plan.names)
         self.assertEqual("pdf_report", report_plan.names[-1])
         self.assertLess(
             report_plan.names.index("velocity_analysis"),

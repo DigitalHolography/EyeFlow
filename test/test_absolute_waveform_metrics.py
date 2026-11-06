@@ -6,7 +6,6 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import numpy as np
 
@@ -18,15 +17,12 @@ import pipelines  # noqa: E402
 from calculations.topology import BranchIdentityResult, SegmentTopology  # noqa: E402
 from calculations.vessel_segments.sampling import SegmentSamplingPlan  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG  # noqa: E402
+from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.absolute_waveform_metrics.calculator import (  # noqa: E402
     AbsoluteWaveformMetricsCalculator,
 )
 from pipelines.absolute_waveform_metrics.outputs import (  # noqa: E402
     pack_absolute_waveform_outputs,
-)
-from pipelines.absolute_waveform_metrics.runner import (  # noqa: E402
-    run_absolute_waveform_metrics,
 )
 
 
@@ -92,9 +88,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
                 "velocity_analysis",
                 "absolute_waveform_metrics",
             ),
-            tuple(name for name in plan.names if name != "low_freq_spectra"),
+            plan.names,
         )
-        self.assertGreater(plan.names.index("low_freq_spectra"), plan.names.index("velocity"))
+        self.assertNotIn("low_freq_spectra", plan.names)
 
     def test_global_outputs_preserve_amplitude_and_prefix_schema_root(self) -> None:
         schema = EyeFlowOutputPaths.active()
@@ -234,40 +230,6 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             },
         )
 
-    def test_runner_consumes_shared_per_beat_state(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        waveform = np.ones((1, 8), dtype=np.float32)
-        state = _State()
-        packed = {
-            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
-                [0.8], dtype=np.float32
-            ),
-            schema.artery_per_beat_filtered.velocity_signal: waveform,
-            schema.artery_per_beat_filtered.velocity_signal_band_limited: waveform,
-        }
-        shared = SimpleNamespace(per_beat_result="per-beat", velocity={})
-        ctx = SimpleNamespace(
-            state=state,
-            options_for=lambda _name: frozenset(),
-        )
-
-        with (
-            patch(
-                "pipelines.absolute_waveform_metrics.runner.velocity_analysis",
-                return_value=shared,
-            ),
-            patch(
-                "pipelines.absolute_waveform_metrics.runner.pack_velocity_per_beat_inputs",
-                return_value=packed,
-            ),
-        ):
-            outputs = run_absolute_waveform_metrics(ctx)
-
-        self.assertTrue(outputs)
-        self.assertEqual(
-            outputs,
-            state.get("absolute_waveform_metric_outputs"),
-        )
 
     def test_constant_waveform_has_expected_absolute_metrics(self) -> None:
         metrics = AbsoluteWaveformMetricsCalculator()._compute_metrics_1d(

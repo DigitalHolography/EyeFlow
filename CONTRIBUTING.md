@@ -126,7 +126,7 @@ its value is absent.
 Pipeline options can require other options and add upstream DAG needs:
 
 ```python
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 
 
 @pipeline(

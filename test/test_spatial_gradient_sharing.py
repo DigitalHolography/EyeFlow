@@ -18,7 +18,7 @@ from input_output.output_manager import OutputManager
 from input_output.runs.layout import HoloRunLayout
 from input_output.schema import PixelPitch
 from pipeline_engine import ExecutionVariant, PipelineContext
-from pipeline_engine.runtime import run_pipelines_to_output
+from pipeline_engine.execution.runtime import run_pipelines_to_output
 from pipelines.spatial_gradient_moment0 import profiles, runner
 from pipelines.spatial_gradient_moment0.cache import continuous_gradient_key
 from test_pipeline_failure_isolation import _descriptor
@@ -165,19 +165,19 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
     def pack(*args, **kwargs):
         if failure == "packing" and len(caches) == 1:
             raise ValueError("first packing failed")
-        return real_pack(*args, **kwargs)
+        outputs = real_pack(*args, **kwargs)
+        return {**outputs, "Invalid/value": object()} if failure == "persistence" and len(caches) == 1 else outputs
 
     def gradient(ctx):
         caches.append(ctx.computation_cache)
-        outputs = runner.run_spatial_gradient_moment0(ctx)
-        if failure == "persistence" and len(caches) == 1:
-            return {**outputs, "Invalid/value": object()}
+        return runner.run_spatial_gradient_moment0(ctx)
+
+    def observe(ctx):
         products[ctx.execution_variant.name] = ctx.state[runner.SPATIAL_GRADIENT_PRODUCTS_STATE]
-        return outputs
 
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     with (
-        patch.object(runner, "load_velocity_inputs", return_value=source),
+        patch.object(runner, "load_vessel_topology_inputs", return_value=source),
         patch.object(runner, "prepared_topologies", return_value=plans),
         patch.object(runner, "cardiac_cycle_indexes", side_effect=lambda ctx: (
             np.array([0, 4, 7]) if ctx.execution_variant.name == "doppler_moments"
@@ -194,11 +194,15 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
                 pipelines=[
                     _descriptor("source", produce, variants=True),
                     _descriptor("spatial_gradient_moment0", gradient, ("source",)),
+                    _descriptor("observe", observe, ("spatial_gradient_moment0",)),
                 ],
             )
         output_path = run()
         if failure is None:
-            assert products["doppler_moments"].artery_segments is products["frequency_bands"].artery_segments
+            first = products["doppler_moments"].artery_segments.segment_signal
+            second = products["frequency_bands"].artery_segments.segment_signal
+            assert np.shares_memory(first, second)
+            assert not first.flags.writeable and not second.flags.writeable
         else:
             assert set(products) == {"frequency_bands"}
         assert caches[0] is caches[1]

@@ -14,12 +14,14 @@ from runtime_process_fixtures import PROCESS_DESCRIPTOR
 
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
-from pipeline_engine.base import PipelineDescriptor
-from pipeline_engine.input_service import InputService
-from pipeline_engine.output_model import OutputModel
+from pipeline_engine.planning.base import PipelineDescriptor
+from pipeline_engine.data.input_service import InputService
+from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
-from pipeline_engine.storage import ArrayReference, ProductStorage, is_local_path
+from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.data.storage import ArrayReference, ProductStorage
+from scratch_location import is_local_path
+from utils.logger import Logger
 
 
 def descriptor(name, run, requires=(), **kwargs):
@@ -39,6 +41,8 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
     with h5py.File(source_path, "w") as source:
         source["video"] = original
         source["video_alias"] = source["video"]
+        source["z_group/video"] = source["video"]
+        source["unrequested"] = original
     with h5py.File(source_path) as source, ProductStorage() as storage:
         service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"))
         first, second = service.client(), service.client()
@@ -47,6 +51,7 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
             np.testing.assert_array_equal(a["video"][1:3], original[1:3])
             np.testing.assert_array_equal(b["video"][:], original)
             np.testing.assert_array_equal(b["video_alias"][:], original)
+            np.testing.assert_array_equal(b["z_group"]["/video"][:], original)
             assert b["video"].id == b["video_alias"].id
             assert service.source_reads == {("hd", "video"): 1}
             assert isinstance(service.cache[("hd", "video")], ArrayReference)
@@ -136,6 +141,8 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
         source.attrs["marker"] = marker
         source.attrs["crash"] = crash
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    log_messages = []
+    Logger.configure(on_log=log_messages.append)
 
     def initial_state(ctx):
         ctx.state.set("from_main", 5)
@@ -145,6 +152,10 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
         while not Path(marker + "-started").exists():
             assert monotonic() < deadline, "Process did not start concurrently"
             sleep(0.01)
+        assert any(
+            "Process fixture source is ready." in message
+            for message in log_messages
+        ), "Worker logs were not forwarded while the process was still running"
         assert not manager.path_for(OutputType.H5).exists()
         # Same source, different slice: the input service must reuse local data.
         np.testing.assert_array_equal(ctx.inputs.hd.dataset("moment0")[0], values[0])
@@ -161,20 +172,25 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
         assert ctx.state.get("from_worker") == 7
 
     budget = ResourceBudget(cpu_threads=4, memory_bytes=512 * 2**20)
-    with budget.activate(), pytest.raises(PipelineRunError):
-        run_pipelines_to_output(
-            output_manager=manager,
-            pipelines=[
-                descriptor("initial", initial_state),
-                replace(PROCESS_DESCRIPTOR, dag_requires=("initial",)),
-                descriptor("independent", independent, ("initial",)),
-                descriptor("downstream", downstream, ("independent",)),
-                descriptor("final", final_consumer, ("independent",), wait_for_artifacts=True),
-            ],
-            holodoppler_h5=source_path,
-            doppler_vision_h5=None,
-            copy_hd_passthrough=False,
-        )
+    try:
+        with budget.activate(), pytest.raises(PipelineRunError):
+            run_pipelines_to_output(
+                output_manager=manager,
+                pipelines=[
+                    descriptor("initial", initial_state),
+                    replace(PROCESS_DESCRIPTOR, dag_requires=("initial",)),
+                    descriptor("independent", independent, ("initial",)),
+                    descriptor("downstream", downstream, ("independent",)),
+                    descriptor(
+                        "final", final_consumer, ("independent",), wait_for_artifacts=True
+                    ),
+                ],
+                holodoppler_h5=source_path,
+                doppler_vision_h5=None,
+                copy_hd_passthrough=False,
+            )
+    finally:
+        Logger.reset_current()
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         np.testing.assert_array_equal(output["Worker/video"][:], values + 2)
         assert output["Main/value"][()] == 11
@@ -191,20 +207,32 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
 
 
 def test_resource_admission_shares_worker_memory_account():
-    budget = ResourceBudget(cpu_threads=2, memory_bytes=100)
+    mib = 2**20
+    budget = ResourceBudget(cpu_threads=2, memory_bytes=100 * mib)
     worker = budget.memory_account()
-    assert worker.reserve_memory(60)
-    assert not budget.reserve_memory(50, "transient")
-    assert budget.used["retained"] == 60
-    worker.release_memory(60)
-    assert budget.try_acquire(2, 90)
+    assert worker.reserve_memory(60 * mib)
+    assert not budget.reserve_memory(50 * mib, "transient")
+    assert budget.used["retained"] == 60 * mib
+    worker.release_memory(60 * mib)
+    assert budget.try_acquire(2, 90 * mib)
     assert not budget.try_acquire(1)
-    budget.release(2, 90)
+    budget.release(2, 90 * mib)
     assert sum(budget.used.values()) == 0
 
 
+def test_resource_admission_counts_unreserved_process_tree_rss():
+    mib = 2**20
+    budget = ResourceBudget(cpu_threads=2, memory_bytes=100 * mib)
+    worker = budget.memory_account()
+    with budget._observed_rss.get_lock():
+        budget._observed_rss.value = budget._baseline_rss + 65 * mib
+    assert worker.reserve_memory(10 * mib)
+    assert not worker.reserve_memory(10 * mib + 1)
+    worker.release_memory(10 * mib)
+
+
 def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():
-    from pipeline_engine.resources import thread_allowance
+    from runtime_limits import thread_allowance
 
     budget = ResourceBudget(cpu_threads=4, memory_bytes=1024)
     assert budget.try_acquire(3)
@@ -218,7 +246,7 @@ def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():
 def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, monkeypatch):
     from test_run_service import _write_input
 
-    from pipeline_engine.run_service import execute_run, resolve_run_spec
+    from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 
     holo = _write_input(tmp_path)
     spec = resolve_run_spec(
@@ -244,19 +272,19 @@ def test_native_initialization_failure_releases_compute_reservations(monkeypatch
         raise RuntimeError("native initialization failed")
 
     monkeypatch.setattr("pipeline_engine.resources.configure_native_threads", fail_native)
-    with pytest.raises(RuntimeError, match="native initialization failed"), budget.compute(1, 256):
+    with pytest.raises(RuntimeError, match="native initialization failed"), budget.activate():
         pass
     assert budget.cpu_used == 0
     assert sum(budget.used.values()) == 0
 
 
 def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypatch):
-    from pipeline_engine.scheduler import CoordinatorScheduler
+    from pipeline_engine.execution.process_executor import ProcessExecutor
 
     def fail_launch(self, pipeline, threads, memory):
         raise OSError("cannot prepare worker")
 
-    monkeypatch.setattr(CoordinatorScheduler, "_launch", fail_launch)
+    monkeypatch.setattr(ProcessExecutor, "_launch", fail_launch)
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     budget = ResourceBudget(cpu_threads=4, memory_bytes=512 * 2**20)
     with budget.activate(), pytest.raises(PipelineRunError, match="cannot prepare worker"):
@@ -276,8 +304,6 @@ def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypa
 def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
     tmp_path, missing_artery
 ):
-    from contextlib import nullcontext
-
     from input_output.schema.doppler_view import DV_ARTERY_MASK_PATH, DV_VEIN_MASK_PATH
     from pipelines import load_pipeline_catalog
 
@@ -295,10 +321,7 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
             dv[DV_ARTERY_MASK_PATH] = mask
         dv[DV_VEIN_MASK_PATH] = mask
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
-    with (
-        ResourceBudget(cpu_threads=4, memory_bytes=512 * 2**20).activate(),
-        pytest.raises(PipelineRunError) if missing_artery else nullcontext(),
-    ):
+    with ResourceBudget(cpu_threads=4, memory_bytes=512 * 2**20).activate():
         run_pipelines_to_output(
             output_manager=manager,
             pipelines=[displacement],
@@ -313,6 +336,7 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
         statuses = json.loads(output.attrs["stage_status"])["displacement_map"]
         assert statuses == {
             "prepare": "succeeded",
-            "artery": "failed" if missing_artery else "succeeded",
+            "artery": "skipped" if missing_artery else "succeeded",
             "vein": "succeeded",
+            "finalize": "succeeded",
         }

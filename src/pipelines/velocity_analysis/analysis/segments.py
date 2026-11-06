@@ -31,6 +31,7 @@ def analyze_velocity_segment_profiles(
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
     retain_velocity_maps: bool = False,
+    compute_transverse_profiles: bool = True,
     compute_longitudinal_profiles: bool = True,
     cycle_boundary_indexes=None,
     velocity_profile_fft: bool = False,
@@ -41,6 +42,7 @@ def analyze_velocity_segment_profiles(
     post_interpolation=None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
+    map_allocator=None,
 ) -> dict[str, VelocitySegmentResult]:
     """Measure velocity profiles and attach velocity-only optional products."""
 
@@ -84,6 +86,7 @@ def analyze_velocity_segment_profiles(
         source_id=source_id,
         topology_cache=topology_cache,
         retain_segment_maps=retain_velocity_maps,
+        compute_transverse_profiles=compute_transverse_profiles,
         compute_longitudinal_profiles=compute_longitudinal_profiles,
         transverse_mask_dilation_pixels=dilation_pixels,
         prepared_topologies=prepared_topologies,
@@ -92,6 +95,7 @@ def analyze_velocity_segment_profiles(
         temporal_halo=temporal_halo,
         scratch_array_count=scratch_array_count,
         segment_observer_factory=segment_observer_factory,
+        map_allocator=map_allocator,
     )
 
     results: dict[str, VelocitySegmentResult] = {}
@@ -102,9 +106,9 @@ def analyze_velocity_segment_profiles(
             fft_profiles=accumulator,
         )
         if accumulator is not None:
-            Logger.log(
-                f"Completed {name} optional velocity-profile FFT in "
-                f"{accumulator.elapsed_seconds:.2f}s."
+            Logger.log_perf(
+                f"pipeline=velocity_analysis stage={name}_optional_velocity_profile_fft "
+                f"duration={accumulator.elapsed_seconds:.3f}s"
             )
     return results
 

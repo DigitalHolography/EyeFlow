@@ -1,0 +1,52 @@
+{
+  "local": {
+    "array_bytes": 16777216,
+    "consumers": 3,
+    "unique_consumer_buffers": 1,
+    "manifest_bytes": [
+      982,
+      662,
+      662
+    ],
+    "peak_process_tree_rss": 94498816,
+    "metrics": {
+      "array_copies": 1.0,
+      "array_copied_bytes": 16777216.0,
+      "npy_writes": 1.0,
+      "npy_bytes": 16777344.0,
+      "local_acceptance_seconds": 0.01675239999894984,
+      "serializations": 3.0,
+      "manifest_bytes": 2306.0,
+      "h5_serialization_seconds": 0.06084499999997206,
+      "final_publication_seconds": 0.06536560002132319
+    }
+  },
+  "processes": {
+    "peak_process_tree_rss": 349270016,
+    "metrics": {
+      "array_copies": 3.0,
+      "array_copied_bytes": 20.0,
+      "serializations": 2.0,
+      "manifest_bytes": 1096.0,
+      "processes_started": 2.0,
+      "ipc_events": 22.0,
+      "ipc_bytes": 10660.0,
+      "worker_array_copies": 3.0,
+      "worker_array_copied_bytes": 8388620.0,
+      "worker_npy_writes": 1.0,
+      "worker_npy_bytes": 8388736.0,
+      "worker_local_acceptance_seconds": 0.01311649999115616,
+      "worker_serializations": 8.0,
+      "worker_manifest_bytes": 9228.0,
+      "accepted_commits": 8.0,
+      "acceptance_seconds": 0.06813090003561229,
+      "emission_to_acceptance_seconds": 0.18133390005095862,
+      "product_availability_seconds": 0.00902009999845177,
+      "exposed_products_accepted": 1.0,
+      "h5_serialization_seconds": 0.035415499994996935,
+      "final_publication_seconds": 0.03993030000128783
+    },
+    "cpu_slots_after_finish": 0,
+    "reserved_bytes_after_finish": 0
+  }
+}

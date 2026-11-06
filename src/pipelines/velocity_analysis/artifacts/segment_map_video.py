@@ -125,8 +125,8 @@ def export_segment_velocity_map_avis(
         )
         sources.append(source)
         if source is not None:
-            Logger.log(
-                f"Prepared {vessel} segment AVI source: "
+            Logger.log_perf(
+                f"pipeline=velocity_analysis stage={vessel}_segment_avi_snapshot "
                 f"shape={source.maps.shape}, "
                 f"input={source.maps.nbytes / (1024**3):.2f} GiB, "
                 f"candidates={stats.candidate_count}, tiles={len(source.tiles)}, "
@@ -144,9 +144,9 @@ def export_segment_velocity_map_avis(
         raise ValueError("Segment velocity-map sources must use the same unit.")
     velocity_range = _global_velocity_range(available_sources)
     velocity_label = available_sources[0].velocity_label
-    Logger.log(
-        "Resolved shared segment AVI velocity range in "
-        f"{perf_counter() - range_started:.3f}s: "
+    Logger.log_perf(
+        "pipeline=velocity_analysis stage=segment_avi_shared_velocity_range "
+        f"duration={perf_counter() - range_started:.3f}s "
         f"[{velocity_range[0]:.3f}, {velocity_range[1]:.3f}] "
         f"{velocity_label}."
     )
@@ -197,8 +197,8 @@ def export_segment_velocity_map_avis(
                         video.write_frame(frame)
         performance = video.performance_stats
         output_bytes = video.path.stat().st_size
-        Logger.log(
-            f"Completed {source.vessel} segment AVI: "
+        Logger.log_perf(
+            f"pipeline=velocity_analysis stage={source.vessel}_segment_avi_render "
             f"frames={video.frame_count}, size={source.video_side}x{source.video_side}, "
             f"output={output_bytes / (1024**2):.1f} MiB, "
             f"render={render_seconds:.3f}s, "
@@ -219,8 +219,8 @@ def export_segment_velocity_map_avis(
         ) as executor:
             paths = list(executor.map(export_source, available_sources))
     output_bytes = sum(Path(path).stat().st_size for path in paths)
-    Logger.log(
-        "Segment AVI export totals: "
+    Logger.log_perf(
+        "pipeline=velocity_analysis stage=segment_avi_export_totals "
         f"wall={perf_counter() - export_wall_started:.3f}s, "
         f"process CPU={process_time() - export_cpu_started:.3f}s, "
         f"output={output_bytes / (1024**2):.1f} MiB."
@@ -235,7 +235,9 @@ def _prepare_mosaic_source(
 ) -> tuple[_MosaicSource | None, _MosaicPreparationStats]:
     if packed_value is None:
         return None, _MosaicPreparationStats()
-    maps = np.asarray(getattr(packed_value, "data", packed_value), dtype=np.float32)
+    maps = getattr(packed_value, "data", packed_value)
+    if isinstance(maps, np.ndarray):
+        maps = np.asarray(maps, dtype=np.float32)
     if maps.ndim != 6:
         raise ValueError(
             "VelocityMapPerSegment must have shape "
@@ -410,14 +412,28 @@ def _mosaic_frame_chunk(
         return frames
 
     plan = source.render_plan
-    display_xy_time_tile = source.maps[
-        plan.x_indexes[:, None, None, None],
-        plan.y_indexes[None, :, None, None],
-        times[None, None, :, None],
-        int(beat_index),
-        plan.branch_indexes[None, None, None, :],
-        plan.radius_indexes[None, None, None, :],
-    ]
+    if isinstance(source.maps, np.ndarray):
+        display_xy_time_tile = source.maps[
+            plan.x_indexes[:, None, None, None],
+            plan.y_indexes[None, :, None, None],
+            times[None, None, :, None], int(beat_index),
+            plan.branch_indexes[None, None, None, :],
+            plan.radius_indexes[None, None, None, :],
+        ]
+    else:
+        # Read one tile and a bounded time slab; HDF5 does not implement NumPy's
+        # broadcast advanced indexing and must never expand the whole mosaic.
+        display_xy_time_tile = np.empty(
+            (plan.display_x_count, plan.display_y_count, times.size, len(source.tiles)),
+            dtype=np.float32,
+        )
+        for index, tile in enumerate(source.tiles):
+            values = source.maps[:, :, int(times.min()):int(times.max()) + 1,
+                                 int(beat_index), tile.branch_index, tile.radius_index]
+            display_xy_time_tile[..., index] = values[
+                plan.x_indexes[:, None, None], plan.y_indexes[None, :, None],
+                (times - times.min())[None, None, :],
+            ]
     display_time_tile_yx = display_xy_time_tile.transpose(2, 3, 1, 0)
     colored_tiles = _colorize_velocity(
         display_time_tile_yx,

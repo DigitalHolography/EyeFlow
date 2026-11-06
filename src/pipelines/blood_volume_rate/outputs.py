@@ -28,7 +28,7 @@ from plotting.formatting import add_legend
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.h5_storage import profile_h5_options
 from input_output.schema.output_payload import payload_array as _metric_data
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from pipelines.profile_outputs import profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
@@ -66,6 +66,10 @@ def pack_gradient_edge_outputs(
     for vessel_name, velocity, gradient, paths in vessels:
         _validate_profile_segment_alignment(vessel_name, velocity, gradient)
         velocity_profile = velocity.profile
+        if velocity_profile.transverse is None:
+            raise RuntimeError(
+                "Gradient-edge blood-volume rate requires transverse velocity profiles."
+            )
         profile = profile_dataset(
             np.asarray(velocity_profile.transverse.masked, dtype=np.float32),
             cycle_boundary_indexes,

@@ -10,9 +10,39 @@ import numpy as np
 from input_output.readers.nodes import is_group
 
 from app_settings import app_version
+from ..schema.doppler_view import (
+    DV_EYE_LATERALITY_CONFIDENCE_PATH,
+    DV_EYE_LATERALITY_PATH,
+)
+from ..schema.eyeflow_output import EyeFlowOutputPaths
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
 from .h5 import open_h5, resolve_dataset_target, set_attr_safe
-from .h5_storage import _MIN_COMPRESSION_BYTES
+from .h5_storage import _DEFAULT_GZIP_LEVEL, _MIN_COMPRESSION_BYTES
+
+
+def initialize_acquisition_metadata(model, hd):
+    """One runtime producer for shared timing datasets across all workflows."""
+    from .h5_output import PipelineH5Output
+
+    if hd.h5.h5file is None:
+        return
+    schema = EyeFlowOutputPaths.active()
+    values = {}
+    try:
+        frequency = hd.as_holodoppler().sampling_frequency_hz()
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        pass
+    else:
+        values[schema.sampling_frequency_hz] = (frequency, {"unit": "Hz"})
+    try:
+        timing = hd.as_holodoppler().timing()
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        pass
+    else:
+        values[f"{schema.meta_root}/BatchStride/value"] = np.float32(timing.batch_stride)
+        values[f"{schema.meta_root}/FrameIntervalSeconds/value"] = (np.float32(timing.dt_seconds), {"unit": "s"})
+    with model.checkpoint(owner="runtime"):
+        PipelineH5Output(model).write_many(values)
 
 
 def initialize_output_h5(
@@ -61,6 +91,7 @@ def _initialize_app_versions(
         with _source_handle(doppler_vision_source_h5, doppler_vision_source_file) as source_h5:
             source_versions = source_h5.get("app_versions")
             versions = _read_app_versions(source_versions)
+            _copy_doppler_vision_laterality(h5file, source_h5)
 
     versions["EF_version"] = _project_version()
     if "app_versions" in h5file:
@@ -70,6 +101,25 @@ def _initialize_app_versions(
         data=json.dumps(versions),
         dtype=h5py.string_dtype(encoding="utf-8"),
     )
+
+
+def _copy_doppler_vision_laterality(h5file: h5py.File, source_h5: h5py.File) -> None:
+    segmentation = EyeFlowOutputPaths.active().segmentation
+    paths = (
+        (DV_EYE_LATERALITY_PATH, segmentation.laterality.eye_laterality),
+        (
+            DV_EYE_LATERALITY_CONFIDENCE_PATH,
+            segmentation.laterality.eye_laterality_confidence,
+        ),
+    )
+    for source_path, output_path in paths:
+        source = source_h5.get(source_path)
+        if source is None:
+            continue
+        output_group, output_name = resolve_dataset_target(h5file, output_path)
+        if output_name in output_group:
+            del output_group[output_name]
+        _copy_source_object(source, output_group, output_name)
 
 
 @contextmanager
@@ -92,7 +142,14 @@ def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
             storage = parent.file.storage
             value = (storage.store_array(source) if source.dtype.kind in "biufc"
                      and source.size * source.dtype.itemsize >= 65536 else source[()])
-            options = {"compression": "gzip", "compression_opts": 9, "shuffle": True} if source.ndim else {}
+            compressible = (
+                source.ndim and source.dtype.kind in "biufc"
+                and source.size * source.dtype.itemsize >= _MIN_COMPRESSION_BYTES
+            )
+            options = (
+                {"compression": "gzip", "compression_opts": _DEFAULT_GZIP_LEVEL, "shuffle": True}
+                if compressible else {}
+            )
             target = parent.store_dataset(name, value, options)
         for key, value in source.attrs.items():
             target.attrs[key] = value
@@ -130,7 +187,7 @@ def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
         maxshape=source.maxshape,
         chunks=source.chunks or True,
         compression="gzip",
-        compression_opts=9,
+        compression_opts=_DEFAULT_GZIP_LEVEL,
         shuffle=True,
         fillvalue=source.fillvalue,
     )

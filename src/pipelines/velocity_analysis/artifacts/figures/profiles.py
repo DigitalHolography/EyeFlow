@@ -36,6 +36,8 @@ def export_cross_section_profile_artifacts(
     ):
         if segments is None:
             continue
+        if segments.profile.transverse is None:
+            continue
         raw = np.asarray(
             segments.profile.transverse.masked,
             dtype=np.float32,

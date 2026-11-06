@@ -1,0 +1,210 @@
+"""Execute one descriptor with the same checkpoints in either process mode."""
+
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager, nullcontext
+from time import perf_counter
+
+from app_settings import DEFAULT_VELOCITY_WORKFLOW_SELECTION, VelocityEstimationMethod
+from input_output.artifact_ownership import (
+    ArtifactOwnership, ArtifactScope, artifact_transaction, current_artifact_transaction,
+)
+from input_output.output_manager import OutputManager
+from input_output.writers.deferred import capture_artifact_writes
+from input_output.writers.h5 import h5_write_checkpoint
+from utils.logger import Logger
+
+from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
+from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor, ProcessResult
+from pipeline_engine.context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline, managed_invocation
+from pipeline_engine.execution.errors import format_pipeline_exception
+from pipeline_engine.execution.protocol import InvocationOutcome
+from pipeline_engine.resources import current_resources
+from pipeline_engine.data.scratch import RunArrayStorage
+
+
+def _run_pipeline_descriptor(
+    pipeline_desc: PipelineDescriptor,
+    *,
+    work_h5,
+    output_h5_path,
+    output_manager: OutputManager,
+    holodoppler_h5,
+    doppler_vision_h5,
+    holodoppler_config,
+    doppler_vision_config,
+    shared_inputs: PipelineInputs | None = None,
+    scratch: RunArrayStorage | None = None,
+    variables: dict[str, object],
+    pipeline_options: Mapping[str, Sequence[str]],
+    pipeline_order: Sequence[str],
+    pipeline_targets: Sequence[str],
+    velocity_estimation_method: VelocityEstimationMethod | None,
+    execution_variant: ExecutionVariant | None,
+    band_ratio_frequency_scale_hz: float,
+    on_pipeline_success: Callable[[str], None] | None,
+    on_progress: Callable[[], None] | None,
+    processing_root: str | None = None,
+    output_provenance: Mapping[str, object] | None = None,
+    background_artifacts: BackgroundArtifacts | None = None,
+    computation_cache: dict[object, object] | None = None,
+    velocity_workflow_selection: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    product_inputs: Mapping[str, object] | None = None,
+    on_product_commit=None,
+    product_owner_id=None,
+) -> InvocationOutcome:
+    pipeline = pipeline_desc.instantiate()
+    label = (
+        f"{pipeline.name} [{execution_variant.name}]"
+        if execution_variant is not None and processing_root
+        else pipeline.name
+    )
+    variant_name = execution_variant.name if execution_variant is not None else "shared"
+    started_at = perf_counter()
+    Logger.log(f"[START] {label}")
+    Logger.log_perf(
+        f"START pipeline={pipeline.name} variant={variant_name} "
+        f"stage=invocation at={started_at:.6f}"
+    )
+    ctx = PipelineContext(
+        work_h5=work_h5,
+        holodoppler_h5=holodoppler_h5,
+        doppler_vision_h5=doppler_vision_h5,
+        holodoppler_config=holodoppler_config,
+        doppler_vision_config=doppler_vision_config,
+        shared_inputs=shared_inputs,
+        computation_cache=computation_cache,
+        scratch=scratch,
+        preferred_input=pipeline_desc.input_slot,
+        output_manager=output_manager,
+        pipeline_name=pipeline.name,
+        processing_root=processing_root,
+        output_provenance=output_provenance,
+        execution_variant=execution_variant,
+        variables=variables,
+        pipeline_options=pipeline_options,
+        pipeline_order=pipeline_order,
+        pipeline_targets=pipeline_targets,
+        velocity_estimation_method=velocity_estimation_method,
+        velocity_workflow_selection=velocity_workflow_selection,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+        background_artifacts=background_artifacts,
+        product_inputs=product_inputs,
+        on_product_commit=on_product_commit,
+        product_owner_id=product_owner_id,
+    )
+    try:
+        with (managed_invocation(ctx),
+              _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts, owner=label) as checkpoint):
+            # Consumers may create intermediate images they use immediately.
+            # Their upstream artifacts have already been joined by the runtime.
+            capture = None if pipeline_desc.wait_for_artifacts else ctx._capture_artifact_write
+            with capture_artifact_writes(capture):
+                result = _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint)
+    except Exception as exc:
+        ctx._cancel_artifacts()
+        Logger.log_error(f"{pipeline.name}: {exc}")
+        Logger.log_perf(
+            f"END pipeline={pipeline.name} variant={variant_name} "
+            f"stage=invocation status=failed at={perf_counter():.6f} "
+            f"wall={perf_counter() - started_at:.3f}s"
+        )
+        raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
+    except BaseException:
+        ctx._cancel_artifacts()
+        Logger.log_perf(
+            f"END pipeline={pipeline.name} variant={variant_name} "
+            f"stage=invocation status=interrupted at={perf_counter():.6f} "
+            f"wall={perf_counter() - started_at:.3f}s"
+        )
+        raise
+    # Publish the invocation snapshot only after its outer checkpoint accepts
+    # every legacy result. Stage graphs publish their earlier handoffs separately.
+    ctx._start_artifacts()
+    if result.status != "succeeded":
+        Logger.log(f"[{result.status.upper()}] {label}: {result.reason}")
+    elif ctx.artifacts_pending:
+        Logger.log(f"[OK] {label}: calculations complete; artifact exports continue in background.")
+    else:
+        Logger.log(f"[OK] {label}")
+    Logger.log_perf(
+        f"END pipeline={pipeline.name} variant={variant_name} "
+        f"stage=invocation status={result.status} at={perf_counter():.6f} "
+        f"wall={perf_counter() - started_at:.3f}s"
+    )
+    return result
+
+
+def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
+    """Calculate and persist a descriptor within its output checkpoint."""
+    budget = current_resources()
+    admission_started = perf_counter()
+    with budget.compute() if budget else nullcontext():
+        compute_started = perf_counter()
+        result = pipeline.run(ctx)
+    Logger.log_perf(
+        f"pipeline={pipeline.name} "
+        f"variant={ctx.execution_variant.name if ctx.execution_variant is not None else 'shared'} "
+        f"stage=setup callback={perf_counter() - compute_started:.3f}s "
+        f"resource_wait={compute_started - admission_started:.3f}s"
+    )
+    from pipeline_engine.stage_graph import StageGraph
+    from pipeline_engine.stage_graph.executor import StageGraphExecutor
+
+    outcome = InvocationOutcome(pipeline.name)
+    if isinstance(result, StageGraph):
+        outcome = StageGraphExecutor(result, ctx, checkpoint, _pipeline_checkpoint).run()
+        result = None
+    if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
+        raise ValueError(
+            f"Pipeline '{pipeline.name}' published execution variants without "
+            "declaring produces_execution_variants=True."
+        )
+    if pipeline_desc.produces_execution_variants and not ctx.execution_variants:
+        raise ValueError(
+            f"Pipeline '{pipeline.name}' declared execution variants but "
+            "published none."
+        )
+    if result is not None:
+        write_started = perf_counter()
+        variant_name = ctx.execution_variant.name if ctx.execution_variant is not None else "shared"
+        Logger.log_perf(
+            f"START pipeline={pipeline.name} variant={variant_name} "
+            f"stage=output_serialization at={write_started:.6f}"
+        )
+        apply_pipeline_result(ctx, result)
+        Logger.log_perf(
+            f"END pipeline={pipeline.name} variant={variant_name} "
+            f"stage=output_serialization at={perf_counter():.6f} "
+            f"wall={perf_counter() - write_started:.3f}s"
+        )
+    if isinstance(result, ProcessResult):
+        result.output_h5_path = str(output_h5_path)
+    finish_pipeline(ctx, pipeline.name)
+    from dataclasses import replace
+    return replace(outcome, variants=ctx.execution_variants, variant_failures=ctx.execution_variant_failures)
+
+
+@contextmanager
+def _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts=None, *, owner=None):
+    """Restore one invocation and remove only artifacts explicitly owned by it."""
+    state = dict(variables)
+    parent_owner = current_artifact_transaction()
+    registry = (background_artifacts.ownership if background_artifacts else
+                parent_owner._registry if parent_owner is not None else ArtifactOwnership())
+    transaction = ArtifactScope(registry, output_manager.layout.ef_dir)
+    try:
+        with (work_h5.writing_as(owner) if owner is not None and hasattr(work_h5, "writing_as") else nullcontext(),
+              artifact_transaction(transaction), h5_write_checkpoint(work_h5) as h5_checkpoint):
+            class Checkpoint:
+                def commit(self, paths=()):
+                    h5_checkpoint.commit(paths)
+                    state.clear()
+                    state.update(variables)
+                    transaction.commit()
+
+            yield Checkpoint()
+    except BaseException:
+        variables.clear()
+        variables.update(state)
+        transaction.rollback()
+        raise

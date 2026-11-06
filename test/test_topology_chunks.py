@@ -256,3 +256,45 @@ def test_skipping_longitudinal_velocity_preserves_other_measurements() -> None:
             generic.profile("longitudinal", masked=masked),
             full.profile("longitudinal", masked=masked),
         )
+
+
+def test_skipping_transverse_profiles_retains_only_the_signal_reduction() -> None:
+    from calculations.vessel_segments.measurement.accumulator import (
+        SegmentProfileAccumulator,
+    )
+    from calculations.vessel_segments.profiles.reductions import transverse_profiles
+    from calculations.vessel_segments.sampling.models import SampledSegmentChunk
+
+    prepared = _prepared()
+    side = prepared.profile_side_pixels
+    rotated = np.arange(2 * side * side, dtype=np.float32).reshape(2, side, side)
+    mask = prepared.rotated_masks[0, 0]
+    rotated_masked = np.where(mask[None], rotated, np.nan).astype(np.float32)
+    accumulator = SegmentProfileAccumulator(
+        prepared,
+        frame_count=2,
+        retain_segment_maps=False,
+        compute_transverse_profiles=False,
+        compute_longitudinal_profiles=False,
+    )
+    segment = SampledSegmentChunk(
+        0,
+        0,
+        slice(0, 2),
+        rotated,
+        rotated_masked,
+    )
+    with patch(
+        "calculations.vessel_segments.measurement.accumulator.transverse_profiles",
+        wraps=transverse_profiles,
+    ) as reduction:
+        accumulator.add_chunk(segment, mask)
+    # The one remaining reduction defines the scalar segment signal. The
+    # unmasked and output-profile reductions are both omitted.
+    reduction.assert_called_once()
+    result = accumulator.finish(sample_spacing_mm=0.01)
+    assert result.transverse is None
+    assert result.longitudinal is None
+    with pytest.raises(RuntimeError, match="Transverse profiles were not requested"):
+        result.profile("transverse", masked=True)
+    assert np.all(np.isfinite(result.segment_signal[0, 0]))

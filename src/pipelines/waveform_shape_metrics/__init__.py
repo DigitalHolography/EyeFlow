@@ -1,8 +1,8 @@
 """Selectable waveform-shape metric products."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 
-from .runner import run_waveform_shape_metrics
+from .runner import run_waveform_shape_metrics, waveform_shape_graph
 
 
 @pipeline(
@@ -25,6 +25,7 @@ from .runner import run_waveform_shape_metrics
         ),
     ],
     dag_produces=["waveform_shape_metrics"],
+    graph_factory=waveform_shape_graph,
     input_slot="both",
 )
 def run(ctx):

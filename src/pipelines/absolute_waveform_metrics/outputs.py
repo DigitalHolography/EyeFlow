@@ -21,6 +21,7 @@ def pack_absolute_waveform_metric_calculations(
     inputs: AbsoluteWaveformMetricInputs,
     *,
     include_segments: bool = True,
+    include_global: bool = True,
 ) -> dict[str, object]:
     """Calculate and pack unprefixed absolute metric groups."""
     periods = np.asarray(inputs.beat_period_seconds, dtype=float)
@@ -43,7 +44,7 @@ def pack_absolute_waveform_metric_calculations(
                 vessel.bandlimited_segments,
                 periods,
             )
-        if vessel.raw_global is not None and vessel.bandlimited_global is not None:
+        if include_global and vessel.raw_global is not None and vessel.bandlimited_global is not None:
             calculator._pack_global_outputs(
                 metrics,
                 vessel_name,
@@ -64,6 +65,7 @@ def pack_absolute_waveform_outputs(
     vein_segments=None,
     include_per_beat: bool = True,
     include_segments: bool = True,
+    include_global: bool = True,
     include_quadrants: bool = False,
 ) -> dict[str, object]:
     """Build the selected absolute waveform metric output groups."""
@@ -75,6 +77,7 @@ def pack_absolute_waveform_outputs(
     computed = pack_absolute_waveform_metric_calculations(
         inputs,
         include_segments=include_segments or include_quadrants,
+        include_global=include_global,
     )
     computed_outputs = {
         f"{schema.absolute_waveform_metrics_root}/{key}": value

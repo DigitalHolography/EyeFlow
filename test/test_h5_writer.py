@@ -24,7 +24,9 @@ from input_output.writers.h5 import (  # noqa: E402
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader  # noqa: E402
 from input_output.writers.h5_initialization import initialize_output_h5  # noqa: E402
-from pipeline_engine.base import DatasetValue  # noqa: E402
+from pipeline_engine.planning.base import DatasetValue  # noqa: E402
+from pipeline_engine.output.output_model import OutputModel  # noqa: E402
+from pipeline_engine.data.storage import ProductStorage  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
@@ -60,7 +62,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(path, "r") as h5file:
                 dataset = h5file["values"]
                 self.assertEqual("gzip", dataset.compression)
-                self.assertEqual(9, dataset.compression_opts)
+                self.assertEqual(4, dataset.compression_opts)
                 self.assertTrue(dataset.shuffle)
                 self.assertEqual(values.dtype, dataset.dtype)
                 self.assertEqual(values.shape, dataset.shape)
@@ -245,6 +247,13 @@ class H5WriterTests(unittest.TestCase):
                 hd.create_dataset("registration", data=values).attrs["unit"] = "pixel"
             with h5py.File(dv_path, "w") as dv:
                 dv.create_dataset("app_versions", data=json.dumps({"DV_version": "test"}))
+                laterality = dv.create_group("laterality")
+                laterality.create_dataset("eye_laterality", data="right")
+                confidence = laterality.create_dataset(
+                    "eye_laterality_confidence",
+                    data=np.float32(0.875),
+                )
+                confidence.attrs["unit"] = "1"
             with h5py.File(hd_path, "r") as hd, h5py.File(dv_path, "r") as dv:
                 with h5py.File(output_path, "w") as output_h5:
                     with patch(
@@ -261,11 +270,69 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(output_path, "r") as output_h5:
                 registration = output_h5["Meta/registration"]
                 self.assertEqual("gzip", registration.compression)
-                self.assertEqual(9, registration.compression_opts)
+                self.assertEqual(4, registration.compression_opts)
                 self.assertEqual("pixel", registration.attrs["unit"])
                 np.testing.assert_array_equal(values, registration[()])
                 self.assertEqual(
                     "test", json.loads(_read_scalar_string(output_h5["app_versions"]))["DV_version"],
+                )
+                self.assertEqual(
+                    "right",
+                    _read_scalar_string(
+                        output_h5["Segmentation/Laterality/EyeLaterality"]
+                    ),
+                )
+                self.assertAlmostEqual(
+                    0.875,
+                    float(
+                        output_h5[
+                            "Segmentation/Laterality/EyeLateralityConfidence"
+                        ][()]
+                    ),
+                )
+                self.assertEqual(
+                    "1",
+                    output_h5[
+                        "Segmentation/Laterality/EyeLateralityConfidence"
+                    ].attrs["unit"],
+                )
+
+    def test_initialize_laterality_uses_the_current_output_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dv_path = Path(tmp_dir) / "input_DV.h5"
+            output_path = Path(tmp_dir) / "output.h5"
+            with h5py.File(dv_path, "w") as dv:
+                dv.create_dataset("laterality/eye_laterality", data="left")
+                dv.create_dataset(
+                    "laterality/eye_laterality_confidence",
+                    data=np.float32(0.75),
+                )
+
+            with ProductStorage(
+                directory=Path(tmp_dir) / "scratch"
+            ) as storage, h5py.File(dv_path, "r") as dv:
+                output = OutputModel(storage, output_path)
+                initialize_output_h5(
+                    output,
+                    doppler_vision_source_file=str(dv_path),
+                    doppler_vision_source_h5=dv,
+                )
+                output.publish()
+
+            with h5py.File(output_path, "r") as output_h5:
+                self.assertEqual(
+                    "left",
+                    _read_scalar_string(
+                        output_h5["Segmentation/Laterality/EyeLaterality"]
+                    ),
+                )
+                self.assertAlmostEqual(
+                    0.75,
+                    float(
+                        output_h5[
+                            "Segmentation/Laterality/EyeLateralityConfidence"
+                        ][()]
+                    ),
                 )
 
 

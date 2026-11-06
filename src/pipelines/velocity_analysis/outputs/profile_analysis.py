@@ -14,7 +14,7 @@ from calculations.vessel_segments.profiles.fits import (
     fit_quadratic_profiles,
 )
 from input_output import EyeFlowOutputPaths
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from utils.logger import Logger
 
 _OUTPUT_PATHS = EyeFlowOutputPaths.active()
@@ -44,9 +44,10 @@ def pack_velocity_profile_analysis_outputs(
     for vessel, values in datasets.items():
         started = perf_counter()
         results = fit_quadratic_profiles(values)
-        Logger.log(
-            f"Completed {vessel.lower()} weighted velocity-profile analysis in "
-            f"{perf_counter() - started:.1f}s."
+        Logger.log_perf(
+            f"pipeline=velocity_analysis variant=shared "
+            f"stage={vessel.lower()}_weighted_velocity_profile_analysis "
+            f"duration={perf_counter() - started:.3f}s"
         )
         attrs = {
             "dimDesc": ["time", "beat", "branch", "radius"],

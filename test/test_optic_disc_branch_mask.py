@@ -19,7 +19,7 @@ from calculations.topology import (
     label_vessel_branches,
 )
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
-from pipelines.velocity_analysis import builder as runner
+from pipelines.velocity_analysis import runner as runner
 from pipelines.topology_core.outputs import (
     INNER_R0_VESSEL_LABEL,
     pack_topology_outputs,

@@ -13,12 +13,7 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import average_cycle
 from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import HD_MOMENT0_PATH, HD_MOMENT2_PATH
-from pipeline_engine.imports import (
-    ProcessResult,
-    pipeline,
-    resolve_holodoppler_timing,
-    with_attrs,
-)
+from pipeline_engine import ProcessResult, pipeline, resolve_holodoppler_timing, with_attrs
 
 MOMENT2_MATLAB_SCALE = np.float32(1e-6)
 VELOCITY_SCALE_MM_S = np.float32(1000 * 1000 * 2 * 8.52e-7 / 0.25)

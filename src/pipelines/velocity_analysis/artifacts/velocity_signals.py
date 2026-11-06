@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from input_output.schema.output_payload import payload_array as _metric_data
+
 
 from calculations.math import nanmedian
 from plotting.article import (
@@ -121,10 +123,6 @@ def _nanstd(values: np.ndarray, *, axis: int) -> np.ndarray:
     return np.sqrt(variance)
 
 
-def _metric_data(value) -> np.ndarray:
-    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        value = value[0]
-    return np.asarray(value)
 
 
 __all__ = ["export_velocity_signals"]

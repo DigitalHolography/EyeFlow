@@ -36,7 +36,7 @@ def save_figure_file(path, fig, **kwargs) -> Path:
 
 def snapshot_figure_write(path, kind, payload, relative_paths, kwargs):
     """Freeze artists/data and formatting now, before the caller mutates/closes them."""
-    from joblib.externals import cloudpickle
+    import cloudpickle
     import matplotlib
 
     rc = dict(matplotlib.rcParams) if kind != "array" else None
@@ -51,7 +51,7 @@ def export_figure_writes(snapshot, manager, *, errors=()):
     """Render one pipeline's frozen figures in an isolated Agg worker process."""
     if errors:
         raise RuntimeError("\n".join(errors))
-    from joblib.externals import cloudpickle
+    import cloudpickle
     import matplotlib
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib import pyplot as plt

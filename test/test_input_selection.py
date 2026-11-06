@@ -13,7 +13,7 @@ from test_stem_list_inputs import _Var
 from app_settings import AppSettingsStore
 from input_output.runs.inputs import batch_root as _batch_root
 from input_output.output_manager import _relative_to_batch
-from pipeline_engine.run_service import (
+from pipeline_engine.execution.run_service import (
     execute_run,
     resolve_run_spec,
 )

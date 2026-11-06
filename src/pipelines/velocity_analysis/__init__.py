@@ -1,10 +1,10 @@
 """Selectable velocity analysis products."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine import PipelineOption, pipeline
 
-from .builder import velocity_analysis
+from .runner import velocity_analysis
 from .models import VelocityAnalysis
-from .runner import run_velocity_analysis
+from .runner import run_velocity_analysis, velocity_analysis_graph
 
 
 @pipeline(
@@ -59,11 +59,11 @@ from .runner import run_velocity_analysis
             requires=("segments",),
         ),
     ],
+    graph_factory=velocity_analysis_graph,
     input_slot="both",
 )
-def run(ctx) -> None:
-    # The runner persists scientific products before attempting optional exports.
-    run_velocity_analysis(ctx)
+def run(ctx):
+    return run_velocity_analysis(ctx)
 
 
 __all__ = ["VelocityAnalysis", "run", "velocity_analysis"]

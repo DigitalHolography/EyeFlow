@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from pipeline_engine import StageGraph, StageSpec
+from pipeline_engine.context import require_managed_runtime
 
 from input_output.output_manager import OutputType
 from input_output.reports import generate_a4_report
@@ -10,7 +12,7 @@ from input_output.readers.h5 import sidecar_dir_for_h5
 from input_output.writers.png import REPORT_IMAGES_STATE
 
 
-def run_pdf_report(ctx) -> None:
+def _render_report(ctx) -> None:
     """Generate an A4 PDF report from the output H5 file."""
     ctx.require_inputs("hd", "dv")
 
@@ -59,3 +61,13 @@ def run_pdf_report(ctx) -> None:
     except Exception as e:
         ctx.log_error(f"PDF generation failed: {e}")
         raise
+
+
+def pdf_report_graph(*, options=()):
+    # Rendering one report is atomic; its descriptor waits for upstream exports.
+    return StageGraph((StageSpec("report", _render_report, artifact=True, wait_for_artifacts=True),))
+
+
+def run_pdf_report(ctx):
+    require_managed_runtime(ctx, "pdf_report")
+    return pdf_report_graph(options=ctx.options_for("pdf_report"))

@@ -394,7 +394,14 @@ class AppSettingsStore:
         self.save(settings)
 
     def load_pipeline_visibility(self) -> dict[str, bool]:
-        return self.load_named_visibility("pipeline_visibility")
+        visibility = self.load_named_visibility("pipeline_visibility")
+        legacy_displacement = self.load_pipeline_options().get("displacement_map", {})
+        if (
+            "displacement_profiles" not in visibility
+            and legacy_displacement.get("profiles") is True
+        ):
+            visibility["displacement_profiles"] = True
+        return visibility
 
     def save_pipeline_visibility(self, visibility: Mapping[str, bool]) -> None:
         self.save_named_visibility("pipeline_visibility", visibility)
@@ -403,7 +410,7 @@ class AppSettingsStore:
         raw_options = self.load().get("pipeline_options", {})
         if not isinstance(raw_options, dict):
             return {}
-        return {
+        options = {
             pipeline_name: {
                 option_name: enabled
                 for option_name, enabled in values.items()
@@ -412,6 +419,12 @@ class AppSettingsStore:
             for pipeline_name, values in raw_options.items()
             if isinstance(pipeline_name, str) and isinstance(values, dict)
         }
+        legacy_displacement = options.get("displacement_map")
+        if legacy_displacement is not None and "displacement_profiles" not in options:
+            options["displacement_profiles"] = {
+                "segment_maps": legacy_displacement.get("segment_maps", False)
+            }
+        return options
 
     def save_pipeline_options(
         self,

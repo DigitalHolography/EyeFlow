@@ -19,7 +19,7 @@ from calculations.vessel_segments.sampling import (  # noqa: E402
     prepare_sampling_plans,
 )
 from calculations.vessel_segments.sampling.cache import topology_source_id  # noqa: E402
-from pipelines.topology_core.cache import run_topology_cache  # noqa: E402
+from pipelines.topology_core.runner import run_topology_cache  # noqa: E402
 from calculations.topology import AnnulusGeometry, OpticDisc  # noqa: E402
 
 

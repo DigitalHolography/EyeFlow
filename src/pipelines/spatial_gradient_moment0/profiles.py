@@ -22,7 +22,7 @@ from calculations.math.spatial_gradient import (
 )
 from calculations.vessel_segments.measurement import analyze_segment_profiles
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.base import DatasetValue
+from pipeline_engine.planning.base import DatasetValue
 from pipelines.profile_outputs import (
     profile_dataset,
     temporally_meaned_profile_dataset,
@@ -118,7 +118,10 @@ def extract_spatial_gradient_segments(
     if key is not None:
         # Publish only after both vessels succeed. Beat packing/output failures
         # cannot corrupt this immutable continuous result or poison another retry.
-        cache[key] = freeze_continuous_gradients(segments)
+        model = getattr(getattr(ctx, "runtime", None), "work_h5", None)
+        segments = cache[key] = freeze_continuous_gradients(
+            segments, storage=getattr(model, "storage", None),
+        )
         Logger.log("Stored shared continuous moment0ff spatial-gradient measurements.")
     return segments
 
