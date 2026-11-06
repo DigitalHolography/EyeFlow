@@ -33,6 +33,8 @@ from pipelines.pdf_report.data import (  # noqa: E402
     ReportData, SpectralReportData, VolumeRateReportData, extract_report_data,
 )
 from pipelines.pdf_report.pages import build_report_pages  # noqa: E402
+from pipelines.pdf_report.width_data import PhaseSummary, WidthReportData  # noqa: E402
+from pipelines.pdf_report.width_pages import build_width_page  # noqa: E402
 
 
 class PdfReportRunnerPathTests(unittest.TestCase):
@@ -121,7 +123,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 )
                 output_h5.create_dataset(
                     schema.artery_per_beat_filtered.velocity_signal,
-                    data=np.full((2, 3), 4.0),
+                    data=np.array([[-4.0, 4.0, -4.0], [4.0, -4.0, 4.0]]),
                 )
                 output_h5.create_dataset(
                     schema.cardiac_cycle.systolic_cycle_duration_seconds,
@@ -143,6 +145,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             parameters = _read_report(path, include_optional=False).parameters
 
         self.assertEqual(4.0, parameters["Average_Arterial_Velocity"]["value"])
+        self.assertEqual(4.0, parameters["Min_Arterial_Velocity"]["value"])
         self.assertAlmostEqual(96.795, parameters["heart_beat"]["value"])
         self.assertAlmostEqual(0.3, parameters["ARI"]["value"])
 
@@ -232,34 +235,99 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 [axis.get_title() for axis in report_pages[0].axes]
                 + [text.get_text() for axis in report_pages[0].axes for text in axis.texts]
             )
-            self.assertIn("filtered per-beat velocity", page_labels)
-            self.assertNotIn("band-limited", page_labels.lower())
+            self.assertIn("Artery filtered per-beat velocity", page_labels)
+            self.assertIn("Vein filtered per-beat velocity", page_labels)
+            self.assertIn("Vein systole indices unavailable", page_labels)
             with patch("input_output.reports.pdf_report.PdfPages") as pages:
                 pages.return_value.__enter__.return_value = pages.return_value
                 write_pdf_report(root / "pdf" / "scan_report.pdf", report_pages)
                 self.assertEqual(1, pages.return_value.savefig.call_count)
                 self.assertNotIn("vein", report.velocity_per_beat)
 
-    def test_velocity_page_separates_explanation_from_plot_and_summary(self) -> None:
+    def test_velocity_page_embeds_maps_and_systole_artifacts(self) -> None:
+        paths = {
+            (kind, vessel): Path(f"{kind}_{vessel}.png")
+            for kind in ("vessel_map", "systole")
+            for vessel in ("artery", "vein")
+        }
+        image = np.zeros((8, 12, 3), dtype=np.uint8)
+        with patch(
+            "pipelines.pdf_report.pages.load_first_image", return_value=image
+        ) as load:
+            fig = build_report_pages(ReportData(), "scan", None, paths)[0]
+        try:
+            self.assertEqual(4, load.call_count)
+            loaded = [call.args[0][0] for call in load.call_args_list]
+            self.assertCountEqual(paths.values(), loaded)
+            self.assertEqual(4, sum(bool(ax.images) for ax in fig.axes))
+            titles = [ax.get_title() for ax in fig.axes]
+            self.assertIn("Artery filtered per-beat velocity", titles)
+            self.assertIn("Vein filtered per-beat velocity", titles)
+        finally:
+            plt.close(fig)
+
+    def test_filtered_per_beat_plot_is_finite_nan_safe_and_black(self) -> None:
+        values = np.array([[1.0, 2.0, np.nan, 4.0], [2.0, 4.0, 6.0, 8.0]])
         report = ReportData(
-            parameters={"Average_Arterial_Velocity": {"value": 2.0, "unit": "mm/s"}},
-            velocity_per_beat={"artery": np.array([[1.0, 2.0, 1.5]])},
+            parameters={"ARI": {"value": 0.4, "unit": ""}},
+            velocity_per_beat={"artery": values},
+            velocity_units={"artery": "mm/s"},
         )
         fig = build_report_pages(report, "scan", None, {})[0]
         try:
-            fig.canvas.draw()
-            renderer = fig.canvas.get_renderer()
-            plot = next(ax for ax in fig.axes if ax.get_title() == "Artery filtered per-beat velocity")
-            note = next(text for text in fig.texts if text.get_text().startswith("Statistics use"))
-            summary = next(
-                text for ax in fig.axes for text in ax.texts
-                if text.get_text() == "Velocity statistics"
+            plot = next(
+                ax for ax in fig.axes
+                if ax.get_title() == "Artery filtered per-beat velocity"
             )
-            self.assertIn("Velocity", [text.get_text() for text in fig.texts])
-            self.assertLess(note.get_window_extent(renderer).y1,
-                            plot.xaxis.label.get_window_extent(renderer).y0)
-            self.assertGreater(note.get_window_extent(renderer).y0,
-                               summary.get_window_extent(renderer).y1)
+            mean = next(line for line in plot.lines if line.get_label() == "Mean beat")
+            np.testing.assert_allclose(mean.get_ydata(), [1.5, 3.0, 6.0, 6.0])
+            self.assertEqual("black", mean.get_color())
+            self.assertIn("Mean per-beat RI = 0.40", [text.get_text() for text in plot.texts])
+            map_plot = next(
+                ax for ax in fig.axes if ax.get_title() == "Artery RMS-frequency map"
+            )
+            self.assertEqual(map_plot.title.get_fontsize(), plot.title.get_fontsize())
+            self.assertEqual(map_plot.title.get_fontweight(), plot.title.get_fontweight())
+            self.assertEqual(map_plot.title.get_fontfamily(), plot.title.get_fontfamily())
+            systole_plot = next(
+                ax for ax in fig.axes if ax.get_title() == "Artery systole indices"
+            )
+            self.assertEqual(map_plot.title.get_fontsize(), systole_plot.title.get_fontsize())
+            self.assertEqual(map_plot.title.get_fontfamily(), systole_plot.title.get_fontfamily())
+            page_title = next(text for text in fig.texts if text.get_text() == "Velocity")
+            self.assertGreater(page_title.get_fontsize(), plot.title.get_fontsize())
+        finally:
+            plt.close(fig)
+
+    def test_velocity_summary_pairs_artery_and_vein_metrics(self) -> None:
+        parameters = {
+            "Min_Arterial_Velocity": {"value": 1.0, "unit": "mm/s"},
+            "Average_Arterial_Velocity": {"value": 2.0, "unit": "mm/s"},
+            "Max_Arterial_Velocity": {"value": 3.0, "unit": "mm/s"},
+            "ARI": {"value": 0.4, "unit": ""},
+            "API": {"value": 0.5, "unit": ""},
+            "Min_Venous_Velocity": {"value": 6.0, "unit": "mm/s"},
+            "Average_Venous_Velocity": {"value": 7.0, "unit": "mm/s"},
+            "Max_Venous_Velocity": {"value": 8.0, "unit": "mm/s"},
+            "VRI": {"value": 0.9, "unit": ""},
+            "VPI": {"value": 1.0, "unit": ""},
+            "heart_beat": {"value": 72.5, "unit": "bpm"},
+            "not_requested": {"value": 99.0, "unit": ""},
+        }
+        fig = build_report_pages(ReportData(parameters=parameters), "scan", None, {})[0]
+        try:
+            summary = next(
+                ax for ax in fig.axes
+                if any(text.get_text() == "Hemodynamic summary" for text in ax.texts)
+            )
+            texts = {text.get_text(): text for text in summary.texts}
+            self.assertEqual("tab:red", texts["Artery"].get_color())
+            self.assertEqual("tab:blue", texts["Vein"].get_color())
+            self.assertLess(texts["1.00 mm/s"].get_position()[0], 0.5)
+            self.assertGreater(texts["6.00 mm/s"].get_position()[0], 0.5)
+            self.assertIn("Heart rate  |  72.5 bpm", texts)
+            self.assertNotIn("99.00", texts)
+            self.assertEqual(2, len(summary.patches))
         finally:
             plt.close(fig)
 
@@ -271,16 +339,44 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     phase_curve=np.array([1.0]), overall_value=1.0,
                     valid_fraction=1.0, beat_count=1, unit="mm^3/s", method="mask",
                 ),
+                "vein": VolumeRateReportData(
+                    phase_curve=np.array([2.0]), overall_value=2.0,
+                    valid_fraction=1.0, beat_count=1, unit="mm^3/s", method="mask",
+                ),
             },
         )
         pages = build_report_pages(report, "scan", None, {})
         try:
             labels = [text.get_text() for text in pages[1].texts]
-            self.assertIn("Low-frequency spectra and blood-volume rate", labels)
+            self.assertIn("Low-Frequency Spectra and Blood-Volume Rate", labels)
             self.assertNotIn("Additional results", " ".join(labels))
+            flow_ax = next(
+                ax for ax in pages[1].axes if ax.get_ylabel() == "Flow rate (mm$^3$/s)"
+            )
+            self.assertEqual(["tab:red", "tab:blue"], [line.get_color() for line in flow_ax.lines[:2]])
         finally:
             for page in pages:
                 plt.close(page)
+
+    def test_width_report_uses_red_arteries_and_blue_veins(self) -> None:
+        def summary(label, value):
+            return PhaseSummary(
+                label=label, curve=np.array([value]), median=value,
+                valid_fraction=1.0, branch_count=1, beat_count=1, unit="pixels",
+            )
+
+        fig = build_width_page(
+            WidthReportData(
+                displacement=(summary("Rigid Artery", 1.0), summary("Rigid Vein", 2.0)),
+                gradient=(),
+            ),
+            "scan",
+        )
+        try:
+            plot = next(ax for ax in fig.axes if ax.get_ylabel() == "Radial movement (pixels)")
+            self.assertEqual(["tab:red", "tab:blue"], [line.get_color() for line in plot.lines])
+        finally:
+            plt.close(fig)
 
     def test_gradient_only_volume_rate_is_not_called_total_flow(self) -> None:
         schema = EyeFlowOutputPaths.active()

@@ -28,9 +28,7 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
         _log(ctx, "Skipping systole index PNGs; no beat indices are available.")
         return []
     artery = _display_velocity(_vector(ctx.velocity.continuous("artery")))
-    artery_deriv = _display_velocity(_vector(ctx.velocity.derivative("artery")))
     vein = _display_velocity(_vector(ctx.velocity.continuous("vein")))
-    vein_deriv = _display_velocity(_vector(ctx.velocity.derivative("vein")))
     maxima, minima = _cycle_extrema(artery, peaks)
     paths = [
         _systole_plot(
@@ -38,24 +36,22 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             "find_systoles_indices_artery.png",
             ctx.time,
             artery,
-            artery_deriv,
             peaks,
             maxima,
             minima,
             ctx.velocity_axis_label,
-            ctx.velocity_semantics,
+            "Artery systole indices",
         ),
         _systole_plot(
             writer,
             "find_systoles_indices_vein.png",
             ctx.time,
             vein,
-            vein_deriv,
             peaks,
             maxima,
             minima,
             ctx.velocity_axis_label,
-            ctx.velocity_semantics,
+            "Vein systole indices",
         ),
     ]
     writer.register_artifact("systole", "artery", paths[0])
@@ -67,35 +63,34 @@ def _systole_plot(
     suffix: str,
     time: np.ndarray,
     filtered: np.ndarray,
-    derivative: np.ndarray,
     peaks: np.ndarray,
     maxima: np.ndarray,
     minima: np.ndarray,
     velocity_label: str = "Velocity (mm/s)",
-    velocity_semantics=None,
+    title: str = "Systole indices",
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(7.5, 4.0))
-    derivative_ax = ax.twinx()
-    derivative_ax.plot(
-        time[: derivative.size],
-        derivative,
-        color="0.55",
+    ax.plot(
+        time[: filtered.size], filtered, color="black",
         linewidth=STYLE.secondary_line_width,
     )
-    ax.plot(time[: filtered.size], filtered, color="k", linewidth=STYLE.secondary_line_width)
-    for indexes, color in ((peaks, "k"), (maxima, "tab:red"), (minima, "tab:blue")):
+    for indexes, marker_color in (
+        (peaks, "k"), (maxima, "tab:red"), (minima, "tab:blue")
+    ):
         valid = indexes[(indexes >= 0) & (indexes < filtered.size)]
         if valid.size:
-            ax.scatter(time[valid], filtered[valid], color=color, s=28, zorder=3)
+            ax.scatter(
+                time[valid], filtered[valid], color=marker_color, s=28, zorder=3
+            )
             for idx in valid:
-                ax.axvline(time[idx], color=color, linestyle="--", linewidth=STYLE.event_line_width, alpha=0.75)
+                ax.axvline(
+                    time[idx], color=marker_color, linestyle="--",
+                    linewidth=STYLE.event_line_width, alpha=0.75,
+                )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(velocity_label)
-    derivative_ax.set_ylabel(
-        "Relative velocity index rate (s⁻¹)"
-        if getattr(velocity_semantics, "unit", "mm/s") == "1"
-        else "Acceleration (mm/s²)"
-    )
     _style_axes(ax)
-    _style_axes(derivative_ax)
+    ax.set_title(
+        title, fontsize=10, fontfamily="sans-serif", fontweight="normal"
+    )
     return writer.save_figure(fig, suffix)

@@ -57,6 +57,9 @@ from pipelines.velocity_analysis.artifacts.figures.flow_maps import (  # noqa: E
     _velocity_colorbar_vmax,
     _vessel_histogram_colormap,
 )
+from pipelines.velocity_analysis.artifacts.figures.systole import (  # noqa: E402
+    _systole_plot,
+)
 
 
 class FakeOutput:
@@ -214,6 +217,40 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertAlmostEqual((2.625 - 1.0) / 1.9, metric.value)
         self.assertNotEqual(4.0, metric.maximum)
 
+    @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
+    def test_systole_plot_has_title_and_no_acceleration_axis(self) -> None:
+        captured = {}
+
+        def save_figure(fig, suffix):
+            captured["figure"] = fig
+            return Path(suffix)
+
+        writer = SimpleNamespace(save_figure=save_figure)
+        path = _systole_plot(
+            writer,
+            "find_systoles_indices_artery.png",
+            np.arange(4, dtype=float),
+            np.array([1.0, 3.0, 2.0, 1.0]),
+            np.array([1]),
+            np.array([1]),
+            np.array([3]),
+            title="Artery systole indices",
+        )
+        fig = captured["figure"]
+        try:
+            self.assertEqual(Path("find_systoles_indices_artery.png"), path)
+            self.assertEqual(1, len(fig.axes))
+            self.assertEqual("Artery systole indices", fig.axes[0].get_title())
+            self.assertEqual("black", fig.axes[0].lines[0].get_color())
+            self.assertEqual(10, fig.axes[0].title.get_fontsize())
+            self.assertEqual("normal", fig.axes[0].title.get_fontweight())
+            self.assertEqual(["sans-serif"], fig.axes[0].title.get_fontfamily())
+            self.assertNotIn("Acceleration", fig.axes[0].get_ylabel())
+        finally:
+            import matplotlib.pyplot as plt
+
+            plt.close(fig)
+
     def test_spectrum_reports_frequency_bins_and_ordered_peaks(self) -> None:
         time = np.arange(128, dtype=np.float32) * 0.05
         values = np.sin(2 * np.pi * 1.25 * time).astype(np.float32)
@@ -341,7 +378,10 @@ class PulsePngExporterTests(unittest.TestCase):
                 cardiac_cycle=cardiac_cycle,
                 cycle_boundary_indexes=context.velocity.cycle_boundary_indexes,
             )
-            written = export_pulse_pngs(output, context, per_beat_result)
+            report_images = {}
+            written = export_pulse_pngs(
+                output, context, per_beat_result, report_images=report_images
+            )
 
             self.assertGreaterEqual(len(written), 35)
             for required in (
@@ -354,6 +394,9 @@ class PulsePngExporterTests(unittest.TestCase):
                 path = Path(temp_dir) / "png" / required
                 self.assertTrue(path.is_file(), required)
                 self.assertGreater(path.stat().st_size, 0, required)
+            for kind in ("vessel_map", "systole"):
+                for vessel in ("artery", "vein"):
+                    self.assertTrue(report_images[(kind, vessel)].is_file())
 
 
 def _synthetic_context():

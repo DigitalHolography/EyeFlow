@@ -74,7 +74,7 @@ def _extract_velocity_metrics(h5file, schema, params) -> tuple[dict[str, np.ndar
         dataset = _dataset(h5file, path)
         if dataset is None:
             continue
-        values = np.asarray(dataset, dtype=float)
+        values = np.abs(np.asarray(dataset, dtype=float))
         if values.ndim != 2 or not all(values.shape):
             continue
         unit = _velocity_dataset_unit(h5file, dataset)

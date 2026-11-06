@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 
+from .palette import VESSEL_COLORS
 from .width_data import PhaseSummary, WidthReportData
 
 
@@ -13,7 +14,10 @@ def build_width_page(report: WidthReportData, folder_name: str) -> Figure:
     """Show phase curves beside concise summaries of the same values."""
     fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
     fig.patch.set_facecolor("white")
-    fig.suptitle(f"{folder_name} — Motion and lumen width", fontsize=15, y=0.965)
+    fig.suptitle(
+        f"{folder_name} — Motion and Lumen Width",
+        fontsize=17, fontweight="bold", y=0.965,
+    )
     fig.text(0.5, 0.925, "Descriptive, pixel-based results; no clinical thresholds",
              ha="center", fontsize=9)
     grid = fig.add_gridspec(2, 2, left=0.08, right=0.94, bottom=0.11,
@@ -67,7 +71,11 @@ def _draw_section(
         for item in series:
             if np.isfinite(item.curve).any():
                 phase = np.arange(item.curve.size) / item.curve.size
-                plot_ax.plot(phase, item.curve, label=item.label, linewidth=1.2)
+                vessel = "artery" if "artery" in item.label.lower() else "vein"
+                plot_ax.plot(
+                    phase, item.curve, label=item.label,
+                    color=VESSEL_COLORS[vessel], linewidth=1.2,
+                )
     if plot_ax.lines:
         plot_ax.legend(fontsize=7, loc="best")
     else:
