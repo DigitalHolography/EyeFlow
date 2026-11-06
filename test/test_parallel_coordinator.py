@@ -77,7 +77,7 @@ def test_output_journal_preserves_commits_without_reverting_other_paths(tmp_path
 
 
 def test_reports_read_the_assembled_view_before_publication(tmp_path):
-    from input_output.reports.pdf_data import extract_parameters_from_h5
+    from pipelines.pdf_report.data import extract_report_data
     from input_output.schema import EyeFlowOutputPaths
     from input_output.writers.h5_output import PipelineH5Output
 
@@ -85,13 +85,11 @@ def test_reports_read_the_assembled_view_before_publication(tmp_path):
         model = OutputModel(storage, tmp_path / "future.h5")
         output = PipelineH5Output(model, processing_root="ProcessingMoments")
         output.write(
-            EyeFlowOutputPaths.active().artery_per_beat.velocity_signal,
-            np.array([1.0, 3.0], dtype=np.float32),
+            EyeFlowOutputPaths.active().artery_per_beat_filtered.velocity_signal,
+            np.array([[1.0, 3.0]], dtype=np.float32),
             unit="mm/s",
         )
-        parameters = extract_parameters_from_h5(
-            Path(model.filename), processing_root="ProcessingMoments", output_source=model
-        )
+        parameters = extract_report_data(output, include_optional=False).parameters
         assert parameters["Average_Arterial_Velocity"] == {"value": 2.0, "unit": "mm/s"}
         assert not Path(model.filename).exists()
 

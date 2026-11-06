@@ -2,11 +2,13 @@
 
 from contextlib import ExitStack
 from pathlib import Path
+from time import perf_counter
 
 from input_output.readers.frame_sequences import FrameSequence
 from pipeline_engine.graphs import PipelineGraph, PipelineNode, PipelineProduct
 from pipeline_engine.storage import temporary_directory
 
+from .logging import logged_stage
 from .parameters import MotionMapConfig
 from .runner import (
     DISPLACEMENT_MAP_STATE,
@@ -24,6 +26,8 @@ def displacement_graph(config):
     names = ("artery", "vein") if config.mask_mode == "both" else (config.mask_mode,)
 
     def prepare(ctx):
+        prepared["started"] = perf_counter()
+        ctx.log("Starting displacement-map pipeline...")
         ctx.require_inputs("hd", "dv")
         moment = ctx.inputs.hd.as_holodoppler().named_root_moment_dataset(config.moment_path)
         fps = resolve_frame_rate(ctx, config.fallback_fps)
@@ -47,9 +51,10 @@ def displacement_graph(config):
             defer_h5_range=True,
         )
         prepared.update(directory=directory, base=base, moment=moment, fps=fps)
-        prepared["replay"] = scope.enter_context(
-            sequence.cached_for_replay(base.max_frames, Path(directory.name))
-        )
+        with logged_stage("displacement frame replay"):
+            prepared["replay"] = scope.enter_context(
+                sequence.cached_for_replay(base.max_frames, Path(directory.name))
+            )
         ctx.dag.handoff("prepared", True)
 
     def vessel(name, ctx):
@@ -98,6 +103,8 @@ def displacement_graph(config):
         if not available:
             raise RuntimeError("No displacement vessel field was produced.")
         ctx.dag.handoff("fields_ready", tuple(sorted(available)))
+        elapsed = perf_counter() - prepared["started"]
+        ctx.log(f"Completed displacement-map pipeline in {elapsed:.1f}s.")
 
     def cleanup():
         scope.close()

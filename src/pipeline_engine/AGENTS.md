@@ -42,7 +42,8 @@ normalization is in `src/app_settings.py`.
   adds an ordering/dependency edge, and preserves directly selected targets.
 - Hidden pipelines may enter a plan through dependencies or automatic
   companions; only visible available pipelines are valid user targets.
-- Descriptor discovery order breaks ties between otherwise independent nodes.
+- Ready artifact consumers are ordered after ready ordinary nodes; descriptor
+  discovery order breaks remaining ties.
 
 When modifying scheduling, inspect `base.py`, `dag.py`, the affected pipeline
 declarations, `test_pipeline_discovery.py`,

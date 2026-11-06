@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from heapq import heapify, heappop, heappush
 
 from .base import PipelineDescriptor
 
@@ -28,6 +29,8 @@ class PipelineDAG:
     Required keys with no producer are treated as external inputs.
     auto_run_after adds a companion and an ordering edge whenever its named
     predecessor is scheduled, without changing the directly selected targets.
+    Ready artifact consumers sort after ordinary work so report plans reflect
+    their deferred runtime execution.
     """
 
     def __init__(self, pipelines: Iterable[PipelineDescriptor]) -> None:
@@ -249,23 +252,23 @@ class PipelineDAG:
             for child in children:
                 in_degree[child] += 1
 
-        queue = deque(
-            sorted(
-                (name for name, degree in in_degree.items() if degree == 0),
-                key=self._original_index.__getitem__,
-            )
-        )
+        def priority(name: str) -> tuple[bool, int, str]:
+            pipeline = self._pipelines_by_name[name]
+            return pipeline.wait_for_artifacts, self._original_index[name], name
+
+        queue = [priority(name) for name, degree in in_degree.items() if degree == 0]
+        heapify(queue)
         order: list[str] = []
 
         while queue:
-            name = queue.popleft()
+            _, _, name = heappop(queue)
             order.append(name)
             for child in sorted(
                 self.graph[name], key=self._original_index.__getitem__
             ):
                 in_degree[child] -= 1
                 if in_degree[child] == 0:
-                    queue.append(child)
+                    heappush(queue, priority(child))
 
         if len(order) != len(self._pipelines_by_name):
             raise RuntimeError("Cycle detected in pipeline DAG.")

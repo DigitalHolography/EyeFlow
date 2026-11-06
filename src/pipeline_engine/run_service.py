@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from calculations.compute_backend import optional_cupy_backend
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     DEFAULT_COPY_HD_PASSTHROUGH,
@@ -189,15 +190,37 @@ def execute_run(
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     from .resources import ResourceBudget
 
-    budget = ResourceBudget()
-    with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
-    ) as completions:
-        return _execute_batch(
-            spec, workers, completions, on_file_start=on_file_start,
-            on_pipeline_start=on_pipeline_start, on_progress=on_progress,
-            should_stop=should_stop,
-        )
+    with _batch_compute_backend():
+        budget = ResourceBudget()
+        with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
+        ) as completions:
+            return _execute_batch(
+                spec, workers, completions, on_file_start=on_file_start,
+                on_pipeline_start=on_pipeline_start, on_progress=on_progress,
+                should_stop=should_stop,
+            )
+
+
+@contextmanager
+def _batch_compute_backend():
+    """Pass an unavailable automatic GPU decision to every spawned worker."""
+    configured = os.environ.get("EYEFLOW_COMPUTE_BACKEND")
+    preference = (configured or "auto").strip().lower()
+    backend = optional_cupy_backend()
+    if preference != "auto" or backend is not None:
+        yield
+        return
+
+    os.environ["EYEFLOW_COMPUTE_BACKEND"] = "cpu"
+    Logger.log_info("No usable CuPy/CUDA backend detected; using CPU for this batch.")
+    try:
+        yield
+    finally:
+        if configured is None:
+            os.environ.pop("EYEFLOW_COMPUTE_BACKEND", None)
+        else:
+            os.environ["EYEFLOW_COMPUTE_BACKEND"] = configured
 
 
 def _execute_batch(

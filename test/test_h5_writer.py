@@ -24,12 +24,62 @@ from input_output.writers.h5 import (  # noqa: E402
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader  # noqa: E402
 from input_output.writers.h5_initialization import initialize_output_h5  # noqa: E402
+from input_output.writers.h5_output import PipelineH5Output  # noqa: E402
+from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
 from pipeline_engine.output_model import OutputModel  # noqa: E402
 from pipeline_engine.storage import ProductStorage  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_spatial_gradient_paths_and_references_follow_workflow(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        profile = f"{schema.spatial_gradient_profiles_root}/Artery/Transverse/value"
+        metric = f"{schema.spatial_gradient_metrics_root}/Artery/Transverse/value"
+        flow = schema.blood_volume_rate.artery.dynamic_edges
+        with h5py.File("gradient_paths.h5", "w", driver="core", backing_store=False) as h5file:
+            for root, branch, value in (
+                ("ProcessingMoments", "Moments", 1),
+                ("ProcessingBandRatio", "BandRatio", 2),
+            ):
+                output = PipelineH5Output(h5file, processing_root=root)
+                output.write_many({
+                    profile: DatasetValue(np.asarray(value)),
+                    metric: DatasetValue(
+                        np.asarray(value),
+                        attrs={"source_profile": f"/{profile}"},
+                    ),
+                    flow: DatasetValue(
+                        np.asarray(value),
+                        attrs={"source_left_edge_index": f"/{metric}"},
+                    ),
+                })
+                self.assertEqual(value, output.read(profile))
+                self.assertEqual(value, output.read(metric))
+                published = f"ProcessingWidth/SpatialGradient/{branch}"
+                expected_profile_reference = (
+                    f"/{profile}"
+                    if branch == "Moments"
+                    else f"{published}/Profiles/Artery/Transverse/value"
+                )
+                self.assertEqual(
+                    expected_profile_reference,
+                    h5file[f"{published}/Metrics/Artery/Transverse/value"].attrs["source_profile"],
+                )
+                expected_metric_reference = (
+                    f"/{metric}"
+                    if branch == "Moments"
+                    else f"{published}/Metrics/Artery/Transverse/value"
+                )
+                self.assertEqual(
+                    expected_metric_reference,
+                    h5file[f"{root}/BloodVolumeRate/Artery/dynamicEdges/value"].attrs[
+                        "source_left_edge_index"
+                    ],
+                )
+            self.assertNotIn("ProcessingMoments/SpatialGradientProfiles", h5file)
+            self.assertNotIn("ProcessingBandRatio/SpatialGradientProfiles", h5file)
+
     def test_runtime_typed_sources_read_small_fields_once(self) -> None:
         with h5py.File("cached_inputs.h5", "w", driver="core", backing_store=False) as h5file:
             h5file.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": 1000}))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from pathlib import Path
+from time import perf_counter
 
 import h5py
 import numpy as np
@@ -23,6 +24,7 @@ except ImportError:
     cv2 = None
 
 from .constants import PDE_REGISTRATION_METHODS
+from .logging import logged_stage
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (
     photometric_confidence,
@@ -63,6 +65,8 @@ def create_retinal_motion_map(
     frame_capacity = sequence.frame_count
     if args.max_frames is not None:
         frame_capacity = min(frame_capacity, args.max_frames)
+    started = perf_counter()
+    Logger.log(f"Starting {log_label} ({frame_capacity} frames)...")
 
     if analysis_mask_array is not None:
         supplied_mask = np.squeeze(np.asarray(analysis_mask_array))
@@ -103,11 +107,10 @@ def create_retinal_motion_map(
         else sequence.cached_for_replay(args.max_frames, args.output_dir)
     )
     with frame_context as replay:
-        reference_raw, actual_reference_count = compute_mean_reference(
-            replay,
-            args.max_frames,
-            on_progress=_FrameProgress(f"{log_label}: mean reference", frame_capacity),
-        )
+        with logged_stage(f"{log_label} mean reference", frames=frame_capacity):
+            reference_raw, actual_reference_count = compute_mean_reference(
+                replay, args.max_frames,
+            )
         frame_capacity = min(frame_capacity, actual_reference_count)
         confidence = photometric_confidence(reference_raw, valid_analysis, photometric_config)
         registration_weight = analysis_soft * confidence
@@ -157,62 +160,58 @@ def create_retinal_motion_map(
             magnitude[analysis_mask == 0] = 0.0
             caches.append(field, magnitude)
 
-        progress = _FrameProgress(f"{log_label}: registration", frame_capacity)
-        try:
-            for frame_index, frame in enumerate(replay.iter_frames(frame_capacity), start=1):
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
-                moving = structural_registration_signal(
-                    gray, photometric_config, valid_analysis, args.structure_edge_weight
-                )
-                initial_field = (
-                    previous_registration_field
-                    if args.registration_initialization == "previous"
-                    else None
-                )
-                raw_field, _registration_metric = estimate_registration_field(
-                    fixed_full=reference,
-                    moving_full=moving,
-                    mask_soft_full=registration_weight,
-                    initial_full=initial_field,
-                    method=args.registration_method,
-                    scale=args.scale,
-                    iterations=args.iterations,
-                    field_sigma=args.field_sigma,
-                    update_sigma=args.update_sigma,
-                    metric_radius=args.registration_metric_radius,
-                    learning_rate=args.registration_learning_rate,
-                )
-                raw_field[analysis_mask == 0] = 0.0
-                previous_registration_field = raw_field.copy()
+        with logged_stage(f"{log_label} registration", frames=frame_capacity):
+            try:
+                for frame in replay.iter_frames(frame_capacity):
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+                    moving = structural_registration_signal(
+                        gray, photometric_config, valid_analysis, args.structure_edge_weight
+                    )
+                    initial_field = (
+                        previous_registration_field
+                        if args.registration_initialization == "previous"
+                        else None
+                    )
+                    raw_field, _registration_metric = estimate_registration_field(
+                        fixed_full=reference,
+                        moving_full=moving,
+                        mask_soft_full=registration_weight,
+                        initial_full=initial_field,
+                        method=args.registration_method,
+                        scale=args.scale,
+                        iterations=args.iterations,
+                        field_sigma=args.field_sigma,
+                        update_sigma=args.update_sigma,
+                        metric_radius=args.registration_metric_radius,
+                        learning_rate=args.registration_learning_rate,
+                    )
+                    raw_field[analysis_mask == 0] = 0.0
+                    previous_registration_field = raw_field.copy()
 
-                for median_field in median_buffer.push(raw_field):
+                    for median_field in median_buffer.push(raw_field):
+                        append_temporally_filtered(median_field)
+
+                for median_field in median_buffer.finish():
                     append_temporally_filtered(median_field)
-
-                progress(frame_index, frame_capacity)
-
-            for median_field in median_buffer.finish():
-                append_temporally_filtered(median_field)
-        finally:
-            caches.flush()
+            finally:
+                caches.flush()
 
     output_video = magnitude_video_path or (args.output_dir / "displacement_magnitude.avi")
     output_video.parent.mkdir(parents=True, exist_ok=True)
-    display_minimum, display_maximum = write_magnitude_avi(
-        output_video,
-        caches.magnitude,
-        frame_count=caches.count,
-        valid_mask=analysis_mask > 0,
-        fps=sequence.fps,
-        normalization=args.normalization,
-        low_percentile=args.low_percentile,
-        high_percentile=args.high_percentile,
-        fixed_maximum=args.fixed_max_px,
-        gamma=args.gamma,
-        visualization_sigma=args.visualization_sigma,
-        on_progress=_FrameProgress(
-            f"{log_label}: magnitude video", caches.count
-        ),
-    )
+    with logged_stage(f"{log_label} magnitude video", frames=caches.count):
+        display_minimum, display_maximum = write_magnitude_avi(
+            output_video,
+            caches.magnitude,
+            frame_count=caches.count,
+            valid_mask=analysis_mask > 0,
+            fps=sequence.fps,
+            normalization=args.normalization,
+            low_percentile=args.low_percentile,
+            high_percentile=args.high_percentile,
+            fixed_maximum=args.fixed_max_px,
+            gamma=args.gamma,
+            visualization_sigma=args.visualization_sigma,
+        )
 
     metadata = {
         "input": str(args.input.resolve()),
@@ -297,31 +296,5 @@ def create_retinal_motion_map(
     }
     if args.save_field:
         outputs["displacement_field"] = args.output_dir / "displacement_field.npy"
+    Logger.log(f"Completed {log_label} in {perf_counter() - started:.1f}s.")
     return outputs
-
-
-class _FrameProgress:
-    """Emit a small number of app-log updates for frame-based work."""
-
-    def __init__(self, label: str, total: int, *, interval_percent: int = 20):
-        self.label = str(label)
-        self.total = max(0, int(total))
-        self.interval_percent = int(interval_percent)
-        self._next_percent = self.interval_percent
-        Logger.log_info(f"{self.label} started ({self.total} frames).")
-
-    def __call__(self, completed: int, total: int) -> None:
-        total = max(0, int(total))
-        completed = max(0, min(int(completed), total))
-        if total == 0:
-            return
-        percent = min(100, int(completed * 100 / total))
-        if percent < self._next_percent and completed < total:
-            return
-        Logger.log_info(
-            f"{self.label}: {percent}% ({completed}/{total} frames)."
-        )
-        self._next_percent = min(
-            101,
-            (percent // self.interval_percent + 1) * self.interval_percent,
-        )

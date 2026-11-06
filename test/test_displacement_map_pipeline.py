@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import struct
 import tempfile
 import unittest
@@ -24,6 +25,8 @@ from input_output.schema import HolodopplerSource
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
+from pipelines.displacement_map.calculator import create_retinal_motion_map
+from pipelines.displacement_map.parameters import MotionMapConfig
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
     DISPLACEMENT_MAP_STATE,
@@ -37,6 +40,7 @@ from pipelines.displacement_map.runner import (
     resolve_retina_masks,
     run_displacement_map,
 )
+from utils.logger import Logger
 
 
 class DisplacementRegistrationTests(unittest.TestCase):
@@ -306,7 +310,17 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     output_manager=manager,
                     pipeline_name="displacement_map",
                 )
-                run_displacement_map(ctx)
+                messages = []
+                with Logger.capture_messages(messages.append):
+                    run_displacement_map(ctx)
+                self.assertIn("Starting displacement-map pipeline...", messages)
+                self.assertTrue(any(
+                    re.fullmatch(
+                        r"Completed displacement-map pipeline in \d+\.\ds\.",
+                        message,
+                    )
+                    for message in messages
+                ))
                 self.assertEqual(1, len(set(replay_ids)))
                 self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
                 self.assertNotIn("Processing/Displacement", output_h5)
@@ -335,6 +349,53 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     video_path.parent,
                 )
                 self.assertEqual(b"fake avi", video_path.read_bytes())
+
+
+def test_displacement_calculation_logs_timed_stages_without_percentages(tmp_path: Path) -> None:
+    frames = [np.full((8, 8, 3), value, dtype=np.uint8) for value in (64, 96)]
+    source = SimpleNamespace(frame_count=2, height=8, width=8, fps=25.0, is_h5=False)
+    replay = SimpleNamespace(
+        source=source,
+        frame_count=2,
+        iter_frames=lambda _limit: iter(frames),
+    )
+    config = MotionMapConfig(
+        input=tmp_path / "input.mp4",
+        output_dir=tmp_path / "motion",
+    )
+    messages = []
+    with (
+        Logger.capture_messages(messages.append),
+        patch("pipelines.displacement_map.calculator.require_registration_backend"),
+        patch(
+            "pipelines.displacement_map.calculator.estimate_registration_field",
+            return_value=(np.zeros((8, 8, 2), dtype=np.float32), 0.0),
+        ),
+        patch("pipelines.displacement_map.calculator.write_cv_png_file"),
+        patch(
+            "pipelines.displacement_map.calculator.write_magnitude_avi",
+            return_value=(0.0, 0.0),
+        ),
+    ):
+        create_retinal_motion_map(
+            config,
+            analysis_mask_array=np.ones((8, 8), dtype=np.uint8),
+            frame_replay=replay,
+            log_label="Displacement artery",
+        )
+
+    for label in (
+        "Displacement artery",
+        "Displacement artery mean reference",
+        "Displacement artery registration",
+        "Displacement artery magnitude video",
+    ):
+        assert f"Starting {label} (2 frames)..." in messages
+        assert any(
+            re.fullmatch(rf"Completed {label} in \d+\.\ds\.", message)
+            for message in messages
+        )
+    assert not any("%" in message for message in messages)
 
 
 def test_magnitude_avi_renders_masked_frames(tmp_path: Path, capsys) -> None:

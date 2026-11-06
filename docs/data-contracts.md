@@ -907,7 +907,26 @@ Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
 `eps`. Velocity-derived artifacts are separated beneath each type directory
 into `moments/` and `bandratio/`, including PDF reports. Each report reads its
 corresponding processing group and the actual PNG paths registered by its
-velocity-analysis variant. Existing filename lookup remains a fallback. The
+velocity-analysis variant for the RMS-frequency vessel maps. Its velocity
+statistics and beat plots use only filtered per-beat signals
+derived from filtered continuous velocity; missing products are shown as
+unavailable, never replaced by unfiltered per-beat velocity. RI/PI use the
+matching raw-family metrics calculated from filtered per-beat signals, and
+heart rate is labelled as a spectral estimate rather than inferred from
+systole markers. When available, a second
+page summarizes shared low-frequency gap spectra and this workflow's
+blood-volume rate, including descriptive data-coverage indicators; these
+optional pipelines are not run merely because a PDF was selected. The
+PDF pipeline selects measurements and builds pages from the assembled output
+view; `input_output/reports` only reads report images and writes the PDF. The
+hidden, once-per-run `pdf_width_report` companion adds `pdf/<stem>_width_report.pdf`
+when persisted displacement profiles or spatial-gradient metrics exist. Its
+planning trigger is velocity timing, shared by those analyses; it waits for
+optional analyses and can run without either velocity PDF being selected. Its
+single page shows phase-median radial movement amplitude and lumen width with
+finite-sample coverage, branch counts, and available beat counts. It reads
+both gradient velocity workflows when present, does not trigger either width
+analysis, and does not create an empty report for map-only AVI output. The
 primary file is `h5/<stem>_EF.h5`.
 Displacement magnitude videos use MJPEG AVI files under
 `avi/displacement_maps/`, with one file for each selected vessel mask.
@@ -942,8 +961,9 @@ families are:
 - `/ProcessingMoments/Heartbeat` and `/ProcessingMoments/FrequencyMaps`;
 - `/ProcessingMoments/VelocityProfiles` and `/VelocityProfilesFFT`;
 - `/ProcessingMoments/Metrics/{waveform_shape_metrics,absolute_waveform_metrics,lowrank_waveform_decomposition}`;
-- `/ProcessingMoments/SpatialGradientMetrics` for a directly selected spatial-gradient
-  target, and `/ProcessingMoments/BloodVolumeRate` for blood-volume-rate products;
+- `/ProcessingWidth/SpatialGradient/{Moments,BandRatio}/{Profiles,Metrics}`
+  for a directly selected spatial-gradient target, with separate workflow branches;
+- `/ProcessingMoments/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Segmentation/Laterality/{EyeLaterality,EyeLateralityConfidence}` for the
   corresponding DopplerView laterality datasets when present;
@@ -1134,16 +1154,15 @@ not accepted.
 
 When spatial-gradient processing runs only to supply the `gradient_edges`
 blood-volume-rate option, its profiles and metrics remain transient run state:
-`/ProcessingMoments/SpatialGradientProfiles` and
-`/ProcessingMoments/SpatialGradientMetrics` are not written. Selecting
+`/ProcessingWidth/SpatialGradient/{Moments,BandRatio}/{Profiles,Metrics}`
+is not written. Selecting
 `spatial_gradient_moment0` directly publishes both families. Gradient-derived
 blood-volume-rate datasets identify these inputs as `transient_run_state` and
 do not expose dangling HDF5 source-path attributes.
 
 The release-default selection disables `gradient_edges`, velocity profiles,
 and the waveform `velocity_profile_analysis` option. Its HDF5 therefore omits
-`/ProcessingMoments/SpatialGradientProfiles`,
-`/ProcessingMoments/SpatialGradientMetrics`,
+`/ProcessingWidth/SpatialGradient/{Moments,BandRatio}/{Profiles,Metrics}`,
 `/ProcessingMoments/BloodVolumeRate/{Artery,Vein}/{dynamicEdges,staticEdges}`,
 `/ProcessingMoments/VelocityProfiles`, and
 `/ProcessingMoments/VelocityProfileAnalysis`. Mask-derived `maskedEdges` and

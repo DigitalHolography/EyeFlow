@@ -18,4 +18,22 @@ def run(ctx):
     return run_pdf_report(ctx)
 
 
-__all__ = ["run"]
+@pipeline(
+    name="pdf_width_report",
+    description="Summarize available displacement and spatial-gradient results in one PDF.",
+    requires=["numpy", "matplotlib"],
+    visibility="hidden",
+    # Both displacement profiles and spatial gradients require velocity timing.
+    # Waiting for artifacts keeps this shared report after their optional work.
+    auto_run_after="velocity",
+    run_once=True,
+    wait_for_artifacts=True,
+)
+def run_width(ctx):
+    """Write a shared third PDF without scheduling either optional analysis."""
+    from .width_runner import run_width_pdf_report
+
+    return run_width_pdf_report(ctx)
+
+
+__all__ = ["run", "run_width"]

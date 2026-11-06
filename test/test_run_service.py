@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -137,6 +139,40 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
 
 
 class RunServiceTests(unittest.TestCase):
+    def test_unavailable_gpu_selects_cpu_for_child_processes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spec = resolve_run_spec(
+                input_paths=[_write_input(Path(temp_dir))],
+                target_names=["sample"],
+                pipelines=[_descriptor()],
+            )
+            previous = os.environ.pop("EYEFLOW_COMPUTE_BACKEND", None)
+            try:
+                def fake_run(*, output_manager, **_kwargs):
+                    self.assertEqual("cpu", os.environ["EYEFLOW_COMPUTE_BACKEND"])
+                    inherited = subprocess.check_output(
+                        [
+                            sys.executable,
+                            "-c",
+                            "import os; print(os.environ['EYEFLOW_COMPUTE_BACKEND'])",
+                        ],
+                        text=True,
+                    ).strip()
+                    self.assertEqual("cpu", inherited)
+                    return output_manager.path_for(OutputType.H5)
+
+                with (
+                    patch("pipeline_engine.run_service.optional_cupy_backend", return_value=None) as probe,
+                    patch("pipeline_engine.run_service.run_pipelines_to_output", side_effect=fake_run),
+                ):
+                    result = execute_run(spec)
+                self.assertTrue(result.succeeded, result.failures)
+                probe.assert_called_once()
+                self.assertNotIn("EYEFLOW_COMPUTE_BACKEND", os.environ)
+            finally:
+                if previous is not None:
+                    os.environ["EYEFLOW_COMPUTE_BACKEND"] = previous
+
     def test_runtime_opens_each_input_once_during_initialization(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

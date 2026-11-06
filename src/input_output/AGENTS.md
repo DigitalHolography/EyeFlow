@@ -3,7 +3,7 @@
 ## Boundary
 
 This package owns external run discovery, typed HD/DV access, output-folder and
-HDF5 serialization policy, archives, media writers, and PDF assembly. It does
+HDF5 serialization policy, archives, media writers, and PDF file I/O. It does
 not decide which pipelines run or implement scientific formulas.
 
 Read [data contracts](../../docs/data-contracts.md) before changing a path,
@@ -28,7 +28,7 @@ shape, unit, layout, or writer behavior.
 | Profile dataset serialization | `writers/h5_storage.py` | profile producer/consumer tests |
 | Displacement frame and artifact I/O | `readers/frame_sequences.py`, `writers/displacement_arrays.py`, `writers/magnitude_avi.py` | `pipelines/displacement_map/` and its focused test |
 | JSON and text sidecars | `writers/sidecars.py` | displacement metadata and run logging |
-| PDF measurements and page layout | `reports/pdf_data.py`, `reports/pdf_report.py` | `test_pdf_report_runner_paths.py` and producer tests |
+| PDF file and image I/O | `reports/pdf_report.py` | `pipelines/pdf_report/` owns measurement selection and page layout; `test_pdf_report_runner_paths.py` |
 
 ## Contracts and ownership
 
@@ -64,7 +64,7 @@ Managed runs use coordinator-owned dataset adapters for central source reads
 and an in-memory output structure. Use `readers/nodes.py` predicates when an API
 accepts both HDF5 and managed nodes. Source alignment and output path ownership
 remain in this package. Final serialization reuses the same storage policies;
-reports accept the assembled output view before the final HDF5 exists.
+the PDF pipeline reads the assembled output view before the final HDF5 exists.
 See [parallel execution](../../docs/parallel_pipeline_execution.md).
 
 Large float32 map/profile payloads may request sparse NaN chunk storage; the
@@ -82,7 +82,7 @@ serialization policy.
 MP4, AVI, PDF, and EPS; JSON and text sidecars use dedicated writer helpers. A pipeline may
 reserve a path or open an auxiliary HDF5, but required machine-readable results
 belong in the primary file.
-PNG figure writers record report image paths in run state so PDF assembly can
+PNG figure writers record report image paths in run state so the PDF pipeline can
 use the actual variant artifacts; legacy filename lookup remains available.
 
 Artifact writers prefix each basename with the acquisition `<stem>_` exactly

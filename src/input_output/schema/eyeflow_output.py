@@ -17,10 +17,15 @@ VELOCITY_WORKFLOW_FOLDERS = {
 
 
 def processing_path(path: str, root: str) -> str:
-    """Map canonical moments paths to a workflow; leave shared roots unchanged."""
+    """Map workflow-owned paths while leaving other shared roots unchanged."""
     normalized = str(path).replace("\\", "/").strip("/")
     if normalized == "ProcessingMoments" or normalized.startswith("ProcessingMoments/"):
         return root + normalized[len("ProcessingMoments"):]
+    gradient_root = "ProcessingWidth/SpatialGradient/Moments"
+    if root == "ProcessingBandRatio" and (
+        normalized == gradient_root or normalized.startswith(gradient_root + "/")
+    ):
+        return "ProcessingWidth/SpatialGradient/BandRatio" + normalized[len(gradient_root):]
     return normalized
 
 
@@ -379,8 +384,8 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     displacement_map_root="ProcessingWidth/Displacement/Map",
     displacement_profiles_root="ProcessingWidth/Displacement/Profiles",
     displacement_metrics_root="ProcessingWidth/Displacement/Metrics",
-    spatial_gradient_profiles_root="ProcessingMoments/SpatialGradientProfiles",
-    spatial_gradient_metrics_root="ProcessingMoments/SpatialGradientMetrics",
+    spatial_gradient_profiles_root="ProcessingWidth/SpatialGradient/Moments/Profiles",
+    spatial_gradient_metrics_root="ProcessingWidth/SpatialGradient/Moments/Metrics",
     velocity_profile_analysis_root="ProcessingMoments/VelocityProfileAnalysis",
     waveform_shape_metrics_root="ProcessingMoments/Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="ProcessingMoments/Metrics/absolute_waveform_metrics",

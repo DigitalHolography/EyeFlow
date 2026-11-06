@@ -42,7 +42,7 @@ availability rather than unrelated import crashes.
 | `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
 | `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `velocity_analysis` |
-| `pdf_report` | Report assembly after waveform and shape outputs |
+| `pdf_report` / hidden `pdf_width_report` | Variant velocity reports plus one shared, conditional displacement/gradient report; measurement selection and page layout stay here, while `input_output/reports` handles file I/O |
 | `displacement_map` / `displacement_profiles` | Early independent image registration producing magnitude videos and run-local dense fields; later shared-timing profiles/metrics with separately gated per-segment maps |
 
 The declarations in each package are authoritative if this table drifts.

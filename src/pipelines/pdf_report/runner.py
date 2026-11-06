@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from input_output.output_manager import OutputType
-from input_output.reports import generate_a4_report
-from input_output.readers.h5 import sidecar_dir_for_h5
+from input_output.reports import write_pdf_report
+from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.png import REPORT_IMAGES_STATE
+
+from .data import ReportData, extract_report_data
+from .pages import build_report_pages
 
 
 def run_pdf_report(ctx) -> None:
-    """Generate an A4 PDF report from the output H5 file."""
-    ctx.require_inputs("hd", "dv")
-
+    """Assemble and save the selected workflow's PDF report."""
     output_h5_path = ctx.output.h5.filename
     if output_h5_path is None:
         ctx.log_warning("No output H5 file available for PDF generation")
@@ -30,32 +33,30 @@ def run_pdf_report(ctx) -> None:
     png_dir = output_manager.dir_for(OutputType.PNG)
     report_images = ctx.state.get(REPORT_IMAGES_STATE, {})
 
-    hd_png_dir = (
-        sidecar_dir_for_h5(ctx.inputs.hd.filename, "png")
-        if ctx.inputs.hd.filename is not None
-        else None
-    )
-    mask_dir = hd_png_dir / "mask" if hd_png_dir is not None else None
-
     try:
-        report_options = {}
-        if hasattr(getattr(ctx.output.h5, "file", None), "checkpoint"):
-            report_options["output_source"] = ctx.output.h5.file
-        processing_root = getattr(ctx.output.h5, "processing_root", None)
-        if processing_root is not None:
-            report_options["processing_root"] = processing_root
-        pdf_path = generate_a4_report(
-            output_h5_path=Path(output_h5_path),
-            output_dir=report_dir,
-            folder_name=folder_name,
-            png_dir=png_dir if png_dir.exists() else None,
-            hd_png_dir=hd_png_dir if hd_png_dir and hd_png_dir.exists() else None,
-            mask_dir=mask_dir if mask_dir and mask_dir.exists() else None,
-            report_images=report_images,
-            **report_options,
+        report = extract_report_data(ctx.output.h5)
+        _warn_missing_velocities(ctx, report)
+        pages = build_report_pages(report, folder_name, png_dir, report_images)
+        pdf_path = write_pdf_report(
+            prefixed_artifact_path(Path(report_dir) / "report.pdf", folder_name), pages,
         )
         ctx.log(f"PDF report generated: {pdf_path}")
         return None
     except Exception as e:
         ctx.log_error(f"PDF generation failed: {e}")
         raise
+
+
+def _warn_missing_velocities(ctx, report: ReportData) -> None:
+    """Explain missing report traces without substituting unfiltered velocity."""
+    for vessel in ("artery", "vein"):
+        values = report.velocity_per_beat.get(vessel)
+        if values is None:
+            ctx.log_warning(
+                f"PDF: {vessel} filtered per-beat velocity is unavailable; "
+                "no unfiltered-velocity fallback was used."
+            )
+        elif not np.isfinite(values).any():
+            ctx.log_warning(
+                f"PDF: {vessel} filtered per-beat velocity has no finite samples."
+            )

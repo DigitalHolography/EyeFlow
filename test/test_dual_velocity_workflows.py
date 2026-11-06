@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 from test_frequency_band_pipeline_integration import _write_frequency_band_run
 
-from input_output.reports.pdf_data import extract_parameters_from_h5
+from pipelines.pdf_report.data import extract_report_data
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from input_output.schema.provenance import read_dataset_attrs
@@ -418,8 +419,13 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
         assert list((ef_dir / "png" / folder).rglob("*.png"))
         assert list((ef_dir / "avi" / folder).rglob("*.avi"))
         assert list((ef_dir / "pdf" / folder).glob("*.pdf"))
-    moments = extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingMoments")
-    bands = extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingBandRatio")
+    with h5py.File(result.outputs[0], "r") as output:
+        moments = extract_report_data(
+            PipelineH5Output(output, processing_root="ProcessingMoments"), include_optional=False,
+        ).parameters
+        bands = extract_report_data(
+            PipelineH5Output(output, processing_root="ProcessingBandRatio"), include_optional=False,
+        ).parameters
     assert (
         moments["Average_Arterial_Velocity"]["value"] != bands["Average_Arterial_Velocity"]["value"]
     )

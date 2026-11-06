@@ -204,12 +204,16 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
         assert caches[0] is caches[1]
         assert len(calls) == (2 if failure == "extraction" else 1)
         with h5py.File(output_path) as output:
-            root = "SpatialGradientProfiles/Artery/Transverse/Masked/SpatialGradientProfile/value"
-            assert output[f"ProcessingBandRatio/{root}"].shape[2] == 1
+            root = "ProcessingWidth/SpatialGradient"
+            profile = "Profiles/Artery/Transverse/Masked/SpatialGradientProfile/value"
+            metric = "Metrics/Artery/Transverse/Masked/tk/lumen_size"
+            assert output[f"{root}/BandRatio/{profile}"].shape[2] == 1
+            assert f"{root}/BandRatio/{metric}" in output
             if failure is None:
-                assert output[f"ProcessingMoments/{root}"].shape[2] == 2
+                assert output[f"{root}/Moments/{profile}"].shape[2] == 2
+                assert f"{root}/Moments/{metric}" in output
             else:
-                assert f"ProcessingMoments/{root}" not in output
+                assert f"{root}/Moments/{profile}" not in output
                 statuses = json.loads(output.attrs["pipeline_status"])["variants"]
                 assert statuses["doppler_moments"]["spatial_gradient_moment0"] == "failed"
                 assert statuses["frequency_bands"]["spatial_gradient_moment0"] == "succeeded"

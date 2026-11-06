@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import math
-from pipeline_engine.storage import temporary_directory as create_temporary_directory
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
+import math
 from pathlib import Path
+from time import perf_counter
 from typing import Literal
 
 import h5py
@@ -21,9 +22,11 @@ from input_output.schema.doppler_view import (
     DV_VEIN_MASK_PATH as VEIN_MASK_PATH,
     DV_VESSEL_MASK_PATH as VESSEL_MASK_PATH,
 )
+from pipeline_engine.storage import temporary_directory as create_temporary_directory
 
 from .calculator import create_retinal_motion_map
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
+from .logging import logged_stage
 from .parameters import MotionMapConfig
 
 DISPLACEMENT_MAP_STATE = "displacement_map_artifacts"
@@ -81,6 +84,8 @@ def run_displacement_map(
         from .stages import displacement_graph
         return displacement_graph(config or DisplacementMapPipelineConfig())
 
+    started = perf_counter()
+    ctx.log("Starting displacement-map pipeline...")
     selected = config or DisplacementMapPipelineConfig()
     inputs = load_displacement_map_inputs(ctx, selected)
     source_filename = inputs.moment.file.filename
@@ -107,9 +112,13 @@ def run_displacement_map(
             base_config.h5_high_percentile, h5_source=inputs.moment,
             defer_h5_range=True,
         )
-        with sequence.cached_for_replay(
-            base_config.max_frames, Path(temporary_directory.name)
-        ) as replay:
+        with ExitStack() as replay_scope:
+            with logged_stage("displacement frame replay"):
+                replay = replay_scope.enter_context(
+                    sequence.cached_for_replay(
+                        base_config.max_frames, Path(temporary_directory.name)
+                    )
+                )
             for mask_input in inputs.masks:
                 _run_displacement_mask(
                     ctx, mask_input, inputs, base_config, replay,
@@ -131,6 +140,7 @@ def run_displacement_map(
     ctx.log("Dense displacement fields prepared for displacement analysis.")
     for output_video in output_videos:
         ctx.log(f"Displacement magnitude video written to {output_video}.")
+    ctx.log(f"Completed displacement-map pipeline in {perf_counter() - started:.1f}s.")
 
 
 def run_displacement_profiles(ctx) -> None:

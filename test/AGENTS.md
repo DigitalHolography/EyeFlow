@@ -35,7 +35,7 @@ boundary behavior—not only regression smoke tests.
 | Waveform metrics | `test_waveform_shape_metrics_*.py`, `test_absolute_waveform_metrics.py`, `test_lowrank_quadrant_outputs.py` | metric formulas, segment geometry, quadrants, plots |
 | Velocity-profile fitting | `test_velocity_profile_analysis.py` | weighted solver, degeneracy/NaN behavior, waveform option/output paths |
 | Displacement | `test_displacement_map_pipeline.py` | registration, source validation, temporary field state, and AVI artifact routing |
-| PDF report | `test_pdf_report_runner_paths.py` | output paths, velocity units, and active waveform schema |
+| PDF report | `test_pdf_report_runner_paths.py`, `test_pdf_width_report.py` | velocity data choice, conditional shared width report, output paths, units, and active schema |
 | Installer/release support | `test_installer_script.py` | installer-script contract; release workflow remains separate |
 
 ## Selection guidance

@@ -32,6 +32,14 @@ class SpatialGradientProfileTests(unittest.TestCase):
             schema.spatial_gradient_metrics_root,
             SPATIAL_GRADIENT_METRICS_ROOT,
         )
+        self.assertEqual(
+            "ProcessingWidth/SpatialGradient/Moments/Profiles",
+            SPATIAL_GRADIENT_PROFILE_ROOT,
+        )
+        self.assertEqual(
+            "ProcessingWidth/SpatialGradient/Moments/Metrics",
+            SPATIAL_GRADIENT_METRICS_ROOT,
+        )
 
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         vessels = SimpleNamespace(
@@ -145,7 +153,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
             )
         self.assertEqual(expected_paths, set(outputs))
         for path, value in outputs.items():
-            if "SpatialGradientProfiles" in path:
+            if path.startswith(SPATIAL_GRADIENT_PROFILE_ROOT + "/"):
                 self.assertEqual("/moment0ff", value.attrs["source_dataset"])
                 self.assertEqual(7, value.attrs["temporal_moving_average_window"])
                 self.assertEqual(2, value.attrs["temporal_moving_average_passes"])

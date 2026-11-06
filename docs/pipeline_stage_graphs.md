@@ -101,7 +101,10 @@ so their figure construction also happens in the worker.
 
 Consumers such as reports declare `wait_for_artifacts=True`. Within a stage
 graph, declare the relevant product/`after` dependencies as well; the consumer
-joins those upstream export jobs. Top-level `pdf_report` joins the file's jobs.
+joins those upstream export jobs. Top-level `pdf_report` joins the file's jobs;
+the hidden, once-per-run `pdf_width_report` companion is scheduled with
+velocity timing, waits for optional analyses to finish, and only writes when
+displacement or spatial-gradient metrics exist.
 Other numerical nodes do not wait for exports.
 
 OutputManager and shared writers record explicit artifact ownership. Checkpoint

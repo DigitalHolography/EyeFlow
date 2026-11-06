@@ -243,6 +243,9 @@ Cross-section work is temporally chunked. CPU/GPU backend selection lives in
 `calculations/compute_backend.py`; vessel-segment sampling enforces a shared
 scratch-memory budget, while retained outputs are outside that budget. Preserve
 the staged gradient path's temporal halo and operation order when optimizing.
+At batch start, the shared run service tests CuPy with image and FFT kernels.
+If automatic GPU selection is unavailable, it passes CPU selection to spawned
+pipeline workers for the duration of the batch.
 
 The checked-in GitHub workflow is release-only: a newly created `vX.Y.Z` tag at
 the current `dev` head is validated, the tree is squash-published to `main`, an
