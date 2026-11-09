@@ -9,6 +9,11 @@ This is the authoritative documentation layer for data moving into, through,
 and out of EyeFlow. Executable path constants in `src/input_output/schema/`
 remain the final source of truth.
 
+The frequency-resolved Doppler CVI proxy adds the schema-owned
+`/ProcessingSpectrograms/DopplerCVI` family, independently of vessel-excluded
+gap support. Its full spatial, threshold, validity, axes, units and provenance
+contract is in [Doppler CVI](doppler_cvi.md).
+
 ## Article figure formatting
 
 `src/plotting/formatting.py` provides general-purpose, opt-in
@@ -366,13 +371,20 @@ counts per frequency. Reuse the existing beat division without repeating it.
 
 When the HD spectral video is available, `low_freq_spectra` also exports each
 available gap product to both `png/spectrograms/` and `eps/spectrograms/`:
-`<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/SpatialMedian` as a
-linear viridis heatmap with horizontal elapsed-time ticks labeled `Time (s)`,
-using the HD frame interval `batch_stride / sampling_freq`, signed frequency
-ticks rounded to whole kHz values, and a vertical power colorbar. A matching
-`<stem>_spectrograms_gaps_monochrome` uses white-to-black grayscale with a mild
-gamma contrast adjustment. The final negative-frequency bin is labeled to make
-the upper bound explicit; replace a neighboring tick when needed to avoid crowding.
+`<stem>_spectrograms_gaps_monochrome` displays
+`/ProcessingSpectrograms/Gaps/SpatialMedian` with horizontal elapsed-time ticks
+labeled `Time (s)`, using the HD frame interval `batch_stride / sampling_freq`,
+and a vertical power colorbar. It uses black-to-white grayscale with a mild
+gamma contrast adjustment and the same ascending calibrated signed-frequency
+axis as the CVI heatmap. Display rows are sorted by their signed kHz centers;
+the persisted arrays retain HD order. The former colored
+`<stem>_spectrograms_gaps` artifact is no longer exported.
+`<stem>_spectrograms_gaps_monochrome_onebeat` displays the existing
+`Gaps/TimeAggregated/MedianBeat` power as an additional article PNG/EPS pair.
+It uses the stored normalized cardiac-phase samples on a 0--1 horizontal axis,
+the same ascending signed-frequency display and gamma contrast as the
+full-recording monochrome spectrogram, black-to-white grayscale, and its own
+finite power range for contrast. It does not repeat beat alignment or aggregation.
 `<stem>_spectrogram_gaps_median` plots
 `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` in the original HD
 positive-then-negative order, with a thin black dotted horizontal line at zero
@@ -392,8 +404,10 @@ Missing products omit only their own figures;
 the median figure requires detected cardiac timing, while the mask does not
 require nonempty gap support. Figures do not change any persisted data.
 
-The full-domain heatmap and median-spectrum axes read averaged signed centers
-from `/ProcessingSpectrograms/FrequencyBinTable`, preserving source order.
+The full-domain heatmaps and median-spectrum axes read averaged signed centers
+from `/ProcessingSpectrograms/FrequencyBinTable`. The median spectrum preserves
+source order; the monochrome gap and CVI heatmaps use ascending
+signed-frequency display coordinates.
 The table averages the original signed FFT coordinates using exactly the HD
 selection and binning above. For a full export with averaging factor `q`, centers
 have spacing `q*fs/B` Hz and offset `(q-1)*fs/(2*B)` from the former DC-zero grid.
@@ -454,7 +468,7 @@ frequency in kHz, and `Power (a.u.)`. Use lowercase signal names in each figure'
 legend, with the same font size as the axis labels. Use a 16 cm wide canvas,
 about 6.4 cm high (30% taller than the original full-spectrum plots), with
 about 13.3 pt axis captions and legends and 10.7 pt ticks. Scale these sizes
-with canvas width to match the `spectrograms_gaps` font sizes when both are
+with canvas width to match the `spectrograms_gaps_monochrome` font sizes when both are
 displayed at the same width. Retain the DPI, typeface, and border style.
 Place the legend centrally above the valley to leave both peaks visible.
 Composite background and envelope fills on white

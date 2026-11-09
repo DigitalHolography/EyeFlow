@@ -1,4 +1,4 @@
-"""Export shared gap-spectrum figures from their persisted HDF5 products."""
+"""Export shared spectral and Doppler CVI figures and movies from HDF5 products."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from plotting.article import (
     ARTICLE_DPI as FIGURE_DPI,
     ARTICLE_STYLE,
     ARTICLE_WIDTH_INCHES as FIGURE_WIDTH_INCHES,
-    SPECTROGRAM_ARTICLE_STYLE,
     SPECTRUM_ARTICLE_STYLE,
+    SPECTROGRAM_ARTICLE_STYLE,
     apply_article_style,
     create_article_figure as _figure,
     prepare_article_fill_layer,
@@ -23,12 +23,14 @@ from plotting.formatting import TickFormat, add_colorbar, add_legend, apply_tick
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.png import FigureArtifactWriter
+from input_output.writers.avi import AviArtifactWriter
 from utils.logger import Logger
 
 from .frequency import frequency_ticks, read_frequency_bin_table
 from .metrics import PHASE_METRIC_OUTPUT_NAMES, _valley_neighborhood_indices, spectrum_valley_height
 from .qc import valley_repeatability
 from .shape_metrics import SHAPE_PHASE_METRIC_NAMES
+from .cvi import mean_frequency_occupancy
 
 SPECTRUM_HEIGHT_SCALE = 1.30
 SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
@@ -49,16 +51,20 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
     paths: list[Path] = []
     frequency_table = read_frequency_bin_table(output)
     for source_path, name, make_figure in (
-        (schema.spectrograms_masked, "spectrograms_gaps", _gap_spectrogram_figure),
         (
             schema.spectrograms_masked,
             "spectrograms_gaps_monochrome",
-            partial(_gap_spectrogram_figure, monochrome=True),
+            _gap_spectrogram_figure,
         ),
         (
             schema.spectrograms_masked_time_aggregated_median,
             "spectrogram_gaps_median",
             _gap_median_figure,
+        ),
+        (
+            schema.spectrograms_masked_time_aggregated_median_beat,
+            "spectrograms_gaps_monochrome_onebeat",
+            _gap_onebeat_spectrogram_figure,
         ),
     ):
         source = output.h5.get(source_path)
@@ -72,6 +78,14 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
                 Logger.log_warning(f"Skipping {name}: a positive finite HD frame interval is required for seconds.")
                 continue
             make_figure = partial(make_figure, dt_seconds=dt_seconds)
+        elif source_path == schema.spectrograms_masked_time_aggregated_median_beat:
+            phase = np.asarray(source.attrs.get("phase_samples", []))
+            if (phase.shape != source.shape[:1] or phase.dtype.kind not in "iuf"
+                    or not np.all(np.isfinite(phase))
+                    or np.any(np.diff(phase) <= 0) or np.any(phase < 0) or np.any(phase >= 1)):
+                Logger.log_warning(f"Skipping {name}: valid stored cardiac-phase coordinates are required.")
+                continue
+            make_figure = partial(make_figure, phase_samples=phase)
         values = source[()]
         paths.extend(_save_figure_pair(manager, name, partial(
             make_figure, values, frequencies_khz=frequency_table[()],
@@ -95,6 +109,8 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
         paths.append(FigureArtifactWriter(manager).save_figure(
             _gap_qc_figure(output, dt_seconds=dt_seconds), "gaps_qc.png", dpi=150,
         ))
+    paths.extend(export_cvi_figures(output))
+    paths.extend(export_cvi_movies(output))
     return paths
 
 
@@ -265,54 +281,177 @@ def _save_figure_pair(manager, name: str, make_figure) -> list[Path]:
     return save_article_figure_pair(manager, make_figure(), name, dpi=FIGURE_DPI)
 
 
-def _gap_spectrogram_figure(
-    values: np.ndarray, *, frequencies_khz: np.ndarray, dt_seconds: float,
-    monochrome: bool = False,
-):
+def signed_frequency_heatmap(values, samples, frequencies_khz, *, xlabel, colorbar_label,
+                             cmap, norm=None, vmin=None, vmax=None, colorbar_ticks=None):
+    """Sort only the display rows; all exported signed bin centers stay distinct."""
+    frequencies = np.asarray(frequencies_khz)
+    order = np.argsort(frequencies, kind="stable")
+    fig, ax = _figure(width=SPECTROGRAM_WIDTH_INCHES,
+                                    aspect_ratio=SPECTROGRAM_ASPECT_RATIO)
+    image = ax.pcolormesh(samples, frequencies[order], np.asarray(values)[:, order].T,
+                         shading="nearest", cmap=cmap, norm=norm, vmin=vmin, vmax=vmax,
+                         rasterized=True)
+    ax.set(xlabel=xlabel, ylabel="Signed frequency (kHz)")
+    colorbar = add_colorbar(fig, image, ax=ax, label=colorbar_label,
+                            layout=SPECTROGRAM_ARTICLE_STYLE.colorbar_layout)
+    if colorbar_ticks is not None:
+        colorbar.set_ticks(colorbar_ticks)
+    apply_article_style(fig, SPECTROGRAM_ARTICLE_STYLE)
+    return fig
+
+
+def cvi_heatmap_figure(values, phase, frequencies_khz):
+    return signed_frequency_heatmap(
+        np.asarray(values) * 100, phase, frequencies_khz, xlabel="Cardiac phase",
+        colorbar_label="Doppler CVI proxy (%)", cmap="gray", vmin=0, vmax=100,
+        colorbar_ticks=[0, 25, 50, 75, 100],
+    )
+
+
+def cvi_frequency_mean_figure(values, support):
+    """Article spatial occupancy map in the frequency movie's native HD frame."""
+    from matplotlib.patches import Circle
+
+    fig, ax = _figure(width=12 / 2.54, aspect_ratio=1.)
+    image = ax.imshow(np.where(support, values, 0.) * 100, cmap="gray", vmin=0, vmax=100,
+                       origin="upper", interpolation="nearest", aspect="equal")
+    height, width = np.shape(values)
+    ax.add_patch(Circle(((width - 1) / 2, (height - 1) / 2), .4 * width,
+                        fill=False, edgecolor="0.6", linewidth=.4))
+    ax.set(xlabel="x", ylabel="y",
+           xlim=(-.5, width - .5), ylim=(height - .5, -.5))
+    colorbar = add_colorbar(fig, image, ax=ax, label="Mean binary occupancy (%)",
+                            layout=SPECTROGRAM_ARTICLE_STYLE.colorbar_layout)
+    colorbar.set_ticks([0, 25, 50, 75, 100])
+    apply_article_style(fig, SPECTROGRAM_ARTICLE_STYLE)
+    return fig
+
+
+def export_cvi_frequency_mean(output):
+    root = EyeFlowOutputPaths.active().spectrograms_cvi_root
+    mean = output.h5.get(f"{root}/Movies/FrequencyMeanOverBins")
+    if mean is None:
+        source = output.h5.get(f"{root}/Movies/FrequencyMean")
+        if source is None:
+            return []
+        values = mean_frequency_occupancy(source)
+    else:
+        values = mean[()]
+    figure = cvi_frequency_mean_figure(values, output.h5.get(f"{root}/DiscMask")[()].astype(bool))
+    return save_article_figure_pair(
+        output.manager.for_artifact_namespace("spectrograms/cvi"), figure,
+        "doppler_cvi_binary_frequency_mean",
+    )
+
+
+def export_cvi_figures(output):
+    root = EyeFlowOutputPaths.active().spectrograms_cvi_root
+    source = output.h5.get(f"{root}/CVI")
+    if source is None:
+        return []
+    figure = cvi_heatmap_figure(source[()], output.h5.get(f"{root}/Phase")[()],
+                               output.h5.get(f"{root}/Frequency")[()])
+    paths = save_article_figure_pair(
+        output.manager.for_artifact_namespace("spectrograms/cvi"), figure, "doppler_cvi_heatmap",
+    )
+    paths.extend(export_cvi_frequency_mean(output))
+    return paths
+
+
+def export_cvi_movies(output, *, fps=10.):
+    """Stream the persisted occupancy maps through the shared AVI writer."""
+    from matplotlib import colormaps
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+    from matplotlib.patches import Circle
+
+    schema = EyeFlowOutputPaths.active()
+    root = schema.spectrograms_cvi_root
+    if output.h5.get(f"{root}/Movies/FrequencyMean") is None:
+        return []
+    frequencies = output.h5.get(f"{root}/Frequency")[()]
+    phases = output.h5.get(f"{root}/Phase")[()]
+    support = output.h5.get(f"{root}/DiscMask")[()].astype(bool)
+    height, width = support.shape
+    writer = AviArtifactWriter(output.manager.for_artifact_namespace("spectrograms/cvi"))
+    paths = []
+    for axis, dataset, order, coordinates, unit in (
+        ("phase", "PhaseMean", np.arange(len(phases)), phases, "1"),
+        ("frequency", "FrequencyMean", np.argsort(frequencies, kind="stable"), frequencies, "kHz"),
+    ):
+        source = output.h5.get(f"{root}/Movies/{dataset}")
+        if source is None:
+            continue
+        fig = Figure(figsize=(6.4, 6.4), dpi=100, constrained_layout=True)
+        canvas = FigureCanvasAgg(fig)
+        ax = fig.subplots()
+        cmap = colormaps["gray"].with_extremes(bad="magenta")
+        image = ax.imshow(np.zeros(support.shape), cmap=cmap, vmin=0, vmax=1,
+                          origin="upper", interpolation="nearest")
+        colorbar = fig.colorbar(image, ax=ax, shrink=.8, ticks=[0, .25, .5, .75, 1])
+        colorbar.ax.set_yticklabels(["0", "25", "50", "75", "100"])
+        colorbar.set_label("Mean binary occupancy (%)")
+        ax.add_patch(Circle(((width - 1) / 2, (height - 1) / 2), .4 * width,
+                            fill=False, edgecolor="tab:red", linewidth=1))
+        ax.set(xlim=(-.5, width - .5), ylim=(height - .5, -.5),
+               xlabel="x", ylabel="y")
+        fig.text(.5, .01, "Doppler CVI proxy | invalid included pixels: magenta",
+                 ha="center", fontsize=8)
+        metadata = dict(
+            quantity="mean_binary_occupancy", display_range=[0., 1.], fps=fps,
+            scientific_dataset=f"/{root}/Movies/{dataset}", threshold_dataset=f"/{root}/Thresholds",
+            support_dataset=f"/{root}/DiscMask", frame_axis=axis, coordinate_unit=unit,
+            frame_source_indices=order.tolist(), frame_coordinates=coordinates[order].tolist(),
+            beat_aggregation="mean_valid_beats_at_each_phase_frequency",
+            post_aggregation_threshold="none", image_coordinates="native_HD_yx",
+        )
+        if axis == "phase":
+            selected = np.asarray(source.attrs["frequency_bin_indices"], dtype=int)
+            summary = f"Mean binary images over bins {selected[0]} through {selected[-1]} (inclusive)"
+            metadata["frequency_bin_indices"] = selected.tolist()
+        else:
+            summary = "Mean binary images over cardiac phase (all signed bins)"
+        with writer.open_mjpeg(f"doppler_cvi_binary_{axis}.avi", width=640, height=640,
+                               fps=fps, metadata=metadata, jpeg_quality=95) as video:
+            for index in order:
+                frame = np.asarray(source[int(index)], dtype=float)
+                image.set_data(np.ma.masked_invalid(np.where(support, frame, 0.)))
+                label = (f"Cardiac phase {phases[index]:.4f}" if axis == "phase" else
+                         f"Source bin {index}: {frequencies[index]:.5g} kHz")
+                ax.set_title(f"{label}\n{summary}", fontsize=10)
+                canvas.draw()
+                video.write_frame(np.asarray(canvas.buffer_rgba())[:, :, :3])
+        paths.append(video.path)
+        fig.clear()
+    return paths
+
+
+def _gap_onebeat_spectrogram_figure(values, *, phase_samples, frequencies_khz):
+    """Display the persisted phase/frequency beat median with its own power range."""
+    from matplotlib.colors import PowerNorm
+
+    fig = signed_frequency_heatmap(
+        values, phase_samples, frequencies_khz, xlabel="Cardiac phase",
+        colorbar_label="Power (a.u.)", cmap="gray", norm=PowerNorm(gamma=0.9),
+    )
+    fig.axes[0].set_xlim(0, 1)
+    return fig
+
+
+def _gap_spectrogram_figure(values: np.ndarray, *, frequencies_khz: np.ndarray, dt_seconds: float):
     from matplotlib.colors import PowerNorm
     from matplotlib.ticker import MaxNLocator
 
     if not np.isfinite(dt_seconds) or dt_seconds <= 0:
         raise ValueError("The HD frame interval must be positive and finite.")
-    fig, ax = _figure(width=SPECTROGRAM_WIDTH_INCHES, aspect_ratio=SPECTROGRAM_ASPECT_RATIO)
-    # HDF5 is (time, freq); display frequency vertically without changing bin order.
-    # Keep frame zero at t=0 and frequency-bin centers at their original indexes.
-    image = ax.imshow(
-        np.asarray(values).T, origin="lower", aspect="auto",
-        interpolation="nearest", cmap="gray_r" if monochrome else "viridis",
-        # Slightly darken monochrome midtones without clipping the power range.
-        norm=PowerNorm(gamma=0.9) if monochrome else None,
-        extent=(-0.5 * dt_seconds, (values.shape[0] - 0.5) * dt_seconds,
-                -0.5, values.shape[1] - 0.5),
+    fig = signed_frequency_heatmap(
+        values, np.arange(values.shape[0]) * dt_seconds, frequencies_khz,
+        xlabel="Time (s)", colorbar_label="Power (a.u.)", cmap="gray", norm=PowerNorm(gamma=0.9),
     )
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Frequency (kHz)", labelpad=6)
+    ax = fig.axes[0]
     last_time = (values.shape[0] - 1) * dt_seconds
-    time_ticks = MaxNLocator(nbins=7, steps=[1, 2, 5, 10]).tick_values(0, last_time)
-    ax.set_xticks(time_ticks[(time_ticks >= 0) & (time_ticks <= last_time)])
-    # Space ticks within each signed block while retaining the final bin as an
-    # upper-bound label. Replace its neighbor if there is too little room.
-    blocks = np.split(np.arange(frequencies_khz.size), np.flatnonzero(frequencies_khz < 0)[:1])
-    tick_step = max(1, int(np.ceil(frequencies_khz.size / 8)))
-    positions = []
-    for block in blocks:
-        if not block.size:
-            continue
-        if positions and block[0] - positions[-1] < tick_step:
-            positions.pop()
-        positions.extend(block[::tick_step])
-    last_bin = frequencies_khz.size - 1
-    if positions[-1] != last_bin:
-        if last_bin - positions[-1] < 0.75 * tick_step:
-            positions[-1] = last_bin
-        else:
-            positions.append(last_bin)
-    apply_tick_format(ax.yaxis, TickFormat(decimals=0),
-                      positions=positions, values=frequencies_khz[positions])
-    add_colorbar(fig, image, ax=ax, label="Power (a.u.)",
-                 layout=SPECTROGRAM_ARTICLE_STYLE.colorbar_layout)
-    apply_article_style(fig, SPECTROGRAM_ARTICLE_STYLE)
-    ax.tick_params(axis="x", labelrotation=0)
+    ticks = MaxNLocator(nbins=7, steps=[1, 2, 5, 10]).tick_values(0, last_time)
+    ax.set_xticks(ticks[(ticks >= 0) & (ticks <= last_time)])
     return fig
 
 

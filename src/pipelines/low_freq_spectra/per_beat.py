@@ -1,4 +1,4 @@
-"""Phase-align gap spectra without filling invalid temporal samples."""
+"""Phase-align reduced and spatial Doppler power without filling invalid samples."""
 
 from __future__ import annotations
 
@@ -58,3 +58,29 @@ def gap_spectrograms_per_beat(
         for frequency in range(values.shape[1]):
             output[:, frequency, beat] = np.interp(phase, source_phase, signal[:, frequency])
     return output
+
+
+def align_power(values, boundaries, sample_count):
+    """Linear phase interpolation, including next boundary, without NaN bridging.
+
+    Vectorized spatial equivalent of gap_spectrograms_per_beat; retain float64
+    power until the final output packing. Exact anchors do not touch neighbors.
+    """
+    values = np.array(values, dtype=np.float64, copy=True)
+    values[~np.isfinite(values)] = np.nan
+    phase = np.arange(sample_count) / sample_count
+    aligned = np.empty((sample_count, len(boundaries) - 1, values.shape[1]))
+    for beat, (start, stop) in enumerate(zip(boundaries[:-1], boundaries[1:])):
+        source_phase = np.linspace(0, 1, int(stop - start) + 1)
+        lower = np.searchsorted(source_phase, phase, side="right") - 1
+        upper = np.minimum(lower + 1, source_phase.size - 1)
+        weight = (phase - source_phase[lower]) / (source_phase[upper] - source_phase[lower])
+        left = values[start + lower]
+        right = values[start + upper]
+        with np.errstate(invalid="ignore", over="ignore"):
+            result = left + weight[:, None] * (right - left)
+        exact = weight == 0
+        result[exact] = left[exact]
+        result[~np.isfinite(result)] = np.nan
+        aligned[:, beat] = result
+    return aligned

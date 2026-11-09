@@ -165,6 +165,7 @@ class EyeFlowOutputPaths:
     sampling_frequency_hz: str
     blood_volume_rate: BloodVolumeRateOutputPaths
     spectrograms_frequency_bin_table: str
+    spectrograms_cvi_root: str
     spectrograms_spatial_average: str
     spectrograms_spatial_median: str
     spectrograms_masked: str
@@ -391,6 +392,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     sampling_frequency_hz="Meta/SamplingFrequencyHz/value",
     blood_volume_rate=_blood_volume_rate_paths("ProcessingMoments/BloodVolumeRate"),
     spectrograms_frequency_bin_table="ProcessingSpectrograms/FrequencyBinTable",
+    spectrograms_cvi_root="ProcessingSpectrograms/DopplerCVI",
     spectrograms_spatial_average="ProcessingSpectrograms/Global/SpatialAverage",
     spectrograms_spatial_median="ProcessingSpectrograms/Global/SpatialMedian",
     spectrograms_masked="ProcessingSpectrograms/Gaps/SpatialMedian",

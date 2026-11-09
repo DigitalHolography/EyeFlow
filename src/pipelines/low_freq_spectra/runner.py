@@ -14,6 +14,7 @@ from .frequency import pack_frequency_bin_table
 from .gap_analysis import run_gap_analysis
 from .qc import pack_gap_qc
 from .spectrograms import preprocess_spectrograms
+from .cvi import run_cvi_analysis, run_binary_occupancy_analysis
 
 
 def _packed(value, ctx):
@@ -72,7 +73,7 @@ def _spatial(ctx):
     ctx.dag.handoff("spatial", values)
 
 
-def _beats(ctx):
+def _selected_timing(ctx):
     workflows = velocity_workflows(ctx)
     timing = None
     method = "doppler_moments"
@@ -80,9 +81,23 @@ def _beats(ctx):
         if candidate is not None and candidate.cardiac_cycle_source != "none" and candidate.cycle_boundary_indexes.size >= 2:
             timing = candidate
             break
+    return timing, method
+
+
+def _beats(ctx):
+    timing, method = _selected_timing(ctx)
     if timing is not None and method == "frequency_bands":
         Logger.log_warning("Low-frequency spectra use band-ratio cardiac cycles: detected Doppler moments timing is unavailable.")
     ctx.dag.handoff("beats", run_gap_analysis(ctx, timing, timing_method=method))
+
+
+def _cvi(ctx, **parameters):
+    timing, method = _selected_timing(ctx)
+    ctx.dag.handoff("cvi", run_cvi_analysis(ctx, timing, timing_method=method, **parameters))
+
+
+def _binary_occupancy(ctx):
+    ctx.dag.handoff("binary_occupancy", run_binary_occupancy_analysis(ctx))
 
 
 def _qc(ctx):
@@ -110,16 +125,18 @@ def _figures(ctx):
         export_spectrogram_figures(ctx.output, dt_seconds=dt)
 
 
-def spectral_graph(*, options=()):
+def spectral_graph(*, options=(), cvi_parameters=None):
     product = lambda name: (ProductSpec(name, pack=_packed),)
     return StageGraph((
         StageSpec("source", _source, products=(ProductSpec("source"),)),
         StageSpec("sampling", _sampling, requires=("source",), products=product("sampling")),
         StageSpec("calibration", _calibration, requires=("source", "sampling"), products=product("calibration")),
         StageSpec("spatial", _spatial, requires=("source",), products=product("spatial")),
+        StageSpec("cvi", partial(_cvi, **(cvi_parameters or {})), requires=("source",), optional_requires=("calibration",), products=product("cvi")),
         StageSpec("beats", _beats, requires=("spatial",), optional_requires=("calibration",), products=product("beats")),
+        StageSpec("binary_occupancy", _binary_occupancy, requires=("source", "cvi"), optional_requires=("beats",), products=product("binary_occupancy")),
         StageSpec("qc", _qc, requires=("spatial",), optional_requires=("beats",), products=product("qc")),
-        StageSpec("figures", _figures, requires=("spatial",), optional_requires=("calibration", "beats", "qc"), artifact=True),
+        StageSpec("figures", _figures, requires=("spatial",), optional_requires=("calibration", "beats", "qc", "cvi", "binary_occupancy"), artifact=True),
     ))
 
 

@@ -1,6 +1,8 @@
 """Spectral artifact axes, native mask orientation, and shared output routing."""
 
 from io import BytesIO
+import json
+import struct
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -25,6 +27,7 @@ from pipelines.low_freq_spectra.artifacts import (
     _gap_median_figure,
     _gap_metric_figure,
     _gap_spectrogram_figure,
+    _gap_onebeat_spectrogram_figure,
     _gaps_mask_figure,
     _spectrum_curve,
     _spectrum_baseline,
@@ -32,50 +35,161 @@ from pipelines.low_freq_spectra.artifacts import (
     _power_quantile_figure,
     _spectral_cdf_figure,
     export_spectrogram_figures,
+    cvi_heatmap_figure, export_cvi_figures, cvi_frequency_mean_figure,
+    export_cvi_frequency_mean, export_cvi_movies,
 )
 from calculations.math.frequency import frequency_coordinates_khz
 from test_spectrogram_frequency import _write_frequency_table
+from pipelines.low_freq_spectra.cvi import calculate_binary_occupancy_maps, disc_mask, mean_frequency_occupancy
+from pipelines.low_freq_spectra.cvi import _binary_occupancy_datasets
 
 
-@pytest.mark.parametrize("frames, dt_seconds, time_ticks, monochrome", [
-    (103, 0.01, np.arange(0, 1.01, 0.2), False),
-    (640, 0.025, np.arange(0, 16, 5), True),
+def test_cvi_article_heatmap_and_gap_monochrome_share_calibrated_signed_axis():
+    frequency = frequency_coordinates_khz(32, 64000)
+    phase = np.arange(8) / 8
+    values = np.arange(8 * 32, dtype=float).reshape(8, 32) / 256
+    values[3, 5] = np.nan
+    original = values.copy()
+    cvi = cvi_heatmap_figure(values, phase, frequency)
+    gap = _gap_spectrogram_figure(values, frequencies_khz=frequency, dt_seconds=.1)
+    order = np.argsort(frequency, kind="stable")
+    for fig, scale in ((cvi, 100), (gap, 1)):
+        ax, colorbar = fig.axes
+        image = ax.collections[0]
+        np.testing.assert_allclose(image.get_array().filled(np.nan), values[:, order].T * scale, equal_nan=True)
+        assert ax.get_ylabel() == "Signed frequency (kHz)"
+        assert ax.get_title() == ""
+        np.testing.assert_allclose(fig.get_size_inches(), [SPECTROGRAM_WIDTH_INCHES,
+                                  SPECTROGRAM_WIDTH_INCHES / SPECTROGRAM_ASPECT_RATIO])
+        assert ax.yaxis.label.get_fontfamily() == ["Times New Roman"]
+        assert ax.yaxis.label.get_fontsize() == 10
+        assert all(spine.get_linewidth() == .4 for spine in ax.spines.values())
+    np.testing.assert_array_equal(cvi.axes[0].collections[0].get_coordinates()[:, 0, 1],
+                                  gap.axes[0].collections[0].get_coordinates()[:, 0, 1])
+    np.testing.assert_array_equal(cvi.axes[0].get_yticks(), gap.axes[0].get_yticks())
+    assert cvi.axes[0].get_xlabel() == "Cardiac phase"
+    assert gap.axes[0].get_xlabel() == "Time (s)"
+    image = cvi.axes[0].collections[0]
+    assert type(image.norm) is Normalize
+    assert (image.norm.vmin, image.norm.vmax) == (0, 100)
+    np.testing.assert_array_equal(image.cmap([0., 1.])[:, :3], [[0, 0, 0], [1, 1, 1]])
+    np.testing.assert_array_equal(cvi.axes[1].get_yticks(), [0, 25, 50, 75, 100])
+    assert cvi.axes[1].get_ylabel() == "Doppler CVI proxy (%)"
+    gap_image = gap.axes[0].collections[0]
+    assert type(gap_image.norm) is PowerNorm
+    assert gap_image.norm.gamma == .9
+    np.testing.assert_array_equal(gap_image.cmap([0., 1.])[:, :3], [[0, 0, 0], [1, 1, 1]])
+    assert gap.axes[1].get_ylabel() == "Power (a.u.)"
+    np.testing.assert_array_equal(values, original)
+
+
+def test_cvi_exports_only_heatmap_as_article_png_eps_pair(tmp_path):
+    root = EyeFlowOutputPaths.active().spectrograms_cvi_root
+    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    with h5py.File(tmp_path / "cvi.h5", "w") as h5:
+        h5.create_dataset(f"{root}/CVI", data=np.full((4, 4), .5))
+        h5.create_dataset(f"{root}/Phase", data=np.arange(4)/4)
+        h5.create_dataset(f"{root}/Frequency", data=[1, 3, -3, -1])
+        paths = export_cvi_figures(SimpleNamespace(h5=PipelineH5Output(h5), manager=manager))
+        assert [path.suffix for path in paths] == [".png", ".eps"]
+        for extension in ("png", "eps"):
+            directory = manager.layout.ef_dir / extension / "spectrograms/cvi"
+            assert {path.name for path in directory.iterdir()} == {f"scan_doppler_cvi_heatmap.{extension}"}
+        with Image.open(paths[0]) as image:
+            np.testing.assert_allclose(image.size, [SPECTROGRAM_WIDTH_INCHES * 320,
+                                      SPECTROGRAM_WIDTH_INCHES / SPECTROGRAM_ASPECT_RATIO * 320], atol=1)
+
+
+def test_onebeat_spectrogram_preserves_stored_phase_power_and_uses_its_own_range():
+    values = np.array([[2., 7., 4., 5.], [3., np.nan, 6., 8.], [9., 11., 12., 10.]])
+    original = values.copy()
+    phase = np.array([0., .25, .75])
+    frequency = np.array([1., 3., -3., -1.])
+    fig = _gap_onebeat_spectrogram_figure(values, phase_samples=phase, frequencies_khz=frequency)
+    ax, colorbar = fig.axes
+    image = ax.collections[0]
+    np.testing.assert_array_equal(image.get_array().filled(np.nan), values[:, [2, 3, 0, 1]].T)
+    # Nearest-cell edges come from the supplied, deliberately nonuniform phase grid.
+    np.testing.assert_allclose(image.get_coordinates()[0, :, 0], [-.125, .125, .5, 1.])
+    assert ax.get_xlim() == (0, 1)
+    assert ax.get_xlabel() == "Cardiac phase"
+    assert ax.get_ylabel() == "Signed frequency (kHz)"
+    assert ax.get_title() == ""
+    assert type(image.norm) is PowerNorm
+    assert image.norm.gamma == .9
+    assert (image.norm.vmin, image.norm.vmax) == (2, 12)
+    np.testing.assert_array_equal(image.cmap([0., 1.])[:, :3], [[0, 0, 0], [1, 1, 1]])
+    assert colorbar.get_ylabel() == "Power (a.u.)"
+    np.testing.assert_array_equal(values, original)
+
+
+def test_frequency_mean_article_map_preserves_native_image_and_fixed_percent_scale():
+    values = np.array([[0., .25, 1.], [.5, np.nan, .75]])
+    support = np.array([[True, True, False], [True, True, True]])
+    fig = cvi_frequency_mean_figure(values, support)
+    ax, colorbar = fig.axes
+    image = ax.images[0]
+    np.testing.assert_array_equal(image.get_array().filled(np.nan), np.where(support, values, 0) * 100)
+    assert image.origin == "upper"
+    assert ax.get_ylim()[0] > ax.get_ylim()[1]
+    assert ax.get_title() == ""
+    assert ax.xaxis.label.get_fontfamily() == ["Times New Roman"]
+    assert type(image.norm) is Normalize
+    assert (image.norm.vmin, image.norm.vmax) == (0, 100)
+    np.testing.assert_array_equal(image.cmap([0., 1.])[:, :3], [[0, 0, 0], [1, 1, 1]])
+    assert colorbar.get_ylabel() == "Mean binary occupancy (%)"
+
+
+@pytest.mark.parametrize("stored_mean", [False, True])
+def test_frequency_mean_export_creates_article_png_eps_from_movie_maps(tmp_path, stored_mean):
+    root = EyeFlowOutputPaths.active().spectrograms_cvi_root
+    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    with h5py.File(tmp_path / "maps.h5", "w") as h5:
+        if stored_mean:
+            h5.create_dataset(f"{root}/Movies/FrequencyMeanOverBins", data=np.full((3, 3), .5))
+        else:
+            h5.create_dataset(f"{root}/Movies/FrequencyMean", data=np.stack([np.zeros((3, 3)), np.ones((3, 3))]))
+        h5.create_dataset(f"{root}/DiscMask", data=np.ones((3, 3), bool))
+        paths = export_cvi_frequency_mean(SimpleNamespace(h5=PipelineH5Output(h5), manager=manager))
+        assert {path.name for path in paths} == {"scan_doppler_cvi_binary_frequency_mean.png",
+                                                "scan_doppler_cvi_binary_frequency_mean.eps"}
+        assert all(path.is_file() for path in paths)
+        with Image.open(paths[0]) as image:
+            assert image.width == image.height
+
+
+@pytest.mark.parametrize("frames, dt_seconds, time_ticks", [
+    (103, 0.01, np.arange(0, 1.01, 0.2)),
 ])
-def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, dt_seconds, time_ticks, monochrome):
+def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, dt_seconds, time_ticks):
     values = np.arange(frames * 32, dtype=float).reshape(frames, 32)
     values[51, 2] = np.nan
     original = values.copy()
     fig = _gap_spectrogram_figure(
         values, frequencies_khz=frequency_coordinates_khz(32, 64000),
-        dt_seconds=dt_seconds, monochrome=monochrome,
+        dt_seconds=dt_seconds,
     )
     ax, colorbar = fig.axes
-    image = ax.images[0]
+    image = ax.collections[0]
 
-    np.testing.assert_array_equal(image.get_array().filled(np.nan), values.T)
+    order = np.argsort(frequency_coordinates_khz(32, 64000), kind="stable")
+    np.testing.assert_array_equal(image.get_array().filled(np.nan), values[:, order].T)
     np.testing.assert_array_equal(values, original)
     np.testing.assert_allclose(ax.get_xticks(), time_ticks)
-    np.testing.assert_allclose(image.get_extent(), [
-        -0.5 * dt_seconds, (frames - 0.5) * dt_seconds, -0.5, 31.5,
-    ])
     # Every pixel's center is its zero-based frame index times the HD interval.
-    left, right = image.get_extent()[:2]
+    edges = image.get_coordinates()[0, :, 0]
     np.testing.assert_allclose(
-        left + (np.arange(frames) + 0.5) * (right - left) / frames,
+        (edges[:-1] + edges[1:]) / 2,
         np.arange(frames) * dt_seconds, atol=1e-14,
     )
-    np.testing.assert_array_equal(ax.get_yticks(), [0, 4, 8, 12, 16, 20, 24, 28, 31])
-    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "8", "16", "24", "-32", "-24", "-16", "-8", "-2"]
     assert ax.get_xlabel() == "Time (s)"
-    assert ax.get_ylabel() == "Frequency (kHz)"
-    assert image.origin == "lower"
-    assert image.get_cmap().name == ("gray_r" if monochrome else "viridis")
-    if monochrome:
-        np.testing.assert_array_equal(image.cmap([0, 1.0])[:, :3], [[1, 1, 1], [0, 0, 0]])
-        quarter_power = np.nanmin(values) + 0.25 * np.ptp(values[np.isfinite(values)])
-        assert 0.25 < image.norm(quarter_power) < 0.3
-        np.testing.assert_allclose(image.norm.inverse(image.norm(quarter_power)), quarter_power)
-    assert type(image.norm) is (PowerNorm if monochrome else Normalize)
+    assert ax.get_ylabel() == "Signed frequency (kHz)"
+    assert image.get_cmap().name == "gray"
+    np.testing.assert_array_equal(image.cmap([0., 1.])[:, :3], [[0, 0, 0], [1, 1, 1]])
+    quarter_power = np.nanmin(values) + 0.25 * np.ptp(values[np.isfinite(values)])
+    assert 0.25 < image.norm(quarter_power) < 0.3
+    np.testing.assert_allclose(image.norm.inverse(image.norm(quarter_power)), quarter_power)
+    assert type(image.norm) is PowerNorm
     assert (image.norm.vmin, image.norm.vmax) == (np.nanmin(values), np.nanmax(values))
     assert colorbar.get_ylabel() == "Power (a.u.)"
     assert image.colorbar.orientation == "vertical"
@@ -284,19 +398,18 @@ def test_frequency_figures_label_the_full_averaged_signed_domain(bin_count, end,
     heatmap = _gap_spectrogram_figure(
         spectrum[None, :], frequencies_khz=frequencies, dt_seconds=0.01,
     ).axes[0]
-    for positions, labels, whole_numbers in (
-        (median.get_xticks(), median.get_xticklabels(), False),
-        (heatmap.get_yticks(), heatmap.get_yticklabels(), True),
-    ):
-        ticks = dict(zip(positions, (label.get_text() for label in labels)))
-        assert ticks[0] == ("0" if whole_numbers else "0.217")
-        assert ticks[positive_count] == ("-18" if whole_numbers else "-18.3")
-        for position, label in ticks.items():
-            frequency = frequencies[int(position)]
-            assert label == (str(round(float(frequency))) if whole_numbers else f"{frequency:.3g}")
+    ticks = dict(zip(median.get_xticks(), (label.get_text() for label in median.get_xticklabels())))
+    assert ticks[0] == "0.217"
+    assert ticks[positive_count] == "-18.3"
+    for position, label in ticks.items():
+        assert label == f"{frequencies[int(position)]:.3g}"
     assert median.get_xticklabels()[-1].get_text() == "-0.362"
-    assert heatmap.get_yticks()[-1] == bin_count - 1
-    assert heatmap.get_yticklabels()[-1].get_text() == "0"
+    assert heatmap.get_ylabel() == "Signed frequency (kHz)"
+    edges = heatmap.collections[0].get_coordinates()[:, 0, 1]
+    sorted_frequency = np.sort(frequencies)
+    assert edges[0] == pytest.approx(sorted_frequency[0] - (sorted_frequency[1] - sorted_frequency[0])/2)
+    assert edges[-1] == pytest.approx(sorted_frequency[-1] + (sorted_frequency[-1] - sorted_frequency[-2])/2)
+    assert np.all(np.diff(edges) > 0)
     heatmap.figure.set_dpi(320)
     heatmap.figure.canvas.draw()
     renderer = heatmap.figure.canvas.get_renderer()
@@ -406,14 +519,16 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
         _write_frequency_table(h5, 32 if products in {"all", "one_spectrum"} else 4, 8000)
         if products in {"all", "raw"}:
             h5.create_dataset(schema.spectrograms_masked, data=np.arange(192).reshape(6, 32) if products == "all" else np.arange(24).reshape(6, 4))
-            expected.update({"spectrograms_gaps", "spectrograms_gaps_monochrome"})
+            expected.add("spectrograms_gaps_monochrome")
         if products in {"all", "one_spectrum"}:
             values = np.ones(32)
             values[2] = 8
             h5.create_dataset(schema.spectrograms_masked_time_aggregated_median,
                               data=values)
-            h5.create_dataset(schema.spectrograms_masked_time_aggregated_median_beat,
-                              data=np.full((128, 32), 100))
+            beat_median = h5.create_dataset(schema.spectrograms_masked_time_aggregated_median_beat,
+                                            data=np.full((128, 32), 100))
+            beat_median.attrs["phase_samples"] = np.arange(128) / 128
+            expected.add("spectrograms_gaps_monochrome_onebeat")
             expected.add("spectrogram_gaps_median")
             h5.create_dataset(schema.spectrograms_masked_time_aggregated_std, data=np.ones(32))
             h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/index_max1", data=2)
@@ -572,3 +687,46 @@ def test_spectrum_export_does_not_infer_missing_or_invalid_stored_peaks(tmp_path
                 h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/index_max{side}", data=value)
         paths = export_spectrogram_figures(SimpleNamespace(manager=manager, h5=PipelineH5Output(h5)))
         assert not any("positive_freq" in path.name for path in paths)
+
+
+def _avi_metadata(path):
+    contents = path.read_bytes()
+    start = contents.index(b"ICMT")
+    size = struct.unpack_from("<I", contents, start + 4)[0]
+    return json.loads(contents[start + 8:start + 8 + size].rstrip(b"\x00"))
+
+
+def test_avi_outputs_have_correct_counts_signed_coordinates_and_unchanged_maps(tmp_path):
+    import cv2
+    root = EyeFlowOutputPaths.active().spectrograms_cvi_root
+    result = calculate_binary_occupancy_maps(np.arange(3*4*3*4).reshape(3, 4, 3, 4), [0, 2],
+                                            [50]*4, np.ones((2, 1, 4), bool), peak_indices=(1, 3))
+    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    with h5py.File(tmp_path / "movies.h5", "w") as h5:
+        output = SimpleNamespace(h5=PipelineH5Output(h5), manager=manager)
+        output.h5.write_many(_binary_occupancy_datasets(result, {}))
+        np.testing.assert_allclose(h5[f"{root}/Movies/FrequencyMeanOverBins"][:],
+                                   mean_frequency_occupancy(result["frequency_images"]), equal_nan=True)
+        h5.create_dataset(f"{root}/Frequency", data=[2., 4., -4., -2.])
+        h5.create_dataset(f"{root}/Phase", data=[0., .5])
+        h5.create_dataset(f"{root}/DiscMask", data=disc_mask(3, 4))
+        paths = export_cvi_movies(output)
+        assert len(paths) == 2
+        for path, count in zip(paths, [2, 4]):
+            assert path.parent == manager.layout.ef_dir / "avi/spectrograms/cvi"
+            assert path.name.startswith("scan_doppler_cvi_binary_")
+            capture = cv2.VideoCapture(str(path))
+            try:
+                assert capture.isOpened()
+                assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == count
+                assert capture.get(cv2.CAP_PROP_FPS) == pytest.approx(10)
+                ok, frame = capture.read()
+                assert ok and frame.shape == (640, 640, 3)
+            finally:
+                capture.release()
+        phase_meta, frequency_meta = map(_avi_metadata, paths)
+        assert phase_meta["frame_coordinates"] == [0., .5]
+        assert phase_meta["frequency_bin_indices"] == [1, 2, 3]
+        assert frequency_meta["frame_source_indices"] == [2, 3, 0, 1]
+        assert frequency_meta["frame_coordinates"] == [-4., -2., 2., 4.]
+        np.testing.assert_array_equal(h5[f"{root}/Movies/PhaseMean"][:], result["phase_images"])

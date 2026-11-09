@@ -127,12 +127,26 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         assert output[schema.spectrograms_masked].attrs["spatial_aggregation_method"] == "median"
         assert "velocity_estimation_method" not in output[schema.spectrograms_masked].attrs
         if expected is None:
+            assert schema.spectrograms_cvi_root not in output
             assert schema.spectrograms_masked_per_beat not in output
             assert schema.spectrograms_masked_time_aggregated_median not in output
             assert schema.spectrograms_masked_time_aggregated_median_beat not in output
             assert schema.spectrograms_masked_time_aggregated_median_early not in output
             assert schema.spectrograms_masked_time_aggregated_median_late not in output
         else:
+            cvi_root = schema.spectrograms_cvi_root
+            assert output[f"{cvi_root}/CVI"].shape == (128, 8)
+            assert output[f"{cvi_root}/PerBeat"].shape == (128, 2, 8)
+            assert output[f"{cvi_root}/CVI"].attrs["cycle_boundary_workflow"] == expected
+            np.testing.assert_array_equal(output[f"{cvi_root}/Frequency"][:], output[schema.spectrograms_frequency_bin_table][:])
+            np.testing.assert_array_equal(output[f"{cvi_root}/CVI"][:], 0)
+            np.testing.assert_array_equal(output[f"{cvi_root}/ThresholdFlags"][:], 1)
+            np.testing.assert_array_equal(output[f"{cvi_root}/ValidBeatCounts"][:], 2)
+            assert output[f"{cvi_root}/PixelCount"][()] == 4
+            assert f"{cvi_root}/Previews" not in output
+            assert output[f"{cvi_root}/Movies/PhaseMean"].shape == (128, 2, 2)
+            assert output[f"{cvi_root}/Movies/FrequencyMean"].shape == (8, 2, 2)
+            np.testing.assert_array_equal(output[f"{cvi_root}/Movies/PhaseMean"][:], 0)
             root = VELOCITY_WORKFLOW_ROOTS[expected]
             boundary_path = processing_path(schema.cardiac_cycle.systolic_peak_frame_indices, root)
             for path in (schema.spectrograms_masked_per_beat,
@@ -152,9 +166,10 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         assert "ProcessingBandRatio/Spectrograms" not in output
         assert "ProcessingSpectrograms/Gaps/TimeAggregated/Median" not in output
 
-    names = {"spectrograms_gaps", "spectrograms_gaps_monochrome", "gaps_mask"}
+    names = {"spectrograms_gaps_monochrome", "gaps_mask"}
     if expected is not None:
         names.add("spectrogram_gaps_median")
+        names.add("spectrograms_gaps_monochrome_onebeat")
         names.update(f"gaps_{name}" for name in (
             "A0", "A", "SE", "A_25", "A_50", "A_75", "SE_25", "SE_50", "SE_75",
             "SEII_25", "SEII_50", "SEII_75",
@@ -167,11 +182,19 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
     ef_dir = result.outputs[0].parent.parent
     for extension in ("png", "eps"):
         expected_names = names | ({"gaps_qc"} if extension == "png" else set())
-        assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir()} == {
+        assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir() if path.is_file()} == {
             f"scan_{name}.{extension}" for name in expected_names
         }
         assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
         assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))
+    cvi_artifacts = ef_dir / "png/spectrograms/cvi"
+    if expected is None:
+        assert not cvi_artifacts.exists()
+    else:
+        assert {path.name for path in cvi_artifacts.iterdir()} == {
+            "scan_doppler_cvi_heatmap.png", "scan_doppler_cvi_binary_frequency_mean.png",
+        }
+        assert (ef_dir / "eps/spectrograms/cvi/scan_doppler_cvi_heatmap.eps").is_file()
 
 
 def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path):
@@ -392,7 +415,7 @@ def test_failed_beat_stage_retains_committed_spatial_products_and_basic_exports(
         assert output["ProcessingMoments/Consumer/value"][()] == 42
         assert output["ProcessingBandRatio/Consumer/value"][()] == 42
     root = result.outputs[0].parent.parent
-    assert (root / "png/spectrograms/scan_spectrograms_gaps.png").is_file()
+    assert (root / "png/spectrograms/scan_spectrograms_gaps_monochrome.png").is_file()
     assert (root / "png/spectrograms/scan_gaps_qc.png").is_file()
 
 

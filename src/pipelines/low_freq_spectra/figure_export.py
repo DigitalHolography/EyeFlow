@@ -1,4 +1,4 @@
-"""Snapshot reduced spectral products for an isolated background renderer."""
+"""Snapshot published spectral products for an isolated background renderer."""
 
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from .artifacts import export_spectrogram_figures
 
 
 def snapshot_spectral_figures(output, path: Path) -> None:
-    """Copy only reduced spectra and the published mask, on the HDF5 owner."""
+    """Copy published spectra, occupancy maps and the mask, on the HDF5 owner."""
     schema = EyeFlowOutputPaths.active()
     spectral_root = schema.spectrograms_frequency_bin_table.split("/", 1)[0]
     with h5py.File(path, "w") as snapshot:
