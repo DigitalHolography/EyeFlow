@@ -126,7 +126,9 @@ The AVI compression is lossy; the HDF5 fraction maps are authoritative.
 map under `spectrograms/cvi/`, obtained by averaging all finite frequency-movie
 maps with equal bin weights. It retains native HD image coordinates and disc
 support and uses a fixed linear black-to-white 0--100% scale, without another
-threshold. Frequencies with no finite value at a pixel are omitted there; no
+threshold. The PNG/EPS contains only the image: no axes, labels, colorbar, disc
+outline or surrounding margins; native pixel aspect ratio is preserved.
+Frequencies with no finite value at a pixel are omitted there; no
 valid frequency gives NaN. The saved HDF5 map is `Movies/FrequencyMeanOverBins`.
 The exporter can also derive this map directly from `Movies/FrequencyMean` in
 older results, reading one frame at a time rather than decoding the AVI.

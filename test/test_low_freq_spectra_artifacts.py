@@ -127,17 +127,22 @@ def test_frequency_mean_article_map_preserves_native_image_and_fixed_percent_sca
     values = np.array([[0., .25, 1.], [.5, np.nan, .75]])
     support = np.array([[True, True, False], [True, True, True]])
     fig = cvi_frequency_mean_figure(values, support)
-    ax, colorbar = fig.axes
+    ax, = fig.axes
     image = ax.images[0]
     np.testing.assert_array_equal(image.get_array().filled(np.nan), np.where(support, values, 0) * 100)
     assert image.origin == "upper"
     assert ax.get_ylim()[0] > ax.get_ylim()[1]
     assert ax.get_title() == ""
-    assert ax.xaxis.label.get_fontfamily() == ["Times New Roman"]
+    assert ax.get_xlabel() == ax.get_ylabel() == ""
+    assert not ax.axison
+    assert not ax.patches
+    assert image.colorbar is None
+    np.testing.assert_allclose(fig.get_size_inches()[0] / fig.get_size_inches()[1], 3/2)
+    fig.canvas.draw()
+    np.testing.assert_allclose(ax.get_position().bounds, [0, 0, 1, 1], atol=1e-12)
     assert type(image.norm) is Normalize
     assert (image.norm.vmin, image.norm.vmax) == (0, 100)
     np.testing.assert_array_equal(image.cmap([0., 1.])[:, :3], [[0, 0, 0], [1, 1, 1]])
-    assert colorbar.get_ylabel() == "Mean binary occupancy (%)"
 
 
 @pytest.mark.parametrize("stored_mean", [False, True])
@@ -156,6 +161,9 @@ def test_frequency_mean_export_creates_article_png_eps_from_movie_maps(tmp_path,
         assert all(path.is_file() for path in paths)
         with Image.open(paths[0]) as image:
             assert image.width == image.height
+            pixels = np.asarray(image.convert("RGB"))
+            # A uniform source must fill the canvas without labels or white margins.
+            assert np.min(pixels) == np.max(pixels)
 
 
 @pytest.mark.parametrize("frames, dt_seconds, time_ticks", [

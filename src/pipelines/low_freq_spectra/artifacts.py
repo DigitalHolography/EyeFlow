@@ -309,21 +309,16 @@ def cvi_heatmap_figure(values, phase, frequencies_khz):
 
 
 def cvi_frequency_mean_figure(values, support):
-    """Article spatial occupancy map in the frequency movie's native HD frame."""
-    from matplotlib.patches import Circle
-
-    fig, ax = _figure(width=12 / 2.54, aspect_ratio=1.)
-    image = ax.imshow(np.where(support, values, 0.) * 100, cmap="gray", vmin=0, vmax=100,
-                       origin="upper", interpolation="nearest", aspect="equal")
+    """Image-only spatial occupancy map, preserving native HD pixel geometry."""
     height, width = np.shape(values)
-    ax.add_patch(Circle(((width - 1) / 2, (height - 1) / 2), .4 * width,
-                        fill=False, edgecolor="0.6", linewidth=.4))
-    ax.set(xlabel="x", ylabel="y",
-           xlim=(-.5, width - .5), ylim=(height - .5, -.5))
-    colorbar = add_colorbar(fig, image, ax=ax, label="Mean binary occupancy (%)",
-                            layout=SPECTROGRAM_ARTICLE_STYLE.colorbar_layout)
-    colorbar.set_ticks([0, 25, 50, 75, 100])
-    apply_article_style(fig, SPECTROGRAM_ARTICLE_STYLE)
+    fig, ax = _figure(width=SPECTROGRAM_WIDTH_INCHES, square=True)
+    fig.set_size_inches(SPECTROGRAM_WIDTH_INCHES, SPECTROGRAM_WIDTH_INCHES * height / width)
+    ax.imshow(np.where(support, values, 0.) * 100, cmap="gray", vmin=0, vmax=100,
+              origin="upper", interpolation="nearest", aspect="equal")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_axis_off()
+    fig.set_facecolor("black")
     return fig
 
 
