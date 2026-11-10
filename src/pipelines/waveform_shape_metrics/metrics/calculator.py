@@ -4,6 +4,9 @@ from functools import cache
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import (
+    pulse_metric_from_cycles,
+)
 from calculations.math import (
     harmonic_pack as build_harmonic_pack,
     nanargmax,
@@ -74,26 +77,9 @@ class WaveformShapeMetricsCalculator:
     @staticmethod
     def _mean_cycle_pulse_metrics(cycles: np.ndarray, beat_axis: int) -> tuple[float, float]:
         """MATLAB ArterialResistivityIndex metrics on the mean repeating cycle."""
-        values = np.asarray(cycles, dtype=float)
-        if values.size == 0:
-            return np.nan, np.nan
-        cycle = np.mean(values, axis=beat_axis)
-        if cycle.size == 0 or not np.all(np.isfinite(cycle)):
-            return np.nan, np.nan
-
-        vmax = float(np.max(cycle))
-        vmin = float(np.min(cycle))
-        vmean = float(np.mean(cycle))
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ri = float(np.divide(np.float64(vmax - vmin), np.float64(vmax)))
-            pi = float(np.divide(np.float64(vmax - vmin), np.float64(vmean)))
-        if ri < 0:
-            ri = 0.0
-        if ri > 1:
-            ri = 1.0
-        if pi < 0:
-            pi = 0.0
-        return ri, pi
+        ri = pulse_metric_from_cycles(cycles, "RI", beat_axis=beat_axis)
+        pi = pulse_metric_from_cycles(cycles, "PI", beat_axis=beat_axis)
+        return ri.value, pi.value
 
     @staticmethod
     def _ensure_time_by_beat(v2: np.ndarray, n_beats: int) -> np.ndarray:

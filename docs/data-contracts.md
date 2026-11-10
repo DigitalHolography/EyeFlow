@@ -908,19 +908,30 @@ Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
 into `moments/` and `bandratio/`, including PDF reports. Each report reads its
 corresponding processing group and the actual PNG paths registered by its
 velocity-analysis variant. The first page embeds the existing artery/vein
-RMS-frequency maps and systole-index figures. Between them it plots the finite
-filtered per-beat velocity samples and their mean beat directly from the same
-arrays used for report statistics; missing products are shown as unavailable.
-Velocity statistics never use unfiltered fallback data. RI/PI use the matching
-raw-family metrics calculated from filtered per-beat signals, and heart rate is labelled
+RMS-frequency maps and systole-index figures. It also plots the finite filtered
+per-beat velocity samples and their mean beat directly from the same arrays used
+for report statistics; missing products are shown as unavailable. In both
+vessel columns, the systole-index figure precedes the filtered per-beat plot.
+Velocity statistics never use unfiltered fallback data. RI/PI PNGs and PDF
+values use the same mean of the matching raw-family filtered per-beat signals;
+the PNGs plot that mean beat on cardiac phase. Heart rate is labelled
 as a spectral estimate rather than inferred from systole markers. The first-page
 summary pairs arterial and venous minimum, mean, and maximum velocity with RI
-and PI in aligned columns and presents their shared heart rate separately.
+and PI in aligned, borderless columns and presents their shared heart rate
+separately without a surrounding box.
 When both vessel curves share a graph, arteries use red and veins use blue;
-vessel-specific traces stay black. When available, a second
-page summarizes shared low-frequency gap spectra and this workflow's
-blood-volume rate, including descriptive data-coverage indicators; these
-optional pipelines are not run merely because a PDF was selected. The
+vessel-specific traces stay black. When either blood-volume-rate method is
+available, the second page is dedicated to BVR. It keeps spatial-gradient-edge
+local flow calculated with static edge positions and mask-derived total flow as
+separate methods, places the gradient method first, and fits both on that page
+when both were selected. Each method
+shows phase-wise beat medians for artery and vein with sparse capped min/max
+beat whiskers, plus cycle median, minimum, maximum, and pulsatile range
+summaries. The first-page filtered per-beat velocity plots use the same whisker
+convention around their mean-beat curves.
+Shared low-frequency gap spectra move to the following page when BVR is present,
+or remain the second page when BVR is absent. Optional pipelines are not run
+merely because a PDF was selected. The
 PDF pipeline selects measurements and builds pages from the assembled output
 view; `input_output/reports` only reads report images and writes the PDF. The
 hidden, once-per-run `pdf_width_report` companion adds `pdf/<stem>_width_report.pdf`

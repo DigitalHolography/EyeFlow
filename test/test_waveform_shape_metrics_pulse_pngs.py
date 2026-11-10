@@ -33,7 +33,11 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
     average_cycle,
     cycle_extrema,
     pulse_metric,
+    pulse_metric_from_cycles,
     pulse_metric_from_signal,
+)
+from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
+    per_beat_signal_analysis,
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
@@ -59,6 +63,9 @@ from pipelines.velocity_analysis.artifacts.figures.flow_maps import (  # noqa: E
 )
 from pipelines.velocity_analysis.artifacts.figures.systole import (  # noqa: E402
     _systole_plot,
+)
+from pipelines.velocity_analysis.artifacts.figures.waveforms import (  # noqa: E402
+    _export_ri_pi_plots,
 )
 
 
@@ -216,6 +223,59 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertAlmostEqual(1.9, metric.mean)
         self.assertAlmostEqual((2.625 - 1.0) / 1.9, metric.value)
         self.assertNotEqual(4.0, metric.maximum)
+
+    @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
+    def test_ri_pi_pngs_use_pdf_filtered_per_beat_sampling(self) -> None:
+        beats = np.asarray(
+            [[-2.0, 4.0, 0.0, 2.0], [2.0, 2.0, 2.0, 2.0]],
+            dtype=np.float32,
+        )
+        expected = pulse_metric_from_cycles(beats, "RI", beat_axis=0)
+        vessel = SimpleNamespace(
+            signal=SimpleNamespace(velocity_signal_per_beat=beats),
+        )
+        context = SimpleNamespace(
+            per_beat_result=SimpleNamespace(
+                artery_filtered=vessel,
+                vein_filtered=vessel,
+            ),
+            velocity_semantics=SimpleNamespace(
+                axis_label="Velocity (mm/s)",
+                value_suffix=" mm/s",
+            ),
+        )
+        figures = {}
+        artifacts = {}
+
+        def save_figure(fig, suffix):
+            figures[suffix] = fig
+            return Path(suffix)
+
+        writer = SimpleNamespace(
+            save_figure=save_figure,
+            register_artifact=lambda kind, vessel_name, path: artifacts.update(
+                {(kind, vessel_name): path}
+            ),
+        )
+
+        paths = _export_ri_pi_plots(writer, context)
+        fig = figures["RI_v_artery.png"]
+        try:
+            ax = fig.axes[0]
+            np.testing.assert_allclose(ax.lines[0].get_xdata(), [0.0, 0.25, 0.5, 0.75])
+            np.testing.assert_allclose(ax.lines[0].get_ydata(), [0.0, 3.0, 1.0, 2.0])
+            self.assertEqual("Cardiac phase", ax.get_xlabel())
+            self.assertIn(
+                f"RI = {expected.value:.2f}",
+                [text.get_text() for text in ax.texts],
+            )
+            self.assertEqual(4, len(paths))
+            self.assertEqual(Path("RI_v_artery.png"), artifacts[("ri", "artery")])
+        finally:
+            import matplotlib.pyplot as plt
+
+            for created in figures.values():
+                plt.close(created)
 
     @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
     def test_systole_plot_has_title_and_no_acceleration_axis(self) -> None:
@@ -377,6 +437,22 @@ class PulsePngExporterTests(unittest.TestCase):
             per_beat_result = SimpleNamespace(
                 cardiac_cycle=cardiac_cycle,
                 cycle_boundary_indexes=context.velocity.cycle_boundary_indexes,
+                artery_filtered=SimpleNamespace(
+                    signal=per_beat_signal_analysis(
+                        context.velocity.continuous("artery"),
+                        context.velocity.cycle_boundary_indexes,
+                        12,
+                        index_base=0,
+                    ),
+                ),
+                vein_filtered=SimpleNamespace(
+                    signal=per_beat_signal_analysis(
+                        context.velocity.continuous("vein"),
+                        context.velocity.cycle_boundary_indexes,
+                        12,
+                        index_base=0,
+                    ),
+                ),
             )
             report_images = {}
             written = export_pulse_pngs(
@@ -387,6 +463,7 @@ class PulsePngExporterTests(unittest.TestCase):
             for required in (
                 "sample_f_artery_graph.png",
                 "sample_find_systoles_indices_artery.png",
+                "sample_RI_v_artery.png",
                 "sample_ArterialSpectralAnalysis_v_artery.png",
                 "sample_v_map.png",
                 "sample_AVGflowVideoCombined.png",

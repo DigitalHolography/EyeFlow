@@ -27,6 +27,7 @@ _EXPORTS = {
     "cycle_extrema": ".signal_analysis.waveform",
     "paired_vessel_cycles": ".signal_analysis.waveform",
     "pulse_metric": ".signal_analysis.waveform",
+    "pulse_metric_from_cycles": ".signal_analysis.waveform",
     "pulse_metric_from_signal": ".signal_analysis.waveform",
     "venous_waveform_analysis": ".signal_analysis.waveform"
 }
@@ -63,6 +64,7 @@ __all__ = [
     "per_beat_segment_analysis",
     "per_beat_signal_analysis",
     "pulse_metric",
+    "pulse_metric_from_cycles",
     "pulse_metric_from_signal",
     "missing_vessel_cardiac_cycles",
     "run_per_beat_analysis",

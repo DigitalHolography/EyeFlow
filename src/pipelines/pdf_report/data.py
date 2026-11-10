@@ -25,12 +25,10 @@ class SpectralReportData:
 
 @dataclass(frozen=True)
 class VolumeRateReportData:
+    beat_curves: np.ndarray
     phase_curve: np.ndarray
     overall_value: float | None
-    valid_fraction: float
-    beat_count: int
     unit: str
-    method: str
 
 
 @dataclass(frozen=True)
@@ -39,7 +37,7 @@ class ReportData:
     velocity_per_beat: dict[str, np.ndarray] = field(default_factory=dict)
     velocity_units: dict[str, str] = field(default_factory=dict)
     spectral: SpectralReportData | None = None
-    volume_rates: dict[str, VolumeRateReportData] = field(default_factory=dict)
+    volume_rates: dict[str, dict[str, VolumeRateReportData]] = field(default_factory=dict)
 
 
 def extract_report_data(h5file, *, include_optional: bool = True) -> ReportData:
@@ -170,50 +168,58 @@ def _extract_spectral_summary(h5file, schema) -> SpectralReportData | None:
     return summary
 
 
-def _extract_volume_rates(h5file, schema) -> dict[str, VolumeRateReportData]:
-    result = {}
+def _extract_volume_rates(
+    h5file, schema,
+) -> dict[str, dict[str, VolumeRateReportData]]:
+    gradient_rates = {}
+    mask_rates = {}
     for vessel, paths in (
         ("artery", schema.blood_volume_rate.artery),
         ("vein", schema.blood_volume_rate.vein),
     ):
+        static = _dataset(h5file, paths.static_edges)
+        if static is not None and static.ndim == 4 and all(static.shape):
+            beat_curves = _gradient_beat_curves(static)
+            gradient_rates[vessel] = _volume_rate_data(beat_curves, static)
+
         total = _dataset(h5file, paths.total_masked_edges)
         if total is not None and total.ndim == 2 and all(total.shape):
-            values = np.asarray(total, dtype=float)
-            finite = values[np.isfinite(values)]
-            phase_curve = np.ma.median(np.ma.masked_invalid(values), axis=1).filled(np.nan)
-            curve_finite = phase_curve[np.isfinite(phase_curve)]
-            result[vessel] = VolumeRateReportData(
-                phase_curve=np.asarray(phase_curve, dtype=float),
-                overall_value=float(np.median(curve_finite)) if curve_finite.size else None,
-                valid_fraction=float(finite.size / values.size),
-                beat_count=values.shape[1],
-                unit=str(read_dataset_attrs(total).get("unit", "mm^3/s")),
-                method="total masked-edge",
+            mask_rates[vessel] = _volume_rate_data(
+                np.asarray(total, dtype=float), total,
             )
-            continue
 
-        # Gradient-only runs have local (phase, beat, branch, radius) flow,
-        # not a total-flow signal. Read one phase slab at a time.
-        local = _dataset(h5file, paths.dynamic_edges)
-        if local is None or local.ndim != 4 or not all(local.shape):
-            continue
-        curve = np.full(local.shape[0], np.nan, dtype=float)
-        valid_count = 0
-        for phase in range(local.shape[0]):
-            slab = np.asarray(local[phase], dtype=float)
-            finite = slab[np.isfinite(slab)]
-            if finite.size:
-                curve[phase] = float(np.mean(finite))
-                valid_count += finite.size
-        curve_finite = curve[np.isfinite(curve)]
-        result[vessel] = VolumeRateReportData(
-            phase_curve=curve,
-            overall_value=float(np.mean(curve_finite)) if curve_finite.size else None,
-            valid_fraction=valid_count / local.size,
-            beat_count=local.shape[1],
-            unit=str(read_dataset_attrs(local).get("unit", "mm^3/s")),
-            method="dynamic gradient-edge local",
-        )
+    result = {}
+    if gradient_rates:
+        result["gradient_edges"] = gradient_rates
+    if mask_rates:
+        result["masked_edges"] = mask_rates
     return result
+
+
+def _gradient_beat_curves(dataset) -> np.ndarray:
+    """Reduce local branch/radius flow without loading the full 4-D dataset."""
+    curves = np.full(dataset.shape[:2], np.nan, dtype=float)
+    for phase in range(dataset.shape[0]):
+        values = np.asarray(dataset[phase], dtype=float)
+        finite = np.isfinite(values)
+        counts = np.sum(finite, axis=(1, 2))
+        curves[phase] = np.divide(
+            np.sum(np.where(finite, values, 0.0), axis=(1, 2)), counts,
+            out=np.full(dataset.shape[1], np.nan), where=counts > 0,
+        )
+    return curves
+
+
+def _volume_rate_data(beat_curves: np.ndarray, dataset) -> VolumeRateReportData:
+    phase_curve = np.ma.median(
+        np.ma.masked_invalid(beat_curves), axis=1,
+    ).filled(np.nan)
+    finite = phase_curve[np.isfinite(phase_curve)]
+    return VolumeRateReportData(
+        beat_curves=np.asarray(beat_curves, dtype=float),
+        phase_curve=np.asarray(phase_curve, dtype=float),
+        overall_value=float(np.median(finite)) if finite.size else None,
+        unit=str(read_dataset_attrs(dataset).get("unit", "mm^3/s")),
+    )
 
 

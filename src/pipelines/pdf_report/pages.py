@@ -8,7 +8,6 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
-from matplotlib.patches import FancyBboxPatch
 
 from input_output.reports.pdf_report import load_first_image
 from input_output.writers.png import ReportImagePaths
@@ -26,15 +25,22 @@ GRAPH_TITLE_STYLE = {
     "fontweight": "normal",
 }
 
+VOLUME_RATE_METHODS = (
+    ("gradient_edges", "Spatial-Gradient Edge (Static)", "local"),
+    ("masked_edges", "Mask-Derived Geometry", "total"),
+)
+
 
 def build_report_pages(
     report: ReportData, folder_name: str, png_dir: Path | None,
     report_images: ReportImagePaths,
 ) -> list[Figure]:
-    """Build the velocity page and an optional-results page when applicable."""
+    """Build ordered velocity, BVR, and spectral report pages."""
     pages = [_velocity_page(report, folder_name, png_dir, report_images)]
-    if report.spectral is not None or report.volume_rates:
-        pages.append(_optional_results_page(report, folder_name))
+    if report.volume_rates:
+        pages.append(_volume_rate_page(report.volume_rates, folder_name))
+    if report.spectral is not None:
+        pages.append(_spectral_page(report.spectral, folder_name))
     return pages
 
 
@@ -50,17 +56,16 @@ def _velocity_page(report: ReportData, folder_name: str, png_dir: Path | None,
             "vessel_map", vessel, images,
             f"{vessel.title()} RMS-frequency map",
         )
-        velocity_ax = fig.add_axes((left, 0.47, 0.39, 0.18))
+        _add_report_image(
+            fig, (left, 0.47, 0.39, 0.18), png_dir, folder_name,
+            "systole", vessel, images, f"{vessel.title()} systole indices",
+        )
+        velocity_ax = fig.add_axes((left, 0.27, 0.39, 0.17))
         _plot_filtered_velocity(
             velocity_ax,
             report.velocity_per_beat.get(vessel),
             report.velocity_units.get(vessel, "mm/s"),
-            report.parameters.get(f"{vessel[0].upper()}RI"),
             f"{vessel.title()} filtered per-beat velocity",
-        )
-        _add_report_image(
-            fig, (left, 0.235, 0.39, 0.18), png_dir, folder_name,
-            "systole", vessel, images, f"{vessel.title()} systole indices",
         )
 
     params_ax = fig.add_axes((0.08, 0.025, 0.84, 0.19))
@@ -97,7 +102,7 @@ def _add_report_image(
 
 
 def _plot_filtered_velocity(
-    ax, values: np.ndarray | None, unit: str, ri: dict | None, title: str,
+    ax, values: np.ndarray | None, unit: str, title: str,
 ) -> None:
     """Plot the exact filtered per-beat samples used by report statistics."""
     ax.set_title(title, **GRAPH_TITLE_STYLE)
@@ -117,12 +122,13 @@ def _plot_filtered_velocity(
 
     phase = np.arange(values.shape[1], dtype=float) / values.shape[1]
     samples = np.where(np.isfinite(values), values, np.nan)
-    for beat in samples:
-        ax.plot(phase, beat, color="0.8", alpha=0.25, linewidth=0.6)
     counts = np.sum(np.isfinite(samples), axis=0)
     mean_beat = np.divide(
         np.nansum(samples, axis=0), counts,
         out=np.full(values.shape[1], np.nan), where=counts > 0,
+    )
+    _plot_beat_whiskers(
+        ax, phase, samples.T, mean_beat, color="0.45", label="Beat min/max",
     )
     ax.plot(phase, mean_beat, color="black", linewidth=1.5, label="Mean beat")
 
@@ -135,13 +141,6 @@ def _plot_filtered_velocity(
             ax.axhline(level, color="0.25", linestyle="--", linewidth=0.8,
                        label="Mean-beat extrema" if index == 0 else None)
 
-    ri_value = _finite_parameter(ri)
-    if ri_value is not None:
-        ax.text(
-            0.97, 0.97, f"Mean per-beat RI = {ri_value:.2f}",
-            ha="right", va="top", transform=ax.transAxes, fontsize=7,
-            backgroundcolor="white",
-        )
     ax.set_xlim(0, 1)
     ax.set_xlabel("Cardiac phase", fontsize=8)
     ax.set_ylabel(f"Velocity ({unit})", fontsize=8)
@@ -159,31 +158,38 @@ def _finite_parameter(parameter: dict | None) -> float | None:
     return value if np.isfinite(value) else None
 
 
-def _optional_results_page(report: ReportData, folder_name: str):
+def _volume_rate_page(
+    methods: dict[str, dict[str, VolumeRateReportData]], folder_name: str,
+) -> Figure:
     fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
     fig.patch.set_facecolor("white")
-    sections = []
-    if report.spectral is not None:
-        sections.append(("Low-Frequency Gap Spectra (Shared Across Workflows)",
-                         report.spectral, _draw_spectral_section))
-    if report.volume_rates:
-        sections.append(("Blood-Volume Rate (This Workflow)",
-                         report.volume_rates, _draw_volume_section))
-    heading = " and ".join(
-        title for title, present in (
-            ("Low-Frequency Spectra", report.spectral is not None),
-            ("Blood-Volume Rate", bool(report.volume_rates)),
-        ) if present
+    _add_page_header(fig, folder_name, "Blood-Volume Rate")
+    selected = [method for method in VOLUME_RATE_METHODS if method[0] in methods]
+    layouts = (
+        ((0.54, 0.27, 0.84), (0.13, 0.27, 0.43))
+        if len(selected) == 2 else ((0.49, 0.31, 0.83),)
     )
-    _add_page_header(fig, folder_name, heading)
-    gs = fig.add_gridspec(len(sections), 2, left=0.08, right=0.94,
-                          bottom=0.06, top=0.88, hspace=0.32, wspace=0.23)
-    for row, (title, data, draw) in enumerate(sections):
-        text_ax = fig.add_subplot(gs[row, 0])
-        plot_ax = fig.add_subplot(gs[row, 1])
+    for (key, subtitle, scope), (bottom, height, title_y) in zip(selected, layouts):
+        fig.text(0.08, title_y, subtitle, fontsize=13, fontweight="bold", va="top")
+        text_ax = fig.add_axes((0.08, bottom, 0.32, height))
+        plot_ax = fig.add_axes((0.48, bottom, 0.44, height))
         text_ax.axis("off")
-        text_ax.set_title(title, loc="left", fontsize=13, fontweight="bold")
-        draw(text_ax, plot_ax, data)
+        _draw_volume_method(text_ax, plot_ax, methods[key], scope)
+    return fig
+
+
+def _spectral_page(data: SpectralReportData, folder_name: str) -> Figure:
+    fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
+    fig.patch.set_facecolor("white")
+    _add_page_header(fig, folder_name, "Low-Frequency Spectra")
+    fig.text(
+        0.08, 0.84, "Low-Frequency Gap Spectra (Shared Across Workflows)",
+        fontsize=13, fontweight="bold", va="top",
+    )
+    text_ax = fig.add_axes((0.08, 0.43, 0.38, 0.36))
+    plot_ax = fig.add_axes((0.54, 0.43, 0.38, 0.36))
+    text_ax.axis("off")
+    _draw_spectral_section(text_ax, plot_ax, data)
     return fig
 
 
@@ -220,34 +226,91 @@ def _draw_spectral_section(text_ax, plot_ax, data: SpectralReportData) -> None:
     plot_ax.set_ylabel("Spectral excess SE (unitless)")
 
 
-def _draw_volume_section(text_ax, plot_ax,
-                         rates: dict[str, VolumeRateReportData]) -> None:
-    lines = ["Signed blood-volume rate (method shown per vessel):"]
+def _draw_volume_method(
+    text_ax, plot_ax, rates: dict[str, VolumeRateReportData], scope: str,
+) -> None:
+    lines = []
+    unit = "mm^3/s"
     for vessel in ("artery", "vein"):
         data = rates.get(vessel)
         if data is None:
             continue
-        value = "unavailable" if data.overall_value is None else f"{data.overall_value:.2f} {data.unit}"
+        unit = data.unit
+        finite = data.phase_curve[np.isfinite(data.phase_curve)]
+        minimum = float(np.min(finite)) if finite.size else None
+        maximum = float(np.max(finite)) if finite.size else None
+        pulsatile_range = None if not finite.size else maximum - minimum
         lines.extend((
-            f"{vessel.title()}: {value}",
-            f"  {data.method}; {data.beat_count} beats",
-            f"  {data.valid_fraction * 100:.1f}% finite samples",
+            vessel.title(),
+            f"  Median {scope} BVR: {_rate_value(data.overall_value, data.unit)}",
+            f"  Cycle minimum: {_rate_value(minimum, data.unit)}",
+            f"  Cycle maximum: {_rate_value(maximum, data.unit)}",
+            f"  Pulsatile range: {_rate_value(pulsatile_range, data.unit)}",
+            "",
         ))
         phase = np.arange(data.phase_curve.size) / data.phase_curve.size
-        plot_ax.plot(
-            phase, data.phase_curve, label=vessel.title(),
-            color=VESSEL_COLORS[vessel], linewidth=1.2,
+        _plot_beat_whiskers(
+            plot_ax, phase, data.beat_curves, data.phase_curve,
+            color=VESSEL_COLORS[vessel],
         )
-    lines.extend(("", "Total: beat median per phase, then phase median.",
-                  "Gradient: local mean per phase, then phase mean",
-                  "(not total flow). Coverage is descriptive, not pass/fail."))
-    text_ax.text(0, 0.95, "\n".join(lines), va="top", fontsize=9,
-                 linespacing=1.5, transform=text_ax.transAxes)
+        plot_ax.plot(
+            phase, data.phase_curve, label=f"{vessel.title()} median",
+            color=VESSEL_COLORS[vessel], linewidth=1.6,
+        )
+    text_ax.text(0, 0.98, "\n".join(lines), va="top", fontsize=8.5,
+                 linespacing=1.35, transform=text_ax.transAxes)
+    plot_ax.set_title(
+        f"Median {scope} BVR with beat min/max whiskers", **GRAPH_TITLE_STYLE,
+    )
     plot_ax.set_xlim(0, 1)
     plot_ax.set_xlabel("Cardiac phase")
-    plot_ax.set_ylabel("Flow rate (mm$^3$/s)")
+    plot_ax.set_ylabel(f"BVR ({unit})")
     plot_ax.axhline(0, color="0.5", linestyle=":", linewidth=0.8)
     plot_ax.legend(fontsize=8)
+
+
+def _rate_value(value: float | None, unit: str) -> str:
+    return "Unavailable" if value is None else f"{value:.2f} {unit}"
+
+
+def _plot_beat_whiskers(
+    ax,
+    phase: np.ndarray,
+    beat_curves: np.ndarray,
+    center: np.ndarray,
+    *,
+    color: str,
+    label: str | None = None,
+    maximum_count: int = 24,
+) -> None:
+    """Draw sparse capped min/max ranges around a phase-resolved center."""
+    values = np.asarray(beat_curves, dtype=float)
+    center = np.asarray(center, dtype=float)
+    if values.ndim != 2 or values.shape[0] != center.size:
+        return
+    masked = np.ma.masked_invalid(values)
+    minimum = np.asarray(masked.min(axis=1).filled(np.nan), dtype=float)
+    maximum = np.asarray(masked.max(axis=1).filled(np.nan), dtype=float)
+    step = max(1, int(np.ceil(center.size / maximum_count)))
+    indexes = np.arange(0, center.size, step)
+    valid = (
+        np.isfinite(center[indexes])
+        & np.isfinite(minimum[indexes])
+        & np.isfinite(maximum[indexes])
+    )
+    indexes = indexes[valid]
+    if not indexes.size:
+        return
+    ax.errorbar(
+        phase[indexes], center[indexes],
+        yerr=np.vstack((
+            center[indexes] - minimum[indexes],
+            maximum[indexes] - center[indexes],
+        )),
+        fmt="none", ecolor=color, alpha=0.32,
+        elinewidth=0.7, capsize=1.8, capthick=0.7,
+        label=label, zorder=1,
+    )
 
 
 def _percent(fraction: float | None) -> float | None:
@@ -290,34 +353,25 @@ def _without_embedded_title(image: np.ndarray) -> np.ndarray:
 
 def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
     """Show paired vessel measurements and one shared cardiac value."""
-    ax.text(0, 0.98, "Hemodynamic summary", fontsize=12, fontweight="bold", va="top")
+    ax.text(0, 0.98, "Summary", fontsize=12, fontweight="bold", va="top")
     ax.text(
         1, 0.98,
         f"Heart rate  |  {_parameter_value(parameters, 'heart_beat', decimals=1)}",
         fontsize=10, fontweight="bold", ha="right", va="top",
-        bbox={"boxstyle": "round,pad=0.35", "facecolor": "#f5f5f5",
-              "edgecolor": "0.75", "linewidth": 0.8},
     )
-    _draw_vessel_card(ax, parameters, "artery", 0.00)
-    _draw_vessel_card(ax, parameters, "vein", 0.52)
+    _draw_vessel_column(ax, parameters, "artery", 0.00)
+    _draw_vessel_column(ax, parameters, "vein", 0.52)
 
 
-def _draw_vessel_card(
+def _draw_vessel_column(
     ax, parameters: dict[str, Any], vessel: str, left: float,
 ) -> None:
-    color = VESSEL_COLORS[vessel]
     arterial = vessel == "artery"
     prefix = "Arterial" if arterial else "Venous"
     metric_prefix = "A" if arterial else "V"
-    ax.add_patch(FancyBboxPatch(
-        (left, 0.03), 0.48, 0.72,
-        boxstyle="round,pad=0.012,rounding_size=0.025",
-        facecolor="#fff7f7" if arterial else "#f5f8ff",
-        edgecolor=color, linewidth=1.1,
-    ))
     ax.text(
         left + 0.025, 0.68, "Artery" if arterial else "Vein",
-        color=color, fontsize=10, fontweight="bold", va="center",
+        color="black", fontsize=10, fontweight="bold", va="center",
     )
     rows = (
         ("Minimum velocity", f"Min_{prefix}_Velocity"),
