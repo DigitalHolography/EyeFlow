@@ -506,3 +506,475 @@ def test_small_declared_dv_array_uses_one_bounded_read(tmp_path):
         finally:
             client.close()
             service.close()
+
+
+def _prefetch_graph(*uses):
+    return StageGraph((StageSpec("read", _never_run, inputs=uses),))
+
+
+def test_future_plan_progresses_fairly_and_reuses_optional_alias(tmp_path):
+    completed = Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay", prefetch_regions=2)) as (service, client, values):
+        order = []
+        original = service._read_direct
+        def measured(dataset, destination, selection):
+            order.append((dataset.name.strip("/"), selection.start, service._priority))
+            original(dataset, destination, selection)
+            if len(order) == 4:
+                completed.set()
+        service._read_direct = measured
+        graphs = {
+            "topology": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL, optional=True)),
+            "velocity": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL),
+                                        InputUse("hd.moment2", InputAccess.SEQUENTIAL)),
+        }
+        service.configure(graphs, execution_order=tuple(graphs))
+        service.activate("topology")
+        assert completed.wait(5)
+        file = client()
+        file.client.rpc("dtype", "hd", "moment0")
+        assert order == [("M0", 0, 3), ("moment2", 0, 3), ("M0", 32, 3), ("moment2", 32, 3)]
+        assert "velocity" not in service._active
+        np.testing.assert_array_equal(file["moment0"][:32], values[:32])
+        np.testing.assert_array_equal(file["M0"][:32], values[:32])
+        assert sum(name == "M0" and first == 0 for name, first, _ in order) == 1
+
+
+def test_plan_ignores_optional_disabled_inputs_but_prefetches_forced_replay_stream(tmp_path):
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay")) as (service, client, _):
+        graph = _prefetch_graph(
+            InputUse("hd.moment0", InputAccess.SEQUENTIAL, optional=True),
+            InputUse("hd.moment2", InputAccess.STREAM),
+            InputUse("hd.band_low", InputAccess.SEQUENTIAL, when="frequency_bands"))
+        service.configure({"future": graph}, {"velocity_workflow_selection": "doppler_moments"},
+                          execution_order=("future",))
+        client().client.rpc("dtype", "hd", "moment0")
+        # Explicit replay now supports early streaming inputs too. Optional
+        # moment0 and the disabled band must still generate no work.
+        assert set(service._replays) <= {service.aliases["hd", "moment2"]}
+        np.testing.assert_array_equal(client()["moment2"][:2], np.arange(96 * 4 * 8, dtype="f4").reshape(96, 4, 8)[:2] + 1)
+        assert set(service.source_reads) == {service.aliases["hd", "moment2"]}
+
+
+def test_failure_eligibility_cancels_future_progress_at_boundary(tmp_path):
+    entered, proceed = Event(), Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay")) as (service, client, _):
+        original = service._read_direct
+        order = []
+        def held(dataset, destination, selection):
+            order.append(selection.start)
+            entered.set()
+            assert proceed.wait(5)
+            original(dataset, destination, selection)
+        service._read_direct = held
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))},
+                          execution_order=("future",))
+        assert entered.wait(5)
+        service.update_prefetch(())
+        proceed.set()
+        client().client.rpc("dtype", "hd", "moment0")
+        assert order == [0]
+        replay = service._replays[service.aliases["hd", "moment0"]]
+        assert replay.states == ["ready", "not_requested", "not_requested"]
+
+
+def test_continuous_plan_demand_preempts_future_and_preserves_pair_priority(tmp_path):
+    entered, proceed, finished = Event(), Event(), Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay")) as (service, client, values):
+        original = service._read_direct
+        order = []
+        def held(dataset, destination, selection):
+            order.append((dataset.name.strip("/"), selection.start, service._priority))
+            if len(order) == 1:
+                entered.set()
+                assert proceed.wait(5)
+            original(dataset, destination, selection)
+            if len(order) == 4:
+                finished.set()
+        service._read_direct = held
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL),
+                                                     InputUse("hd.moment2", InputAccess.SEQUENTIAL))},
+                          execution_order=("future",))
+        assert entered.wait(5)
+        file = client()
+        # An explicit queued speculative region must be promoted, not duplicated.
+        service.prefetch(("hd", "moment0"), first=64)
+        file.client.send("read", "hd", "moment0", (64, 68))
+        proceed.set()
+        reference, error = file.client.responses.get(timeout=5)
+        assert error is None
+        array = reference.open()
+        try:
+            np.testing.assert_array_equal(array, values[64:68])
+        finally:
+            array._mmap.close()
+        assert finished.wait(5)
+        assert order[1:3] == [("M0", 64, 0), ("moment2", 64, 1)]
+        assert service.storage.metrics.snapshot()["input_priority_changes"] >= 1
+        assert sum(name == "M0" and first == 64 for name, first, _ in order) == 1
+
+
+def test_plan_byte_limit_and_memory_decline_do_not_spin_or_starve_demand(tmp_path):
+    budget = ResourceBudget(memory_bytes=4096)
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(input_backend="replay", replay_frames=32)) as (service, client, _):
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))},
+                          execution_order=("future",))
+        client().client.rpc("dtype", "hd", "moment0")
+        assert not service.source_reads
+        assert budget.used["input"] == 0
+        assert service.storage.metrics.snapshot().get("input_speculation_declined_memory", 0) <= 2
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay", max_prefetch_bytes=4096)) as (service, client, values):
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))},
+                          execution_order=("future",))
+        file = client()
+        file.client.rpc("dtype", "hd", "moment0")
+        # This demand is a barrier behind the first speculative region.
+        np.testing.assert_array_equal(file["moment0"][:32], values[:32])
+        service.cancel_prefetch()
+        file.client.rpc("dtype", "hd", "moment0")
+        assert service.storage.metrics.snapshot()["input_replay_bytes"] <= 8192
+
+
+def test_future_switch_retains_active_prefetch(tmp_path):
+    ready = Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay", future_prefetch=False)) as (service, client, _):
+        original = service._read_direct
+        def measured(*args):
+            original(*args)
+            ready.set()
+        service._read_direct = measured
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))},
+                          execution_order=("future",))
+        client().client.rpc("dtype", "hd", "moment0")
+        assert not service.source_reads
+        service.activate("future")
+        assert ready.wait(5)
+
+
+def test_scheduler_excludes_failed_dependency_closure_from_prefetch():
+    from types import SimpleNamespace
+    from pipeline_engine.execution.scheduler import CoordinatorScheduler
+    # Exercise the notification boundary without running scientific callbacks.
+    pipelines = [SimpleNamespace(name=name) for name in ("root", "child", "grandchild", "independent")]
+    parents = {"root": (), "child": ("root",), "grandchild": ("child",), "independent": ()}
+    notifications = []
+    scheduler = CoordinatorScheduler(pipelines=pipelines,
+        dag=SimpleNamespace(dependencies_of=lambda name, **kw: parents[name]), options={}, executor=None,
+        statuses={"root": "failed"}, failures={}, skips={}, on_input_eligibility=notifications.append)
+    scheduler._refresh_input_eligibility()
+    assert notifications == [("independent",)]
+
+
+def test_planner_byte_bound_is_strict_without_consumers(tmp_path):
+    bounded = Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay", max_prefetch_bytes=4096)) as (service, client, _):
+        original = service._plan_prefetch
+        def planned():
+            original()
+            if service._idle_reason == "resource" and not service._jobs:
+                bounded.set()
+        service._plan_prefetch = planned
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL),
+                                                     InputUse("hd.moment2", InputAccess.SEQUENTIAL))},
+                          execution_order=("future",))
+        assert bounded.wait(5)
+        client().client.rpc("dtype", "hd", "moment0")
+        assert service.storage.metrics.snapshot()["input_replay_bytes"] == 4096
+        assert sum(state == "ready" for replay in service._replays.values() for state in replay.states) == 1
+
+
+def test_speculative_replay_rejects_nonlocal_scratch_but_preserves_service(tmp_path):
+    declined = Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay")) as (service, client, _):
+        original = service._plan_prefetch
+        def planned():
+            original()
+            if service._prefetch_storage_declined:
+                declined.set()
+        service._plan_prefetch = planned
+        with patch("scratch_location.is_local_path", return_value=False):
+            service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))},
+                              execution_order=("future",))
+            assert declined.wait(5)
+            file = client()
+            assert file.client.rpc("dtype", "hd", "moment0") == np.dtype("f4")
+            with pytest.raises(OSError, match="scratch must be local"):
+                file["moment0"][:2]
+        assert not service._replays and not service.source_reads
+
+
+def test_stage_topological_order_guides_first_use_without_callbacks(tmp_path):
+    from pipeline_engine.stage_graph import ProductSpec
+    read = Event()
+    with inputs(tmp_path, policy=InputPolicy(input_backend="replay", prefetch_regions=1)) as (service, client, _):
+        order = []
+        original = service._read_direct
+        def measured(dataset, *args):
+            order.append(dataset.name.strip("/"))
+            original(dataset, *args)
+            if len(order) == 2:
+                read.set()
+        service._read_direct = measured
+        graph = StageGraph((
+            StageSpec("second", _never_run, requires=("prerequisite",), inputs=(InputUse("hd.moment2", InputAccess.RANDOM),)),
+            StageSpec("first", _never_run, products=(ProductSpec("prerequisite"),), inputs=(InputUse("hd.moment0", InputAccess.RANDOM),)),
+        ))
+        service.configure({"future": graph}, execution_order=("future",))
+        assert read.wait(5)
+        assert order == ["M0", "moment2"]
+
+
+@pytest.mark.parametrize("dtype", ["f4", "f8"])
+def test_local_native_read_direct_avoids_slice_copy_and_keeps_metrics(tmp_path, dtype):
+    with inputs(tmp_path, location="local", policy=InputPolicy()) as (service, client, values):
+        file = client()
+        dataset = file["moment0"]
+        destination = np.full((5, 4, 8), -1, dtype=dtype)
+        with patch.object(dataset, "read_slice", side_effect=AssertionError("intermediate array")):
+            dataset.read_direct(destination, np.s_[40:42], np.s_[1:3])
+        np.testing.assert_array_equal(destination[1:3], values[40:42])
+        assert np.all(destination[[0, 3, 4]] == -1)
+        assert destination.flags.writeable
+        assert file.client._metrics["input_local_native_direct_reads"] == 1
+        assert file.client._metrics["input_local_logical_bytes"] == values[40:42].nbytes
+        assert len(file.client._local_io) == 1
+        assert not service._replays and not service.source_reads
+
+
+@pytest.mark.parametrize("selection", [np.s_[40:42], np.s_[2:2], np.s_[10:4:-1], [5, 1, 5]])
+def test_local_read_direct_fallbacks_and_strided_destination(tmp_path, selection):
+    with inputs(tmp_path, location="local", policy=InputPolicy()) as (service, client, values):
+        expected = values[selection]
+        storage = np.zeros((*expected.shape[:-1], expected.shape[-1] * 2), dtype="f8")
+        destination = storage[..., ::2]
+        client()["moment0"].read_direct(destination, selection)
+        np.testing.assert_array_equal(destination, expected)
+
+
+def test_local_astype_and_array_convert_in_hdf5_without_original_array(tmp_path):
+    with inputs(tmp_path, location="local", policy=InputPolicy()) as (service, client, values):
+        dataset = client()["moment0"]
+        with patch.object(dataset, "read_slice", side_effect=AssertionError("original dtype allocation")):
+            converted = dataset.astype("f8")
+            array = np.asarray(dataset, dtype="f8")
+        np.testing.assert_array_equal(converted, values.astype("f8"))
+        np.testing.assert_array_equal(array, converted)
+        assert converted.flags.writeable
+        assert not array.flags.writeable
+        assert not service._replays
+
+
+def test_local_narrowing_casts_preserve_numpy_overflow_and_nonfinite_policy(tmp_path):
+    values = np.array([np.nan, np.inf, -np.inf, -2.5, 300., -300.], dtype="f4").reshape(6, 1, 1)
+    with inputs(tmp_path, values, location="local", policy=InputPolicy()) as (service, client, _):
+        dataset = client()["moment0"]
+        with np.errstate(invalid="ignore", over="ignore"):
+            expected = values.astype("i1")
+            converted = dataset.astype("i1")
+            destination = np.empty(values.shape, dtype="i1")
+            dataset.read_direct(destination)
+        np.testing.assert_array_equal(converted, expected)
+        np.testing.assert_array_equal(destination, expected)
+        assert "input_local_native_direct_reads" not in dataset.file.client._metrics
+
+
+def test_local_native_read_direct_checks_lifetime_and_reuses_handle(tmp_path):
+    with inputs(tmp_path, location="local", policy=InputPolicy()) as (service, client, values):
+        file = client()
+        dataset = file["moment0"]
+        dest = np.empty_like(values)
+        dataset.read_direct(dest)
+        handle = file.client._local.datasets[file.filename, "moment0"]
+        dataset.read_direct(dest)
+        assert file.client._local.datasets[file.filename, "moment0"] is handle
+        file.client.close()
+        assert not handle.id.valid
+        with pytest.raises(OSError, match="closed"):
+            dataset.read_direct(dest)
+
+
+@pytest.mark.parametrize("mode,location,expected", [("auto", "network", "replay"), ("auto", "local", "local_direct"),
+                                                    ("direct", "network", "nas_direct"), ("replay", "local", "replay")])
+def test_access_policy_single_sequential_consumer_and_overrides(tmp_path, mode, location, expected):
+    values = np.zeros((96, 64, 64), dtype="f4")
+    with inputs(tmp_path, values, location=location, policy=InputPolicy(input_backend=mode)) as (service, client, _):
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))})
+        item = service.manifest[service.aliases["hd", "moment0"]]
+        assert item["expected_consumers"] == 1
+        assert item["backend"] == expected
+        assert not service.source_reads
+
+
+def test_auto_optional_random_use_changes_representation_not_speculative_eligibility(tmp_path):
+    ready = Event()
+    with inputs(tmp_path, policy=InputPolicy(prefetch_regions=1)) as (service, client, values):
+        original = service._read_direct
+        def measured(*args):
+            original(*args)
+            ready.set()
+        service._read_direct = measured
+        graphs = {"topology": _prefetch_graph(InputUse("hd.moment0", InputAccess.RANDOM, optional=True),
+                                             InputUse("hd.moment2", InputAccess.RANDOM, optional=True)),
+                  "velocity": _prefetch_graph(InputUse("hd.moment0", InputAccess.SEQUENTIAL))}
+        service.configure(graphs, execution_order=tuple(graphs))
+        assert ready.wait(5)
+        file = client()
+        file.client.rpc("dtype", "hd", "moment0")
+        item = service.manifest[service.aliases["hd", "moment0"]]
+        assert item["expected_consumers"] == 1 and item["potential_consumers"] == 2
+        assert item["backend"] == "replay" and item["expected_reuse"]
+        assert set(service._replays) == {service.aliases["hd", "moment0"]}
+        for _ in range(2):
+            np.testing.assert_array_equal(np.asarray(file["moment0"]), values)
+        assert sum(value["bytes"] for value in service.dataset_metrics.values()) == values.nbytes
+
+
+@pytest.mark.parametrize("mode", ["auto", "direct"])
+def test_future_stream_adopts_existing_exclusive_buffers_without_replay(tmp_path, mode):
+    ready = Event()
+    budget = ResourceBudget(memory_bytes=16 * 2**20)
+    values = np.arange(96 * 64 * 64, dtype="f4").reshape(96, 64, 64)
+    with inputs(tmp_path, values, budget=budget, policy=InputPolicy(input_backend=mode, stream_frames=8)) as (service, client, _):
+        original = service._read_stream
+        def measured(*args):
+            original(*args)
+            if sum(b["state"] == "ready" for stream in service._streams.values() for b in stream["buffers"]) == 2:
+                ready.set()
+        service._read_stream = measured
+        service.configure({"spectra": _prefetch_graph(InputUse("hd.moment0", InputAccess.STREAM))}, execution_order=("spectra",))
+        assert ready.wait(5)
+        assert "spectra" not in service._active
+        assert not service._replays
+        initial = next(iter(service._streams))
+        memories = [b["memory"].name for b in service._streams[initial]["buffers"]]
+        assert service._streams[initial]["owner"] is None
+        file = client()
+        with file["moment0"].iter_blocks(writable=True) as blocks:
+            assert blocks.identity == initial
+            for lease in blocks:
+                with lease as block:
+                    np.testing.assert_array_equal(block, values[lease.start:lease.stop])
+                    block[:] = -1
+        file.client.rpc("dtype", "hd", "moment0")
+        assert not service._streams and budget.used["input"] == 0
+        assert service.storage.metrics.snapshot()["input_planned_streams_adopted"] == 1
+        assert sum(item["bytes"] for item in service.dataset_metrics.values()) == values.nbytes
+        for name in memories:
+            with pytest.raises(FileNotFoundError):
+                SharedMemory(name=name)
+
+
+def test_future_stream_cancellation_releases_memory_and_keeps_demand_capacity(tmp_path):
+    ready = Event()
+    budget = ResourceBudget(memory_bytes=32768)
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(stream_frames=16, max_streams=1)) as (service, client, values):
+        original = service._read_stream
+        def measured(*args):
+            original(*args)
+            ready.set()
+        service._read_stream = measured
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.STREAM))}, execution_order=("future",))
+        assert ready.wait(5)
+        assert budget.used["input"] > 0
+        # An unrelated demanded stream may reclaim an unopened planned pool.
+        file = client()
+        with file["moment2"].iter_blocks(frames=16) as blocks:
+            with next(blocks) as block:
+                np.testing.assert_array_equal(block, values[:16] + 1)
+                assert sum(s["owner"] is not None for s in service._streams.values()) == 1
+        service.update_prefetch(())
+        file.client.rpc("dtype", "hd", "moment0")
+        assert not service._streams and budget.used["input"] == 0
+
+
+@pytest.mark.parametrize("chunks", [(8, 32, 32), (24, 8, 8)])
+def test_spatial_requests_replay_each_source_region_once_with_chunked_compression(tmp_path, chunks):
+    values = np.arange(96 * 32 * 32, dtype="f4").reshape(96, 32, 32)
+    with h5py.File(tmp_path / "tiled.h5", "w") as source, ProductStorage(directory=tmp_path / "scratch") as storage:
+        source.create_dataset("moment0ff", data=values, chunks=chunks, compression="gzip")
+        with patch("pipeline_engine.data.input_service.storage_location", return_value="network"):
+            service = InputService({"hd": source}, storage, mp.get_context("spawn"), policy=InputPolicy(replay_frames=32))
+        client = service.client()
+        try:
+            service.configure({"topology": _prefetch_graph(InputUse("hd.moment0ff", InputAccess.RANDOM, optional=True))})
+            file = service.files(client)["hd"]
+            for y in range(0, 32, 8):
+                for x in range(0, 32, 8):
+                    np.testing.assert_array_equal(file["moment0ff"][:, y:y+8, x:x+8], values[:, y:y+8, x:x+8])
+            assert service.manifest["hd", "moment0ff"]["backend"] == "replay"
+            assert storage.metrics.snapshot()["input_logical_bytes"] == values.nbytes
+            assert storage.metrics.snapshot()["source_reads"] <= 4
+            assert service._replays["hd", "moment0ff"].frames % chunks[0] == 0
+        finally:
+            client.close()
+            service.close()
+
+
+def test_future_stream_queue_bound_cancellation_and_source_failure(tmp_path):
+    read = Event()
+    budget = ResourceBudget(memory_bytes=16384)
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(max_prefetch_jobs=1)) as (service, client, _):
+        def fail(*args):
+            read.set()
+            raise OSError("planned source failure")
+        service._read_direct = fail
+        service.configure({"future": _prefetch_graph(InputUse("hd.moment0", InputAccess.STREAM))}, execution_order=("future",))
+        assert read.wait(5)
+        file = client()
+        file.client.rpc("dtype", "hd", "moment0")
+        assert len(next(iter(service._streams.values()))["buffers"]) == 1
+        with pytest.raises(OSError, match="planned source failure"):
+            with file["moment0"].iter_blocks() as blocks:
+                next(blocks)
+        service.update_prefetch(())
+        file.client.rpc("dtype", "hd", "moment0")
+        assert not service._streams and budget.used["input"] == 0
+
+
+def test_small_array_planning_uses_actual_replay_region_size_for_byte_bound(tmp_path):
+    from input_output.schema.doppler_view import DV_ARTERY_MASK_PATH, DV_VEIN_MASK_PATH
+    with h5py.File(tmp_path / "dv.h5", "w") as source, ProductStorage(directory=tmp_path / "scratch") as storage:
+        source[DV_ARTERY_MASK_PATH] = np.ones((128, 128), dtype="u1")
+        source[DV_VEIN_MASK_PATH] = np.ones((128, 128), dtype="u1")
+        service = InputService({"dv": source}, storage, mp.get_context("spawn"),
+                               policy=InputPolicy(input_backend="replay", max_prefetch_bytes=4096))
+        client = service.client()
+        try:
+            service.configure({"future": _prefetch_graph(InputUse("dv.vessels", InputAccess.SMALL))}, execution_order=("future",))
+            client.rpc("dtype", "dv", DV_ARTERY_MASK_PATH)
+            assert not service._replays and not service.source_reads
+        finally:
+            client.close()
+            service.close()
+
+
+def test_real_spectral_graph_allows_future_buffers_but_skips_absent_video(tmp_path):
+    from pipelines.low_freq_spectra.runner import spectral_graph
+    for present in (False, True):
+        ready = Event()
+        with h5py.File(tmp_path / f"spectra-{present}.h5", "w") as source, ProductStorage(directory=tmp_path / f"scratch-{present}") as storage:
+            source["marker"] = 0
+            if present:
+                source.create_dataset("spectrograms", shape=(32, 4, 64, 64), dtype="f4")
+            else:
+                source.create_group("spectrograms")
+            with patch("pipeline_engine.data.input_service.storage_location", return_value="network"):
+                service = InputService({"hd": source}, storage, mp.get_context("spawn"))
+            client = service.client()
+            original = service._read_stream
+            def measured(*args):
+                original(*args)
+                ready.set()
+            service._read_stream = measured
+            try:
+                service.configure({"low_freq_spectra": spectral_graph()}, execution_order=("low_freq_spectra",))
+                client.rpc("dtype", "hd", "marker")
+                if present:
+                    assert ready.wait(5)
+                    assert not service._active and not service._replays
+                    assert next(iter(service._streams.values()))["owner"] is None
+                else:
+                    assert not service._streams and not service.source_reads
+            finally:
+                client.close()
+                service.close()

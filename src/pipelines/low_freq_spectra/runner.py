@@ -119,7 +119,9 @@ def spectral_graph(*, options=()):
         StageSpec("sampling", _sampling, requires=("source",), products=product("sampling")),
         StageSpec("calibration", _calibration, requires=("source", "sampling"), products=product("calibration")),
         StageSpec("spatial", _spatial, requires=("source",), products=product("spatial"),
-                  inputs=(InputUse("hd.spectrograms", InputAccess.STREAM, optional=True),)),
+                  # This selected stage always consumes a valid present video.
+                  # Absence remains the source stage's existing skip path.
+                  inputs=(InputUse("hd.spectrograms", InputAccess.STREAM),)),
         StageSpec("beats", _beats, requires=("spatial",), optional_requires=("calibration",), products=product("beats")),
         StageSpec("qc", _qc, requires=("spatial",), optional_requires=("beats",), products=product("qc")),
         StageSpec("figures", _figures, requires=("spatial",), optional_requires=("calibration", "beats", "qc"), artifact=True),

@@ -103,6 +103,21 @@ def _direct_extent(shape, selection):
     return tuple(origin), tuple(sizes), tuple(local)
 
 
+def _native_cast(source, target):
+    # HDF5 clips some narrowing float/integer conversions where NumPy wraps or
+    # returns a sentinel. Keep those conversions on the existing NumPy path.
+    target = np.dtype(target)
+    return (source.kind in "biufc" and target.kind in "biufc"
+            and np.can_cast(source, target, casting="safe"))
+
+
+def _native_selection(selection):
+    items = selection if isinstance(selection, tuple) else (selection,)
+    return all(item is Ellipsis or isinstance(item, slice) and (item.step is None or item.step > 0)
+               or isinstance(item, (int, np.integer)) and not isinstance(item, (bool, np.bool_))
+               for item in items)
+
+
 class _LocalReader:
     """One lazy read-only handle per source and process; guarded by client lock."""
 
@@ -111,7 +126,7 @@ class _LocalReader:
         self.files = {}
         self.datasets = {}
 
-    def read(self, filename, path, selection):
+    def dataset(self, filename, path):
         import h5py
         if self.pid != os.getpid():
             raise RuntimeError("HDF5 input readers must be created after process creation")
@@ -120,24 +135,57 @@ class _LocalReader:
         key = filename, path
         if key not in self.datasets:
             self.datasets[key] = self.files[filename][path]
-        dataset = self.datasets[key]
+        return self.datasets[key]
+
+    def read(self, filename, path, selection, dtype=None):
+        dataset = self.dataset(filename, path)
+        reader = dataset if dtype is None else dataset.astype(dtype)
         # h5py supports fewer selectors than NumPy (negative strides, newaxis,
         # unordered fancy indices). Preserve the existing NumPy proxy contract.
         started = perf_counter()
         try:
-            value = dataset[selection]
+            value = reader[selection]
             self.last_seconds = perf_counter() - started
             self.last_interval = started, started + self.last_seconds
-            self.last_bytes = np.asarray(value).nbytes
+            self.last_bytes = np.asarray(value).size * dataset.dtype.itemsize
             return value
         except (TypeError, ValueError):
             origin, shape, local = _direct_extent(dataset.shape, selection)
             extent = tuple(slice(offset, offset + size) for offset, size in zip(origin, shape))
-            value = dataset[extent]
+            value = reader[extent]
             self.last_seconds = perf_counter() - started
             self.last_interval = started, started + self.last_seconds
-            self.last_bytes = np.asarray(value).nbytes
+            self.last_bytes = np.asarray(value).size * dataset.dtype.itemsize
             return value[local]
+
+    def read_into(self, filename, path, destination, source_sel, dest_sel):
+        dataset = self.dataset(filename, path)
+        if (not isinstance(destination, np.ndarray) or not destination.flags.c_contiguous
+                or not destination.flags.writeable or not destination.size
+                or not dataset.shape or not dataset.size
+                or not _native_cast(dataset.dtype, destination.dtype)
+                or source_sel is not None and not _native_selection(source_sel)
+                or dest_sel is not None and not _native_selection(dest_sel)):
+            return False
+        started = perf_counter()
+        try:
+            dataset.read_direct(destination, source_sel=source_sel, dest_sel=dest_sel)
+        except (TypeError, ValueError, ZeroDivisionError):
+            # NumPy selectors, noncontiguous destinations and casts retain the
+            # proxy's previous semantics through read_slice + assignment.
+            return False
+        self.last_seconds = perf_counter() - started
+        self.last_interval = started, started + self.last_seconds
+        # Count selected source bytes, independent of destination dtype/broadcast.
+        items = () if source_sel is None else source_sel if isinstance(source_sel, tuple) else (source_sel,)
+        missing = len(dataset.shape) - sum(item is not Ellipsis for item in items)
+        expanded = []
+        for item in items:
+            expanded.extend([slice(None)] * missing if item is Ellipsis else [item])
+        expanded.extend([slice(None)] * (len(dataset.shape) - len(expanded)))
+        self.last_bytes = prod(len(range(*item.indices(size))) if isinstance(item, slice) else 1
+                               for size, item in zip(dataset.shape, expanded)) * dataset.dtype.itemsize
+        return True
 
     def close(self):
         for dataset in self.datasets.values():
@@ -207,20 +255,34 @@ class InputClient:
     def metric(self, name, value):
         self._metrics[name] = self._metrics.get(name, 0) + value
 
-    def local_read(self, filename, path, selection):
+    def _local_reader(self):
+        if self._closed or self.stopped.is_set():
+            raise OSError("Input client has closed")
+        if self._local is None:
+            self._local = _LocalReader()
+        return self._local
+
+    def _local_read_metrics(self):
+        self.metric("input_local_hdf5_read_seconds", self._local.last_seconds)
+        self.metric("input_local_logical_bytes", self._local.last_bytes)
+        self.metric("input_local_source_reads", 1)
+        self.metric("input_consumer_blocked_seconds", self._local.last_seconds)
+        if len(self._local_io) == self._local_io.maxlen:
+            self._local_io_dropped = True
+        self._local_io.append(self._local.last_interval)
+
+    def local_read_into(self, filename, path, destination, source_sel, dest_sel):
         with self._lock:
-            if self._closed or self.stopped.is_set():
-                raise OSError("Input client has closed")
-            if self._local is None:
-                self._local = _LocalReader()
-            value = self._local.read(filename, path, selection)
-            self.metric("input_local_hdf5_read_seconds", self._local.last_seconds)
-            self.metric("input_local_logical_bytes", self._local.last_bytes)
-            self.metric("input_local_source_reads", 1)
-            self.metric("input_consumer_blocked_seconds", self._local.last_seconds)
-            if len(self._local_io) == self._local_io.maxlen:
-                self._local_io_dropped = True
-            self._local_io.append(self._local.last_interval)
+            if not self._local_reader().read_into(filename, path, destination, source_sel, dest_sel):
+                return False
+            self._local_read_metrics()
+            self.metric("input_local_native_direct_reads", 1)
+            return True
+
+    def local_read(self, filename, path, selection, dtype=None):
+        with self._lock:
+            value = self._local_reader().read(filename, path, selection, dtype=dtype)
+            self._local_read_metrics()
             if isinstance(value, np.ndarray):
                 value.flags.writeable = False
             return value
@@ -386,7 +448,7 @@ class InputDataset(InputNode):
         backend = self.file.entries[self.path].backend
         if backend == "local_direct":
             return self.file.client.local_read(self.file.filename, self.path, selection)
-        if backend == "nas_direct":
+        if backend in ("nas_direct", "stream"):
             return self.file.client.direct_read(self.file.slot, self.path, self.shape, self.dtype, selection)
         value = self.file.client.read_slice(self.file.slot, self.path, self.shape, selection)
         if isinstance(value, np.ndarray):
@@ -394,6 +456,10 @@ class InputDataset(InputNode):
         return value
 
     def read_direct(self, dest, source_sel=None, dest_sel=None):
+        if self.file.entries[self.path].backend == "local_direct" and self.file.client.local_read_into(
+            self.file.filename, self.path, dest, source_sel, dest_sel,
+        ):
+            return
         value = self.read_slice(() if source_sel is None else source_sel)
         if dest_sel is None:
             np.copyto(dest, value, casting="unsafe")
@@ -406,11 +472,17 @@ class InputDataset(InputNode):
         return stream(self, frames, writable, max_bytes)
 
     def __array__(self, dtype=None, copy=None):
-        array = np.asarray(self._value, dtype=dtype)
+        array = self.astype(dtype) if dtype is not None else np.asarray(self._value)
         array.flags.writeable = False
         return array.copy() if copy else array
 
     def astype(self, dtype):
+        if (dtype is not None and self.file.entries[self.path].backend == "local_direct"
+                and _native_cast(self.dtype, dtype)):
+            value = np.asarray(self.file.client.local_read(self.file.filename, self.path, (), dtype=np.dtype(dtype)))
+            if np.dtype(dtype) != self.dtype:
+                value.flags.writeable = True
+            return value
         return np.asarray(self._value, dtype=dtype)
 
 
@@ -548,6 +620,10 @@ class InputPolicy:
     direct_buffers: int = 2
     max_prefetch_jobs: int = 16
     lookahead: bool = True
+    future_prefetch: bool = field(default_factory=lambda: os.environ.get("EYEFLOW_FUTURE_PREFETCH", "1") != "0")
+    prefetch_regions: int = 16
+    max_prefetch_bytes: int = 1000 * 2**20
+    bulk_bytes: int = 1024**2
     input_backend: str = "auto"
     unknown_transport: str = "coordinator"
 
@@ -557,7 +633,7 @@ class InputPolicy:
         if self.unknown_transport not in ("coordinator", "worker"):
             raise ValueError("unknown_transport must be coordinator or worker")
         for name in ("replay_frames", "stream_frames", "stream_buffers", "max_io_bytes", "max_streams", "direct_buffers",
-                     "max_prefetch_jobs"):
+                     "max_prefetch_jobs", "prefetch_regions", "max_prefetch_bytes", "bulk_bytes"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
@@ -586,6 +662,7 @@ class _Replay:
     demanded: set[int] = field(default_factory=set)
     served: set[int] = field(default_factory=set)
     tiles: dict = field(default_factory=dict)
+    prefetched: set[int] = field(default_factory=set)
 
 
 class _BlockLease:
@@ -768,6 +845,19 @@ class InputService:
         self.cache, self.metadata, self.source_reads, self.aliases = {}, {}, {}, {}
         self.manifest, self.unresolved, self.pairs = {}, [], {}
         self._configured = False
+        self._plan_order = {}
+        self._stage_order = {}
+        self._viable = set()
+        self._active = set()
+        self._prefetch_cancelled = set()
+        self._prefetch_storage_declined = set()
+        self._prefetch_paused = False
+        self._plan_retry = 0.0
+        self._idle_reason = "exhausted"
+        self._idle_cause = "exhausted"
+        self._idle_detail = "not_configured"
+        self._idle_period = None
+        self.dataset_metrics = {}
         self._undeclared = set()
         self._replays, self._jobs, self._pending, self._streams = {}, {}, {}, {}
         self._datasets = {}
@@ -777,6 +867,7 @@ class InputService:
         self.locations = {}
         self._serial = 0
         self._stream_serial = 0
+        self._stream_planned = set()
         self._cancelled_clients = set()
         self._stop = Event()
         self.stopped = mp_context.Event()
@@ -818,7 +909,8 @@ class InputService:
         self._select_backends()
         self._metric("input_metadata_seconds", perf_counter() - started)
         self.thread = Thread(target=copy_context().run, args=(self._serve,), name="EyeFlowInputs", daemon=True)
-        self.thread.start()
+        with Logger.perf_stage("run/input_thread_start"):
+            self.thread.start()
 
     def _metric(self, name, value=1):
         self.storage.metrics.add(name, value)
@@ -831,7 +923,8 @@ class InputService:
 
     def configure(self, graphs: Mapping[str, StageGraph | None],
                   run_settings: Mapping[str, object] | None = None, *,
-                  expected_invocations: Mapping[str, tuple[str, ...]] | None = None) -> None:
+                  expected_invocations: Mapping[str, tuple[str, ...]] | None = None,
+                  execution_order: tuple[str, ...] | None = None) -> None:
         """Resolve graph declarations without running callbacks or reading videos.
 
         Invalid/missing candidates are recorded, leaving branch validation and
@@ -854,7 +947,15 @@ class InputService:
         for pipeline, graph in graphs.items():
             if graph is None:
                 continue
-            for stage in graph.stages:
+            # Use the local DAG's topological order, including external products,
+            # without evaluating any stage callbacks or conditions.
+            produced = {product.id for stage in graph.stages for product in stage.products}
+            external = {name for stage in graph.stages
+                        for name in (*stage.requires, *stage.optional_requires)} - produced
+            plan = graph.plan(external_products=external)
+            self._stage_order[pipeline] = {name: i for i, name in enumerate(plan.order)}
+            for stage_id in plan.order:
+                stage = plan.stage_by_id[stage_id]
                 for use in stage.inputs:
                     if use.when is not None and use.when not in methods:
                         continue
@@ -875,6 +976,12 @@ class InputService:
                         item["consumers"].append((pipeline, stage.id, use))
                         item["access"].add(use.access)
         for item in self.manifest.values():
+            item["potential_consumers"] = len({
+                (pipeline, stage, invocation)
+                for pipeline, stage, use in item["consumers"] if use.access != InputAccess.METADATA
+                for invocation in (expected_invocations or {}).get(pipeline, (None,))
+                if invocation is None or use.when is None or use.when == invocation
+            })
             item["expected_consumers"] = len({
                 (pipeline, stage, invocation)
                 for pipeline, stage, use in item["consumers"]
@@ -882,6 +989,7 @@ class InputService:
                 for invocation in (expected_invocations or {}).get(pipeline, (None,))
                 if invocation is None or use.when is None or use.when == invocation
             })
+        self._configured = True
         self._select_backends()
         for left, right in (("hd.moment0", "hd.moment2"), ("hd.band_low", "hd.band_high")):
             if all(source in semantic and any(
@@ -891,31 +999,184 @@ class InputService:
                 self.pairs[semantic[left]] = semantic[right]
                 self.pairs[semantic[right]] = semantic[left]
         self._metric("input_manifest_seconds", perf_counter() - started)
-        self._configured = True
         Logger.log_perf(f"input_manifest datasets={len(self.manifest)} unresolved={len(self.unresolved)} "
                         f"backends={[(key, item['backend']) for key, item in self.manifest.items()]}")
 
+        if execution_order is not None:
+            self.requests.put((None, "plan", (tuple(execution_order),), perf_counter()))
+
+    def update_prefetch(self, viable) -> None:
+        """Scheduler-owned eligibility; computational readiness is not required."""
+        self.requests.put((None, "viable", (tuple(viable),), perf_counter()))
+
+    def _prefetch_idle(self, cause, detail):
+        # Keep the existing inclusive resource metric; expose its ahead-limit and
+        # genuine-constraint components separately in the trace and counters.
+        self._idle_reason = "exhausted" if cause == "exhausted" else "resource"
+        self._idle_cause, self._idle_detail = cause, detail
+
+    def _set_idle(self, cause=None):
+        """Log transitions, not each iteration of the existing request wait."""
+        previous = self._idle_period
+        if previous is not None and previous[0] == cause:
+            return
+        now = perf_counter()
+        if previous is not None:
+            Logger.log_perf(f"input_idle_end reason={previous[0]} at={now:.6f} "
+                            f"wall_seconds={now - previous[1]:.6f}")
+        self._idle_period = None if cause is None else (cause, now)
+        if cause is not None:
+            Logger.log_perf(f"input_idle_begin reason={cause} at={now:.6f} detail={self._idle_detail}")
+
+    def _plan_prefetch(self):
+        """Select one operation at a boundary, ordered by imminent first use.
+
+        Pipeline/stage proximity precedes depth fairness, so an empty distant
+        stream cannot take the allowance from the next regions of nearer inputs.
+        Within that first-use group, balance ready regions and keep pairs adjacent.
+        """
+        blockers = []
+        self._prefetch_idle("exhausted", "no_missing_required_regions")
+        for stream in self._streams.values():
+            if stream["next_fill"] < stream["total"] and all(
+                    buffer["state"] != "free" for buffer in stream["buffers"]):
+                blockers.append(("ahead_limit", stream["key"], "stream_buffers_full"))
+        if not self.policy.lookahead or self._prefetch_paused or not self._viable:
+            self._prefetch_idle("exhausted", "planning_disabled_cancelled_or_no_viable_consumers")
+            return
+        if perf_counter() < self._plan_retry:
+            self._prefetch_idle("constraint", "memory_admission_backoff")
+            return
+        replay_bytes = sum(
+            min(replay.frames, replay.array.shape[0] - r * replay.frames)
+            * prod(replay.array.shape[1:]) * replay.array.dtype.itemsize
+            for replay in self._replays.values()
+            for r, state in enumerate(replay.states)
+            if state == "ready" and r not in replay.served)
+        stream_bytes = sum(stream["reserved"] for stream in self._streams.values() if stream["owner"] is None)
+        unused_bytes = replay_bytes + stream_bytes
+        source_order = {key: i for i, key in enumerate(self.manifest)}
+        candidates = []
+        for key, item in self.manifest.items():
+            if key in self._prefetch_cancelled or item["backend"] == "local_direct":
+                continue
+            consumers = [(p, stage) for p, stage, use in item["consumers"]
+                         if p in self._viable and not use.optional
+                         and use.access != InputAccess.METADATA]
+            if not consumers:
+                continue
+            active = [(p, stage) for p, stage in consumers if p in self._active]
+            if not active and not self.policy.future_prefetch:
+                continue
+            if key in self._prefetch_storage_declined:
+                blockers.append(("constraint", key, "scratch_admission_declined"))
+                continue
+            entry = item["entry"]
+            if not entry.shape or entry.dtype.hasobject or prod(entry.shape) * entry.dtype.itemsize < 4096:
+                continue
+            first_use = min((self._plan_order[p], self._stage_order[p][stage]) for p, stage in (active or consumers))
+            priority = 2 if active else 3
+            pair_order = min(source_order[key], source_order.get(self.pairs.get(key), source_order[key]))
+            if item["backend"] != "replay":
+                if key in self._stream_planned or item["access"] - {InputAccess.METADATA} != {InputAccess.STREAM} or any(
+                        stream["key"] == key for stream in self._streams.values()):
+                    continue
+                frames = self._frames(entry, self.policy.stream_frames)
+                capacity = frames * prod(entry.shape[1:]) * entry.dtype.itemsize * min(
+                    self.policy.stream_buffers, self.policy.max_prefetch_jobs)
+                if unused_bytes + capacity > self.policy.max_prefetch_bytes:
+                    blockers.append(("ahead_limit", key, "next_stream_pool_bytes", capacity))
+                    continue
+                if len(self._streams) >= self.policy.max_streams:
+                    blockers.append(("ahead_limit", key, "stream_pool_count", self.policy.max_streams))
+                    continue
+                candidates.append(((priority, *first_use, 0, pair_order, source_order[key]), key, None))
+                continue
+            replay = self._replays.get(key)
+            if replay is not None and replay.error:
+                continue
+            frames = replay.frames if replay else self._replay_frames(key, entry)
+            states = replay.states if replay else ()
+            region = next((r for r, state in enumerate(states) if state == "not_requested"), None) if replay else 0
+            if region is None:
+                continue
+            unused = sum(state == "ready" and r not in replay.served for r, state in enumerate(states))
+            size = min(frames, entry.shape[0] - region * frames) * prod(entry.shape[1:]) * entry.dtype.itemsize
+            if unused >= self.policy.prefetch_regions:
+                blockers.append(("ahead_limit", key, "next_region", region, "region_limit", self.policy.prefetch_regions))
+                continue
+            if unused_bytes + size > self.policy.max_prefetch_bytes:
+                blockers.append(("ahead_limit", key, "next_region", region, "needed_bytes", size))
+                continue
+            candidates.append(((priority, *first_use, unused, pair_order, source_order[key]), key, region))
+        queued_priority = min((job[0] for job in self._jobs.values()), default=4)
+        for score, key, region in sorted(candidates):
+            # Reconsider active inputs before an already queued future fill, but
+            # do not accumulate peers behind it or reserve the same ahead budget
+            # twice. Demand/lookahead remain entirely with the existing queue.
+            if score[0] >= queued_priority:
+                break
+            try:
+                if region is None:
+                    self._open_stream(None, *key, None, None, priority=score[0])
+                else:
+                    self._queue_region(key, region, score[0])
+            except (OSError, MemoryError) as exc:
+                if region is None:
+                    self._plan_retry = perf_counter() + 0.02
+                    blockers.append(("constraint", key, "stream_admission", str(exc)))
+                    self._metric("input_speculation_declined_memory")
+                    continue
+                self._prefetch_storage_declined.add(key)
+                blockers.append(("constraint", key, "scratch_admission", str(exc)))
+                self._metric("input_speculation_declined_storage")
+                Logger.log_perf(f"input_prefetch_declined dataset={key} reason={exc}")
+                continue
+            if self._jobs:
+                Logger.log_perf(f"input_plan_selection dataset={key} region={region} "
+                                f"priority={score[0]} first_use={score[1:3]} unused_regions={score[3]} "
+                                f"pair={self.pairs.get(key)} reason=imminent_first_use_then_balanced_depth "
+                                f"replay_unused_bytes={replay_bytes} unopened_stream_bytes={stream_bytes}")
+                return
+        if blockers:
+            cause = "constraint" if any(item[0] == "constraint" for item in blockers) else "ahead_limit"
+            self._prefetch_idle(cause, f"replay_unused_bytes={replay_bytes} unopened_stream_bytes={stream_bytes} "
+                                f"byte_limit={self.policy.max_prefetch_bytes} blockers={blockers}")
+
     def _select_backends(self):
+        """Conservative access-cost policy; declaration counts are not pass counts."""
         for slot, (_, entries) in self.metadata.items():
             location = self.locations[slot]
             for path, entry in entries.items():
                 if entry.shape is None:
                     continue
                 item = self.manifest.get(self.aliases[slot, path], {})
-                consumers = item.get("expected_consumers", 0)
-                replay = self.policy.input_backend == "replay" or (
-                    self.policy.input_backend == "auto" and location == "network" and consumers > 1)
-                backend = "replay" if replay else "local_direct" if (
-                    location == "local" or location == "unknown" and self.policy.unknown_transport == "worker"
-                ) else "nas_direct"
+                access = item.get("access", set()) - {InputAccess.METADATA}
+                potential = item.get("potential_consumers", 0)
+                size = prod(entry.shape) * entry.dtype.itemsize
+                reusable = InputAccess.RANDOM in access or potential > 1
+                backend = "local_direct" if (location == "local" or
+                    location == "unknown" and self.policy.unknown_transport == "worker") else "nas_direct"
+                reason = "local_storage" if location == "local" else "unknown_fallback" if location == "unknown" else "small_or_undeclared"
+                if self.policy.input_backend == "replay":
+                    backend, reason = "replay", "forced_replay"
+                elif self.policy.input_backend == "direct":
+                    reason = "forced_direct"
+                elif location == "network" and access and size >= 4096 and not entry.dtype.hasobject:
+                    if reusable:
+                        backend, reason = "replay", "potential_repeated_regions"
+                    elif access == {InputAccess.STREAM} and size >= self.policy.bulk_bytes:
+                        backend, reason = "stream", "single_pass_bounded_prefetch"
+                    elif InputAccess.SEQUENTIAL in access and size >= self.policy.bulk_bytes:
+                        backend, reason = "replay", "sequential_prefetch"
                 entry.backend = backend
                 if item:
-                    item.update(storage_location=location, expected_reuse=consumers > 1, backend=backend)
-                if path == entry.identity:
-                    reason = "override" if self.policy.input_backend != "auto" else (
-                        "nas_reuse" if replay else "local_storage" if location == "local" else
-                        "unknown_fallback" if location == "unknown" else "single_use")
-                    Logger.log_perf(f"input_dataset name=/{path} backend={backend} consumers={consumers} reason={reason}")
+                    item.update(storage_location=location, expected_reuse=reusable, backend=backend, reason=reason)
+                if path == entry.identity and self._configured:
+                    Logger.log_perf(f"input_dataset name=/{path} source={location} bytes={size} "
+                        f"access={sorted(use.value for use in access)} required_consumers={item.get('expected_consumers', 0)} "
+                        f"potential_consumers={potential} reuse={'possible' if reusable else 'single_declared_use'} "
+                        f"chunks={entry.chunks} compression={entry.compression} backend={backend} reason={reason}")
 
     def _backend(self, key):
         slot, path = self.aliases[key]
@@ -965,33 +1226,54 @@ class InputService:
             return True
         if previous is not None:
             self._metric("input_priority_changes")
-        elif priority > 0 and operation == "replay":
+            Logger.log_perf(f"input_promotion job={key} old={previous[0]} priority={priority} at={perf_counter():.6f}")
+        elif priority > 0 and (operation == "replay" or operation == "stream"
+                               and self._streams[args[0]]["owner"] is None):
             speculative = [(k, value) for k, value in self._jobs.items()
-                           if value[0] > 0 and value[2] == "replay"]
+                           if value[0] > 0 and (value[2] == "replay" or value[2] == "stream"
+                                               and self._streams[value[3][0]]["owner"] is None)]
             if len(speculative) >= self.policy.max_prefetch_jobs:
                 worst, value = max(speculative, key=lambda item: item[1][:2])
                 if value[0] <= priority:
                     return False
                 self._discard_job(worst)
         self._serial += 1
-        self._jobs[key] = (priority, self._serial, operation, args, perf_counter())
+        enqueued = perf_counter()
+        self._jobs[key] = (priority, self._serial, operation, args, enqueued)
+        Logger.log_perf(f"input_enqueue job={key} priority={priority} operation={operation} at={enqueued:.6f}")
         return True
 
     def _discard_job(self, job_key):
         self._jobs.pop(job_key, None)
+        Logger.log_perf(f"input_cancellation job={job_key} at={perf_counter():.6f}")
         if job_key[0] == "replay":
             _, key, region = job_key
             self._replays[key].states[region] = "not_requested"
             self._replays[key].tiles.pop(region, None)
             self._metric("input_speculative_jobs_cancelled")
+        elif job_key[0] == "stream":
+            self._close_stream(job_key[1])
 
     def _frames(self, dataset, frames):
         frame_bytes = max(1, int(np.prod(dataset.shape[1:])) * dataset.dtype.itemsize)
-        return min(frames, max(1, self.policy.max_io_bytes // frame_bytes))
+        limit = max(1, self.policy.max_io_bytes // frame_bytes)
+        frames = min(frames, limit)
+        chunks = getattr(dataset, "chunks", None)
+        if chunks and chunks[0] <= frames:
+            frames = max(chunks[0], frames // chunks[0] * chunks[0])
+        return frames
+
+    def _replay_frames(self, key, dataset):
+        access = self.manifest.get(key, {}).get("access", set())
+        target = dataset.shape[0] if access and access <= {InputAccess.METADATA, InputAccess.SMALL} else self.policy.replay_frames
+        return self._frames(dataset, target)
 
     def _replay(self, key):
         if key in self._replays:
             return self._replays[key]
+        from scratch_location import is_local_path
+        if not is_local_path(self.storage.directory):
+            raise OSError(f"Input replay scratch must be local: {self.storage.directory}")
         dataset = self._dataset(key)
         if dataset.dtype.itemsize > self.policy.max_io_bytes:
             raise MemoryError("One source element exceeds max_io_bytes")
@@ -1008,9 +1290,7 @@ class InputService:
         except BaseException:
             path.unlink(missing_ok=True)
             raise
-        access = self.manifest.get(key, {}).get("access", set())
-        frames = self._frames(dataset, dataset.shape[0] if access and access <= {InputAccess.METADATA, InputAccess.SMALL}
-                              else self.policy.replay_frames)
+        frames = self._replay_frames(key, dataset)
         replay = _Replay(array, ArrayReference(str(path), tuple(dataset.shape), dataset.dtype),
                          frames, ["not_requested"] * ((dataset.shape[0] + frames - 1) // frames), array.offset)
         self._replays[key] = replay
@@ -1112,8 +1392,28 @@ class InputService:
                     self._metric("input_consumer_blocked_seconds", args[1] - args[0])
             elif operation == "shutdown":
                 self._stop.set()
+            elif operation == "plan":
+                self._plan_order = {name: i for i, name in enumerate(args[0])}
+                self._viable = set(args[0])
+            elif operation == "viable":
+                self._viable = set(args[0])
+                self._release_planned_streams(lambda key: not any(
+                    p in self._viable and not use.optional
+                    for p, _, use in self.manifest.get(key, {}).get("consumers", ())))
+                self._active.intersection_update(self._viable)
+                for job_key, job in list(self._jobs.items()):
+                    if job_key[0] == "replay" and job[0] > 0:
+                        item = self.manifest.get(job_key[1], {})
+                        if not any(p in self._viable and not use.optional
+                                   for p, _, use in item.get("consumers", ())):
+                            self._discard_job(job_key)
             elif operation == "cancel_prefetch":
                 key = self.aliases[args[0]] if args[0] is not None else None
+                self._release_planned_streams(lambda candidate: key is None or candidate == key)
+                if key is None:
+                    self._prefetch_paused = True
+                else:
+                    self._prefetch_cancelled.add(key)
                 for job_key, job in list(self._jobs.items()):
                     if job_key[0] == "replay" and job[0] > 0 and (key is None or job_key[1] == key):
                         self._discard_job(job_key)
@@ -1121,19 +1421,23 @@ class InputService:
                 if not self.policy.lookahead:
                     return
                 if operation == "activate":
-                    keys = [key for key, item in self.manifest.items() if item["backend"] == "replay"
-                            and any(p == args[0] and not use.optional
-                                    for p, _, use in item["consumers"])]
-                    first = 0
+                    self._active.add(args[0])
+                    if not self._plan_order:
+                        self._plan_order = {name: i for i, name in enumerate(self._stage_order)}
+                        self._viable.add(args[0])
+                    for job_key, job in list(self._jobs.items()):
+                        if job_key[0] == "replay" and job[0] == 3 and any(
+                            p == args[0] and not use.optional
+                            for p, _, use in self.manifest.get(job_key[1], {}).get("consumers", ())
+                        ):
+                            self._queue_region(job_key[1], job_key[2], 2)
                 else:
                     key, first = args
-                    keys = [self.aliases[key]]
-                for key in keys:
-                    if self._backend(key) != "replay":
-                        continue
-                    replay = self._replay(key)
-                    if replay is not None:
-                        self._queue_region(key, first // replay.frames, 2 if operation == "activate" else 3)
+                    key = self.aliases[key]
+                    if self._backend(key) == "replay":
+                        replay = self._replay(key)
+                        if replay is not None:
+                            self._queue_region(key, first // replay.frames, 3)
             elif operation == "stream_open":
                 self._open_stream(identity, *args)
             elif operation == "stream_next":
@@ -1206,7 +1510,9 @@ class InputService:
                     self._close_transfer(other)
             budget = self.storage.budget
             if budget is not None and not budget.reserve_memory(size, "input"):
-                raise MemoryError("Insufficient RAM budget for direct input transfer")
+                self._release_planned_streams()
+                if not budget.reserve_memory(size, "input"):
+                    raise MemoryError("Insufficient RAM budget for direct input transfer")
             try:
                 memory = SharedMemory(create=True, size=size)
             except BaseException:
@@ -1230,6 +1536,15 @@ class InputService:
         self._metric("input_direct_transfer_seconds", perf_counter() - started)
         self._reply(owner, (transfer["memory"].name, shape, transfer["token"]))
 
+    def _record_replay_consumption(self, key, regions):
+        replay = self._replays[key]
+        self._metric("input_region_reuses", sum(r in replay.served for r in regions))
+        consumed = tuple(r for r in regions if r in replay.prefetched and r not in replay.served)
+        self._metric("input_prefetched_regions_consumed", len(consumed))
+        if consumed:
+            Logger.log_perf(f"input_prefetch_consumed dataset={key} regions={consumed} at={perf_counter():.6f}")
+        replay.served.update(regions)
+
     def _fulfill(self):
         for identity, (key, first, stop, full, started) in list(self._pending.items()):
             replay = self._replays[key]
@@ -1248,8 +1563,8 @@ class InputService:
             self._reply(identity, reference)
             self._metric("input_region_wait_seconds", perf_counter() - started)
             regions = range(first // replay.frames, (stop - 1) // replay.frames + 1)
-            self._metric("input_region_reuses", sum(r in replay.served for r in regions))
-            replay.served.update(regions)
+            self._record_replay_consumption(key, regions)
+            Logger.log_perf(f"input_local_replay_mapping dataset={key} frames={first}:{stop} at={perf_counter():.6f}")
             del self._pending[identity]
 
     def _read_direct(self, dataset, destination, selection):
@@ -1260,17 +1575,24 @@ class InputService:
         self._metric("input_hdf5_read_seconds", ended - started)
         self._metric("input_logical_bytes", destination.nbytes)
         self._metric("source_reads")
-        if destination.nbytes >= 2**20:
-            Logger.log_perf(
-                f"input_read dataset={dataset.name} region={selection} "
-                f"priority={getattr(self, '_priority', 0)} "
-                f"queue_seconds={getattr(self, '_job_wait', 0):.6f} "
-                f"at={started:.6f} end={ended:.6f} read_seconds={ended - started:.6f} "
-                f"logical_bytes={destination.nbytes}"
-            )
+        source_id = f"{dataset.file.filename}:{dataset.name}"
+        metrics = self.dataset_metrics.setdefault(source_id, {"bytes": 0, "seconds": 0., "reads": 0})
+        metrics["bytes"] += destination.nbytes
+        metrics["seconds"] += ended - started
+        metrics["reads"] += 1
+        Logger.log_perf(
+            f"input_source_hdf5_read dataset={dataset.name} region={selection} "
+            f"priority={getattr(self, '_priority', 0)} "
+            f"reason={('demand', 'lookahead', 'active_prefetch', 'future_prefetch')[getattr(self, '_priority', 0)]} "
+            f"enqueued={getattr(self, '_job_enqueued', started):.6f} "
+            f"queue_seconds={getattr(self, '_job_wait', 0):.6f} "
+            f"at={started:.6f} end={ended:.6f} read_seconds={ended - started:.6f} "
+            f"logical_bytes={destination.nbytes}"
+        )
 
     def _run_job(self, job):
         priority, _, operation, args, queued = job
+        self._job_enqueued = queued
         self._priority, self._job_wait = priority, perf_counter() - queued
         self._metric("input_job_queue_seconds", self._job_wait)
         if operation == "direct":
@@ -1311,9 +1633,13 @@ class InputService:
             working_bytes = destination.nbytes
         budget = self.storage.budget
         reserved = budget is None or budget.reserve_memory(working_bytes, "input")
+        if not reserved and priority == 0:
+            self._release_planned_streams()
+            reserved = budget.reserve_memory(working_bytes, "input")
         if not reserved:
             if priority > 0:
                 replay.states[region] = "not_requested"
+                self._plan_retry = perf_counter() + 0.02
                 self._metric("input_speculation_declined_memory")
                 return
             replay.error = f"Insufficient RAM budget for a {working_bytes:,}-byte input region"
@@ -1337,6 +1663,8 @@ class InputService:
             self._metric("input_replay_flush_seconds", perf_counter() - flushed)
             self._metric("input_replay_stage_seconds", perf_counter() - staged)
             self._metric("input_replay_bytes", working_bytes)
+            if priority > 0:
+                self._metric("input_speculative_source_bytes", working_bytes)
             if region in replay.tiles:
                 _, tiles = replay.tiles[region]
                 following = next(tiles, None)
@@ -1348,6 +1676,11 @@ class InputService:
             # Readiness is published only after a successful complete read and
             # flush. No job ever writes this region again.
             replay.states[region] = "ready"
+            if priority > 0:
+                replay.prefetched.add(region)
+            following = next((r for r, state in enumerate(replay.states) if state == "not_requested"), None)
+            Logger.log_perf(f"input_region_ready dataset={key} region={region} at={perf_counter():.6f} "
+                            f"next_missing_region={following} eligibility=recheck_at_operation_boundary")
             self.source_reads.setdefault(key, 1)
             if sum(state == "ready" for state in replay.states) == 1:
                 self._metric("input_first_region_seconds", perf_counter() - replay.created)
@@ -1370,9 +1703,13 @@ class InputService:
             raise RuntimeError("Input stream belongs to another client")
         return stream
 
-    def _open_stream(self, owner, slot, path, frames, max_bytes):
-        if len(self._streams) >= self.policy.max_streams:
-            raise MemoryError("Input stream capacity exhausted; close another stream first")
+    def _release_planned_streams(self, predicate=lambda key: True):
+        for identity, stream in list(self._streams.items()):
+            if stream["owner"] is None and predicate(stream["key"]):
+                Logger.log_perf(f"input_cancellation stream={identity} dataset={stream['key']}")
+                self._close_stream(identity)
+
+    def _open_stream(self, owner, slot, path, frames, max_bytes, *, priority=1):
         dataset = self._dataset((slot, path))
         if not dataset.shape or dataset.dtype.hasobject:
             raise TypeError("Streaming requires a nonscalar fixed-size dtype")
@@ -1388,8 +1725,28 @@ class InputService:
             frames = min(frames, max(1, max_bytes // max(1, int(np.prod(dataset.shape[1:])) * dataset.dtype.itemsize)))
         if frame_bytes > limit:
             raise MemoryError("One stream frame exceeds the input byte limit")
+        key = self.aliases[slot, path]
+        if owner is not None:
+            for identity, stream in list(self._streams.items()):
+                if stream["owner"] is not None or stream["key"] != key:
+                    continue
+                # A pool may have shrunk under memory pressure. Smaller blocks
+                # still meet the caller's upper bound and preserve lease semantics.
+                if stream["frames"] <= frames and stream["frames"] * frame_bytes <= limit:
+                    stream.update(owner=owner, priority=1)
+                    for index, buffer in enumerate(stream["buffers"]):
+                        if buffer["state"] == "filling":
+                            self._enqueue(("stream", identity, index), 1, "stream", identity, index)
+                    self._metric("input_planned_streams_adopted")
+                    self._reply(owner, identity)
+                    return
+                self._close_stream(identity)
+            if len(self._streams) >= self.policy.max_streams:
+                self._release_planned_streams()
+        if len(self._streams) >= self.policy.max_streams:
+            raise MemoryError("Input stream capacity exhausted; close another stream first")
         budget = self.storage.budget
-        count = self.policy.stream_buffers
+        count = min(self.policy.stream_buffers, self.policy.max_prefetch_jobs) if owner is None else self.policy.stream_buffers
         while True:
             shape = (frames, *dataset.shape[1:])
             size = int(np.prod(shape)) * dataset.dtype.itemsize
@@ -1398,6 +1755,9 @@ class InputService:
             reserved = size * count
             if budget is None or budget.reserve_memory(reserved, "input"):
                 break
+            if owner is not None and any(stream["owner"] is None for stream in self._streams.values()):
+                self._release_planned_streams()
+                continue
             # Preserve a bounded, useful serial stream under tighter budgets.
             # Fail explicitly if even a single source frame cannot be admitted.
             if count > 1:
@@ -1424,7 +1784,9 @@ class InputService:
         self._streams[identity] = dict(owner=owner, key=self.aliases[slot, path], buffers=buffers, frames=frames,
             shape=shape, dtype=dataset.dtype, reserved=reserved, next_fill=0, next_take=0,
             waiting=None, error=None, total=dataset.shape[0],
-            replay=self._backend((slot, path)) == "replay")
+            replay=self._backend((slot, path)) == "replay", priority=priority)
+        if owner is None:
+            self._stream_planned.add(key)
         self._metric("input_stream_reserved_bytes", reserved)
         self._metric("input_stream_active_bytes", reserved)
         self._metric("input_stream_active_buffers", len(buffers))
@@ -1443,7 +1805,7 @@ class InputService:
                 stop = min(start + stream["frames"], total)
                 buffer.update(state="filling", start=start, stop=stop)
                 stream["next_fill"] = stop
-                self._enqueue(("stream", identity, index), 1, "stream", identity, index)
+                self._enqueue(("stream", identity, index), stream["priority"], "stream", identity, index)
 
     def _read_stream(self, identity, index):
         stream = self._streams.get(identity)
@@ -1469,10 +1831,9 @@ class InputService:
                 if missing is not None:
                     raise OSError(replay.error)
                 replay.demanded.update(regions)
-                self._metric("input_region_reuses", sum(r in replay.served for r in regions))
-                replay.served.update(regions)
+                self._record_replay_consumption(key, regions)
                 np.copyto(block, replay.array[buffer["start"]:buffer["stop"]])
-            buffer["state"] = "ready"
+            buffer.update(state="ready", speculative=self._priority >= 2, consumed=False)
         except Exception as exc:
             buffer["state"] = "failed"
             stream["error"] = f"Input stream read failed: {exc}"
@@ -1501,6 +1862,13 @@ class InputService:
                 self._enqueue(("stream", identity, index), 0, "stream", identity, index)
                 return
             buffer["state"] = "in_use"
+            buffer["consumed"] = True
+            if buffer.get("speculative"):
+                Logger.log_perf(f"input_prefetch_consumed dataset={stream['key']} "
+                                f"stream_frames={buffer['start']}:{buffer['stop']} at={perf_counter():.6f}")
+                self._metric("input_buffer_prefetch_hits")
+                self._metric("input_prefetched_bytes_consumed", (buffer["stop"] - buffer["start"])
+                             * prod(stream["shape"][1:]) * stream["dtype"].itemsize)
             self.storage.metrics.maximum("input_stream_peak_leases", sum(
                 buf["state"] == "in_use" for item in self._streams.values() for buf in item["buffers"]))
             shape = (buffer["stop"] - buffer["start"], *stream["shape"][1:])
@@ -1513,6 +1881,9 @@ class InputService:
 
     def _close_stream(self, identity):
         stream = self._streams.pop(identity)
+        unused = sum((buffer["stop"] - buffer["start"]) * prod(stream["shape"][1:]) * stream["dtype"].itemsize
+                     for buffer in stream["buffers"] if buffer.get("speculative") and not buffer.get("consumed"))
+        self._metric("input_unused_prefetch_bytes", unused)
         for index, buffer in enumerate(stream["buffers"]):
             self._jobs.pop(("stream", identity, index), None)
             buffer["memory"].close()
@@ -1536,15 +1907,28 @@ class InputService:
                     self._handle(request)
                 if self._stop.is_set():
                     break
+                if not self._jobs or min(job[0] for job in self._jobs.values()) > 2:
+                    self._plan_prefetch()
                 if self._jobs:
+                    self._set_idle()
                     key = min(self._jobs, key=lambda key: self._jobs[key][:2])
                     self._run_job(self._jobs.pop(key))
                 else:
+                    self._set_idle(self._idle_cause)
+                    idle = perf_counter()
+                    reason, cause = self._idle_reason, self._idle_cause
                     try:
-                        self._handle(self.requests.get(timeout=0.02))
+                        request = self.requests.get(timeout=0.02)
                     except Empty:
-                        pass
+                        request = None
+                    waited = perf_counter() - idle
+                    self._metric(f"input_idle_{reason}_seconds", waited)
+                    if cause != reason:
+                        self._metric(f"input_idle_{cause}_seconds", waited)
+                    if request is not None:
+                        self._handle(request)
         finally:
+            self._set_idle()
             self.stopped.set()
             for identity in list(self._pending):
                 self._reply(identity, error="Input service cancelled")
@@ -1560,10 +1944,17 @@ class InputService:
                 if stream["waiting"] is not None:
                     self._reply(stream["owner"], error="Input stream cancelled")
                 self._close_stream(identity)
-            for replay in self._replays.values():
+            for key, replay in self._replays.items():
+                region_bytes = lambda r: (min(replay.frames, replay.array.shape[0] - r * replay.frames)
+                                          * prod(replay.array.shape[1:]) * replay.array.dtype.itemsize)
+                self._metric("input_prefetched_bytes_consumed", sum(region_bytes(r)
+                             for r in replay.prefetched & replay.served))
+                self._metric("input_prefetched_regions_unused", len(replay.prefetched - replay.served))
+                Logger.log_perf(f"input_replay_usage dataset={key} prefetched={len(replay.prefetched)} "
+                                f"consumed={len(replay.prefetched & replay.served)}")
                 unused = sum(min(replay.frames, replay.array.shape[0] - r * replay.frames)
                              for r, state in enumerate(replay.states)
-                             if state == "ready" and r not in replay.demanded)
+                             if state == "ready" and r not in replay.served)
                 self._metric("input_unused_prefetch_bytes", unused * int(np.prod(replay.array.shape[1:]))
                              * replay.array.dtype.itemsize)
                 if not all(state == "ready" for state in replay.states):
@@ -1579,6 +1970,7 @@ class InputService:
             self._metric("input_overlap_valid", int(not self._intervals_dropped))
             if not self._intervals_dropped:
                 self._metric("input_io_compute_overlap_seconds", interval_overlap(self.io_intervals, useful))
+            Logger.log_perf(f"input_datasets metrics={self.dataset_metrics}")
             Logger.log_perf(f"input_summary metrics={self.storage.metrics.snapshot()}")
 
     def _stage_small(self, dataset):
@@ -1589,6 +1981,14 @@ class InputService:
         self._metric("input_hdf5_small_read_seconds", ended - started)
         self._metric("source_reads")
         self._metric("input_logical_bytes", value.nbytes)
+        source_id = f"{dataset.file.filename}:{dataset.name}"
+        metrics = self.dataset_metrics.setdefault(source_id, {"bytes": 0, "seconds": 0., "reads": 0})
+        metrics["bytes"] += value.nbytes
+        metrics["seconds"] += ended - started
+        metrics["reads"] += 1
+        Logger.log_perf(f"input_source_hdf5_read dataset={dataset.name} region=() priority=0 "
+                        f"reason=small_demand at={started:.6f} end={ended:.6f} "
+                        f"read_seconds={ended - started:.6f} logical_bytes={value.nbytes}")
         if value.dtype.kind == "O":
             return self.storage.store_value(value)
         return self.storage.store(value, category="input")

@@ -49,6 +49,8 @@ class RunRequest:
 
     input_layout: HoloRunLayout
     output_manager: OutputManager
+    hd_h5: Path
+    dv_h5: Path
 
 
 @dataclass(frozen=True)
@@ -138,10 +140,11 @@ def resolve_run_spec(
         raise ValueError("Unknown or hidden pipeline target(s): " + ", ".join(hidden_targets))
 
     resolved_options = _resolve_pipeline_options(descriptors, pipeline_options)
-    plan = PipelineDAG(descriptors).resolve_targets(
-        target_names,
-        pipeline_options=resolved_options,
-    )
+    with Logger.perf_stage("run/dag_resolution"):
+        plan = PipelineDAG(descriptors).resolve_targets(
+            target_names,
+            pipeline_options=resolved_options,
+        )
     if not plan.targets:
         raise ValueError("Select at least one pipeline target.")
     unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
@@ -157,24 +160,28 @@ def resolve_run_spec(
         if descriptor.name in resolved_options
     }
 
-    layouts = resolve_selected_run_layouts(input_paths)
+    with Logger.perf_stage("run/input_discovery_validation"):
+        layouts = resolve_selected_run_layouts(input_paths)
     resolved_output_root = output_root.expanduser().resolve() if output_root is not None else None
     effective_batch_root = (
         batch_root.expanduser().resolve()
         if batch_root is not None
         else infer_batch_root([layout.holo_path for layout in layouts])
     )
-    requests = tuple(
-        RunRequest(
-            input_layout=layout,
-            output_manager=output_manager_for_layout(
-                layout,
-                output_root=resolved_output_root,
-                batch_root=effective_batch_root,
-            ),
+    with Logger.perf_stage("run/companion_path_snapshot"):
+        requests = tuple(
+            RunRequest(
+                input_layout=layout,
+                hd_h5=layout.hd_h5,
+                dv_h5=layout.dv_h5,
+                output_manager=output_manager_for_layout(
+                    layout,
+                    output_root=resolved_output_root,
+                    batch_root=effective_batch_root,
+                ),
+            )
+            for layout in layouts
         )
-        for layout in layouts
-    )
     reject_duplicate_destinations(
         tuple((request.input_layout, request.output_manager) for request in requests)
     )
@@ -206,16 +213,20 @@ def execute_run(
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     from pipeline_engine.resources import ResourceBudget, current_resources
 
-    budget = current_resources() or ResourceBudget()
     Logger.log_perf(f"START pipeline=run variant=shared stage=batch at={started_at:.6f}")
-    with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
-    ) as completions:
-        result = _execute_batch(
-            spec, workers, completions, on_file_start=on_file_start,
-            on_pipeline_start=on_pipeline_start, on_progress=on_progress,
-            should_stop=should_stop,
-        )
+    with Logger.perf_stage("run/budget_create"):
+        budget = current_resources() or ResourceBudget()
+    with ExitStack() as startup:
+        with Logger.perf_stage("run/batch_resources"):
+            startup.enter_context(budget.activate())
+        with ArtifactWorkers() as workers, ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
+        ) as completions:
+            result = _execute_batch(
+                spec, workers, completions, on_file_start=on_file_start,
+                on_pipeline_start=on_pipeline_start, on_progress=on_progress,
+                should_stop=should_stop,
+            )
     finished_at = perf_counter()
     elapsed_seconds = finished_at - started_at
     Logger.log_perf(
@@ -265,8 +276,8 @@ def _execute_batch(
             )
         Logger.log(f"[INPUT] SOURCE -> {input_layout.input_path}")
         Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
-        Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
-        Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
+        Logger.log(f"[RESOLVED] HD -> {request.hd_h5}")
+        Logger.log(f"[RESOLVED] DV -> {request.dv_h5}")
         Logger.log(f"[OUTPUT] {final_path}")
 
         artifacts = BackgroundArtifacts(workers)
@@ -281,7 +292,8 @@ def _execute_batch(
                 )
             # Start clean so a failed run leaves only its own partial output,
             # rather than mixing new files with artifacts from an old run.
-            final_manager.prepare(replace=True)
+            with Logger.perf_stage("run/output_directory_reset"):
+                final_manager.prepare(replace=True)
             run_pipelines_to_output(
                 output_manager=final_manager,
                 pipelines=spec.plan.descriptors,
@@ -293,8 +305,8 @@ def _execute_batch(
                 input_backend=spec.input_backend,
                 input_unknown_transport=spec.input_unknown_transport,
                 velocity_estimation_method=spec.velocity_estimation_method,
-                holodoppler_h5=input_layout.hd_h5,
-                doppler_vision_h5=input_layout.dv_h5,
+                holodoppler_h5=request.hd_h5,
+                doppler_vision_h5=request.dv_h5,
                 on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
                 background_artifacts=artifacts,

@@ -761,3 +761,17 @@ class RunServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_batch_reuses_validated_source_paths_without_remote_rediscovery(tmp_path):
+    from input_output.runs.layout import HoloRunLayout
+    holo = _write_input(tmp_path)
+    spec = resolve_run_spec(input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()])
+    assert spec.requests[0].hd_h5.name == "scan_HD_output.h5"
+    messages = []
+    with (patch.object(HoloRunLayout, "_h5_files", side_effect=AssertionError("repeated remote discovery")),
+          Logger.capture_messages(messages.append)):
+        result = execute_run(spec)
+    assert result.succeeded
+    for stage in ("batch_resources", "output_directory_reset", "runtime_setup", "product_storage", "plan_graph_construction"):
+        assert any(f"stage=run/{stage}" in message for message in messages)

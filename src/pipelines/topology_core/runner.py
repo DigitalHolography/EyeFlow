@@ -128,7 +128,9 @@ def topology_graph(*, options=()):
             InputUse("dv.optional_segmentation", InputAccess.SMALL, optional=True),
         )),
         StageSpec("gaps", _gaps, requires=("inputs",),
-                  inputs=(InputUse("hd.moment0ff", InputAccess.SEQUENTIAL, optional=True),),
+                  # A present flat-field video is always consumed by this stage.
+                  # Its existing missing-video fallback remains in _prepare_gap_masks.
+                  inputs=(InputUse("hd.moment0ff", InputAccess.RANDOM),),
                   products=(ProductSpec("gaps", pack=lambda value, ctx: value[1]),)),
         StageSpec("sampling", _sampling, requires=("inputs",),
                   inputs=(InputUse("hd.moment0", InputAccess.RANDOM, optional=True),

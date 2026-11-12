@@ -95,6 +95,8 @@ def run_pipelines_to_output(
     on_finalization_ready: Callable[[PendingOutput], None] | None = None,
 ) -> Path:
     """Run resolved pipelines and write outputs through an OutputManager."""
+    setup_started = perf_counter()
+    Logger.log_perf(f"START stage=run/runtime_setup at={setup_started:.6f}")
     input_backend = validate_input_backend(input_backend)
     input_unknown_transport = validate_input_unknown_transport(input_unknown_transport)
     resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
@@ -104,20 +106,24 @@ def run_pipelines_to_output(
     resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
         band_ratio_frequency_scale_hz
     )
-    output_manager.prepare()
+    with Logger.perf_stage("run/runtime_output_prepare"):
+        output_manager.prepare()
     output_h5_path = output_manager.path_for(OutputType.H5)
     budget = current_resources() or ResourceBudget()
     with budget.activate():
-        storage = ProductStorage(budget=budget)
+        with Logger.perf_stage("run/product_storage"):
+            storage = ProductStorage(budget=budget)
         work_h5 = OutputModel(storage, output_h5_path)
         wait_for_exports = background_artifacts is None
         background_artifacts = background_artifacts or BackgroundArtifacts()
         pending = PendingOutput(work_h5, background_artifacts, owns_artifacts=wait_for_exports)
         try:
             with ExitStack() as stack:
-                scratch = stack.enter_context(
-                    RunArrayStorage(output_manager.layout.ef_dir, metrics=storage.metrics)
-                )
+                with Logger.perf_stage("run/run_array_storage"):
+                    scratch = stack.enter_context(
+                        RunArrayStorage(output_manager.layout.ef_dir, metrics=storage.metrics)
+                    )
+                Logger.log_perf(f"END stage=run/runtime_setup at={perf_counter():.6f} wall={perf_counter() - setup_started:.6f}s")
                 return _execute_input(
                     work_h5=work_h5,
                     output_h5_path=output_h5_path,
@@ -232,9 +238,11 @@ def _execute_input(
         stack, work_h5, hd_h5, dv_h5, band_limited_harmonics,
         policy=InputPolicy(input_backend=input_backend, unknown_transport=input_unknown_transport),
     )
-    plan = _build_execution_plan(pipelines, target_names, pipeline_options)
+    with Logger.perf_stage("run/plan_graph_construction"):
+        plan = _build_execution_plan(pipelines, target_names, pipeline_options)
     sources.service.configure(
         plan.graphs, {"velocity_workflow_selection": velocity_workflow_selection},
+        execution_order=tuple(p.name for p in pipelines),
         expected_invocations={name: selected_velocity_methods(velocity_workflow_selection)
                               for name in plan.variant_dependents},
     )
@@ -248,13 +256,14 @@ def _execute_input(
         velocity_workflow_selection=velocity_workflow_selection,
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
     )
-    scheduler = _create_scheduler(
-        stack=stack, work_h5=work_h5, output_manager=output_manager,
-        pipelines=pipelines, pipeline_options=pipeline_options,
-        sources=sources, plan=plan, status=status, variables=variables,
-        settings=settings, on_pipeline_start=on_pipeline_start,
-        on_pipeline_success=on_pipeline_success, on_progress=on_progress,
-    )
+    with Logger.perf_stage("run/scheduler_setup"):
+        scheduler = _create_scheduler(
+            stack=stack, work_h5=work_h5, output_manager=output_manager,
+            pipelines=pipelines, pipeline_options=pipeline_options,
+            sources=sources, plan=plan, status=status, variables=variables,
+            settings=settings, on_pipeline_start=on_pipeline_start,
+            on_pipeline_success=on_pipeline_success, on_progress=on_progress,
+        )
     arguments = _coordinator_arguments(
         work_h5=work_h5, output_h5_path=output_h5_path, output_manager=output_manager,
         scratch=scratch, sources=sources, settings=settings,
@@ -370,7 +379,7 @@ def _create_scheduler(
         dag=plan.dag, options=pipeline_options, executor=executor,
         statuses=status.shared_status, failures=status.pipeline_failures, skips=status.pipeline_skips,
         on_start=on_pipeline_start, on_success=on_pipeline_success, on_progress=on_progress,
-        registry=plan.registry,
+        registry=plan.registry, on_input_eligibility=sources.service.update_prefetch,
     )
 
 

@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from time import perf_counter
 from typing import Callable, ClassVar
 
 from app_settings import LAST_RUN_LOG_FILENAME
@@ -235,6 +236,18 @@ class Logger:
     @classmethod
     def log_perf(cls, message: str) -> str:
         return cls.log(message, LogLevel.PERF)
+
+    @classmethod
+    @contextmanager
+    def perf_stage(cls, stage):
+        """Development timing with matching boundaries, including on failure."""
+        started = perf_counter()
+        cls.log_perf(f"START stage={stage} at={started:.6f}")
+        try:
+            yield
+        finally:
+            ended = perf_counter()
+            cls.log_perf(f"END stage={stage} at={ended:.6f} wall={ended - started:.6f}s")
 
     @classmethod
     def log_info(cls, message: str) -> str:
