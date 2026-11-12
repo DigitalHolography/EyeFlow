@@ -15,7 +15,7 @@ from runtime_process_fixtures import PROCESS_DESCRIPTOR
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
 from pipeline_engine.planning.base import PipelineDescriptor
-from pipeline_engine.data.input_service import InputService
+from pipeline_engine.data.input_service import InputService, InputPolicy
 from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
@@ -44,7 +44,8 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
         source["z_group/video"] = source["video"]
         source["unrequested"] = original
     with h5py.File(source_path) as source, ProductStorage() as storage:
-        service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"))
+        service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"),
+                               policy=InputPolicy(input_backend="replay"))
         first, second = service.client(), service.client()
         try:
             a, b = service.files(first)["hd"], service.files(second)["hd"]
@@ -335,8 +336,11 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         statuses = json.loads(output.attrs["stage_status"])["displacement_map"]
         assert statuses == {
+            "reference": "succeeded",
             "prepare": "succeeded",
             "artery": "skipped" if missing_artery else "succeeded",
             "vein": "succeeded",
+            "artery_video": "skipped" if missing_artery else "succeeded",
+            "vein_video": "succeeded",
             "finalize": "succeeded",
         }

@@ -1,4 +1,4 @@
-"""One coordinator-owned NAS reader with reusable local read-only datasets."""
+"""Adaptive source access: worker-local HDF5, bounded transfers and replay."""
 
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ from queue import Empty, Full
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
 import shutil
+import os
+import struct
+from math import prod
 
 import numpy as np
 
@@ -20,6 +23,7 @@ from input_output.readers.nodes import is_dataset
 from pipeline_engine.data.storage import ArrayReference, ValueReference
 from pipeline_engine.stage_graph.model import InputAccess, StageGraph
 from utils.logger import Logger
+from pipeline_engine.data.input_location import storage_location
 
 
 @dataclass
@@ -30,21 +34,142 @@ class SourceEntry:
     identity: str | None = None
     chunks: tuple | None = None
     compression: str | None = None
+    backend: str = "nas_direct"
+
+
+def _tiles(shape, limit, itemsize, origin=None):
+    """Basic rectangular selections, including sub-frame tiles, bounded in bytes."""
+    origin = (0,) * len(shape) if origin is None else origin
+    if not prod(shape):
+        return
+    if prod(shape) * itemsize <= limit:
+        yield tuple(slice(first, first + size) for first, size in zip(origin, shape))
+        return
+    axis = next((i for i, size in enumerate(shape) if size > 1), None)
+    if axis is None:
+        raise MemoryError("One source element exceeds max_io_bytes")
+    step = max(1, min(shape[axis] // 2, limit // max(1, itemsize * prod(shape[axis + 1:]))))
+    for start in range(0, shape[axis], step):
+        sizes, offsets = list(shape), list(origin)
+        sizes[axis] = min(step, shape[axis] - start)
+        offsets[axis] += start
+        yield from _tiles(tuple(sizes), limit, itemsize, tuple(offsets))
+
+
+def _direct_extent(shape, selection):
+    """Crop all basic axes before transport; NumPy still applies the selector."""
+    items = selection if isinstance(selection, tuple) else (selection,)
+    if not shape:
+        return (), (), selection
+    basic = all(item is None or item is Ellipsis or isinstance(item, (slice, int, np.integer))
+                and not isinstance(item, (bool, np.bool_)) for item in items)
+    consumed = sum(item is not None and item is not Ellipsis for item in items)
+    ellipses = sum(item is Ellipsis for item in items)
+    if not basic or consumed > len(shape) or ellipses > 1:
+        return (0,) * len(shape), shape, selection
+    expanded = []
+    for item in items:
+        expanded.extend([slice(None)] * (len(shape) - consumed) if item is Ellipsis else [item])
+    if not ellipses:
+        expanded.extend([slice(None)] * (len(shape) - consumed))
+    origin, sizes, local = [], [], []
+    axis = 0
+    for item in expanded:
+        if item is None:
+            local.append(None)
+            continue
+        size = shape[axis]
+        axis += 1
+        if isinstance(item, (int, np.integer)):
+            index = int(item)
+            if not -size <= index < size:
+                raise IndexError("Input index out of range")
+            origin.append(index % size)
+            sizes.append(1)
+            local.append(0)
+        else:
+            selected = range(*item.indices(size))
+            if not selected:
+                origin.append(0)
+                sizes.append(0)
+                local.append(slice(0, 0))
+            else:
+                first, last = selected[0], selected[-1]
+                origin.append(min(first, last))
+                extent = abs(last - first) + 1
+                sizes.append(extent)
+                local.append(slice(0, extent, selected.step) if selected.step > 0 else
+                             slice(extent - 1, None, selected.step))
+    return tuple(origin), tuple(sizes), tuple(local)
+
+
+class _LocalReader:
+    """One lazy read-only handle per source and process; guarded by client lock."""
+
+    def __init__(self):
+        self.pid = os.getpid()
+        self.files = {}
+        self.datasets = {}
+
+    def read(self, filename, path, selection):
+        import h5py
+        if self.pid != os.getpid():
+            raise RuntimeError("HDF5 input readers must be created after process creation")
+        if filename not in self.files:
+            self.files[filename] = h5py.File(filename, "r")
+        key = filename, path
+        if key not in self.datasets:
+            self.datasets[key] = self.files[filename][path]
+        dataset = self.datasets[key]
+        # h5py supports fewer selectors than NumPy (negative strides, newaxis,
+        # unordered fancy indices). Preserve the existing NumPy proxy contract.
+        started = perf_counter()
+        try:
+            value = dataset[selection]
+            self.last_seconds = perf_counter() - started
+            self.last_interval = started, started + self.last_seconds
+            self.last_bytes = np.asarray(value).nbytes
+            return value
+        except (TypeError, ValueError):
+            origin, shape, local = _direct_extent(dataset.shape, selection)
+            extent = tuple(slice(offset, offset + size) for offset, size in zip(origin, shape))
+            value = dataset[extent]
+            self.last_seconds = perf_counter() - started
+            self.last_interval = started, started + self.last_seconds
+            self.last_bytes = np.asarray(value).nbytes
+            return value[local]
+
+    def close(self):
+        for dataset in self.datasets.values():
+            dataset.id.close()
+        self.datasets.clear()
+        for source in self.files.values():
+            source.close()
+        self.files.clear()
 
 
 class InputClient:
-    def __init__(self, identity, requests, responses, stopped):
+    def __init__(self, identity, requests, responses, stopped, policy):
         self.identity, self.requests, self.responses = identity, requests, responses
         self.stopped = stopped
         self.cache = {}
         self._lock = RLock()
         self._streams = set()
+        self.policy = policy
+        self._local = None
+        self._metrics = {}
+        self._local_io = deque(maxlen=8192)
+        self._local_io_dropped = False
+        self._closed = False
+        self._budget = None
 
     def __getstate__(self):
         if self._streams:
             raise RuntimeError("Cannot transfer an input client with active leases")
         # Spawn transports controls, never previously opened mappings/arrays.
-        return {**self.__dict__, "_lock": None, "cache": {}, "_streams": set()}
+        return {**self.__dict__, "_lock": None, "cache": {}, "_streams": set(),
+                "_local": None, "_metrics": {}, "_budget": None,
+                "_local_io": deque(maxlen=8192), "_local_io_dropped": False}
 
     def __setstate__(self, state):
         self.__dict__.update(state)
@@ -55,7 +180,7 @@ class InputClient:
         # so concurrent reads cannot consume each other's reply.
         with self._lock:
             started = perf_counter()
-            if self.stopped.is_set():
+            if self._closed or self.stopped.is_set():
                 raise OSError("Input service has stopped")
             self.send(operation, *args)
             while True:
@@ -65,7 +190,7 @@ class InputClient:
                 except Empty:
                     if self.stopped.is_set():
                         raise OSError("Input service stopped while waiting for a response") from None
-            if operation in ("read", "stream_next"):
+            if operation in ("read", "stream_next", "direct_read"):
                 self.send("input_wait", started, perf_counter())
             if error:
                 raise OSError(error)
@@ -78,6 +203,58 @@ class InputClient:
                 return
             except Full:
                 pass
+
+    def metric(self, name, value):
+        self._metrics[name] = self._metrics.get(name, 0) + value
+
+    def local_read(self, filename, path, selection):
+        with self._lock:
+            if self._closed or self.stopped.is_set():
+                raise OSError("Input client has closed")
+            if self._local is None:
+                self._local = _LocalReader()
+            value = self._local.read(filename, path, selection)
+            self.metric("input_local_hdf5_read_seconds", self._local.last_seconds)
+            self.metric("input_local_logical_bytes", self._local.last_bytes)
+            self.metric("input_local_source_reads", 1)
+            self.metric("input_consumer_blocked_seconds", self._local.last_seconds)
+            if len(self._local_io) == self._local_io.maxlen:
+                self._local_io_dropped = True
+            self._local_io.append(self._local.last_interval)
+            if isinstance(value, np.ndarray):
+                value.flags.writeable = False
+            return value
+
+    def direct_read(self, slot, path, shape, dtype, selection):
+        # Keep the same NumPy indexing contract as replay. Complex indexing may
+        # require a full worker array, but never a full coordinator allocation.
+        with self._lock:
+            if self._closed or self.stopped.is_set():
+                raise OSError("Input client has closed")
+            if dtype.hasobject:
+                return self.read(slot, path)[selection]
+            origin, target_shape, local = _direct_extent(shape, selection)
+            result = np.empty(target_shape, dtype=dtype)
+            for tile in _tiles(target_shape, self.policy.max_io_bytes, dtype.itemsize):
+                source = tuple(slice(item.start + offset, item.stop + offset) for item, offset in zip(tile, origin))
+                name, block_shape, token = self.rpc("direct_read", slot, path, source)
+                memory = None
+                try:
+                    memory = SharedMemory(name=name)
+                    started = perf_counter()
+                    view = np.ndarray(block_shape, dtype=dtype, buffer=memory.buf)
+                    result[tile] = view
+                    del view
+                    self.metric("input_direct_copy_seconds", perf_counter() - started)
+                finally:
+                    if memory is not None:
+                        memory.close()
+                    self.send("direct_release", token)
+            result.flags.writeable = False
+            value = result[local]
+            if isinstance(value, np.ndarray):
+                value.flags.writeable = False
+            return value
 
     def read(self, slot, path):
         with self._lock:
@@ -121,13 +298,29 @@ class InputClient:
         return self.cache[key][local]
 
     def close(self):
+        with self._lock:
+            self._close()
+
+    def _close(self):
+        if self._closed:
+            return
         for stream in list(self._streams):
             stream.close()
+        if self._local is not None:
+            self._local.close()
+        if self._local_io:
+            # One compact, bounded binary batch, never a diagnostic object graph
+            # or an IPC round trip per worker-local numerical read.
+            packed = b"".join(struct.pack("dd", *interval) for interval in self._local_io)
+            self.send("local_io", packed, self._local_io_dropped)
+            self._local_io.clear()
+        self.send("metrics", self._metrics)
         self.send("client_close")
         for value in self.cache.values():
             if isinstance(value, np.memmap) and not value._mmap.closed:
                 value._mmap.close()
         self.cache.clear()
+        self._closed = True
 
 
 class InputNode:
@@ -181,6 +374,8 @@ class InputDataset(InputNode):
 
     @property
     def _value(self):
+        if self.file.entries[self.path].backend != "replay":
+            return self.read_slice(())
         identity = self.file.entries[self.path].identity
         return self.file.client.read(self.file.slot, identity)
 
@@ -188,18 +383,31 @@ class InputDataset(InputNode):
         return self.read_slice(selection)
 
     def read_slice(self, selection):
-        return self.file.client.read_slice(self.file.slot, self.path, self.shape, selection)
+        backend = self.file.entries[self.path].backend
+        if backend == "local_direct":
+            return self.file.client.local_read(self.file.filename, self.path, selection)
+        if backend == "nas_direct":
+            return self.file.client.direct_read(self.file.slot, self.path, self.shape, self.dtype, selection)
+        value = self.file.client.read_slice(self.file.slot, self.path, self.shape, selection)
+        if isinstance(value, np.ndarray):
+            value.flags.writeable = False
+        return value
 
     def read_direct(self, dest, source_sel=None, dest_sel=None):
-        np.copyto(dest if dest_sel is None else dest[dest_sel],
-                  self.read_slice(() if source_sel is None else source_sel), casting="unsafe")
+        value = self.read_slice(() if source_sel is None else source_sel)
+        if dest_sel is None:
+            np.copyto(dest, value, casting="unsafe")
+        else:
+            dest[dest_sel] = value
 
     def iter_blocks(self, *, frames=None, writable=False, max_bytes=None):
         """Use as a context manager; each yielded lease owns one exclusive block."""
-        return _BlockStream(self, frames, writable, max_bytes)
+        stream = _LocalBlockStream if self.file.entries[self.path].backend == "local_direct" else _BlockStream
+        return stream(self, frames, writable, max_bytes)
 
     def __array__(self, dtype=None, copy=None):
         array = np.asarray(self._value, dtype=dtype)
+        array.flags.writeable = False
         return array.copy() if copy else array
 
     def astype(self, dtype):
@@ -337,11 +545,18 @@ class InputPolicy:
     stream_buffers: int = 2
     max_io_bytes: int = 64 * 2**20
     max_streams: int = 2
+    direct_buffers: int = 2
     max_prefetch_jobs: int = 16
     lookahead: bool = True
+    input_backend: str = "auto"
+    unknown_transport: str = "coordinator"
 
     def __post_init__(self):
-        for name in ("replay_frames", "stream_frames", "stream_buffers", "max_io_bytes", "max_streams",
+        if self.input_backend not in ("auto", "direct", "replay"):
+            raise ValueError("input_backend must be auto, direct or replay")
+        if self.unknown_transport not in ("coordinator", "worker"):
+            raise ValueError("unknown_transport must be coordinator or worker")
+        for name in ("replay_frames", "stream_frames", "stream_buffers", "max_io_bytes", "max_streams", "direct_buffers",
                      "max_prefetch_jobs"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -370,6 +585,7 @@ class _Replay:
     error: str | None = None
     demanded: set[int] = field(default_factory=set)
     served: set[int] = field(default_factory=set)
+    tiles: dict = field(default_factory=dict)
 
 
 class _BlockLease:
@@ -444,6 +660,95 @@ class _BlockStream:
         self.client._streams.discard(self)
 
 
+class _LocalLease:
+    def __init__(self, block, start, stop, budget=None):
+        self.block, self.start, self.stop = block, start, stop
+        self.released = False
+        self.budget = budget
+        self.reserved = block.nbytes
+
+    def __enter__(self):
+        if self.released:
+            raise RuntimeError("Input lease has already been released")
+        return self.block
+
+    def __exit__(self, *exc):
+        self.release()
+
+    def release(self):
+        if self.released:
+            return
+        self.released = True
+        self.block = None
+        if self.budget is not None:
+            self.budget.release_memory(self.reserved, "input")
+
+
+class _LocalBlockStream:
+    """Worker-owned blocks obey the same exclusive lease API without IPC."""
+    def __init__(self, dataset, frames, writable, max_bytes):
+        if not dataset.shape or dataset.dtype.hasobject:
+            raise TypeError("Streaming requires a nonscalar fixed-size dtype")
+        self.dataset, self.client, self.writable = dataset, dataset.file.client, writable
+        frames = self.client.policy.stream_frames if frames is None else frames
+        for name, value in (("frames", frames), ("max_bytes", max_bytes)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 1):
+                raise ValueError(f"{name} must be a positive integer")
+        limit = min(self.client.policy.max_io_bytes, max_bytes or self.client.policy.max_io_bytes)
+        frame_bytes = prod(dataset.shape[1:]) * dataset.dtype.itemsize
+        if not frame_bytes or frame_bytes > limit:
+            raise MemoryError("One stream frame exceeds the input byte limit")
+        self.frames = min(frames, limit // frame_bytes)
+        self.next_frame, self.lease, self.closed = 0, None, False
+        self.client._streams.add(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.closed:
+            raise StopIteration
+        if self.lease is not None and not self.lease.released:
+            raise RuntimeError("Release the current input lease before advancing")
+        if self.next_frame >= self.dataset.shape[0]:
+            self.close()
+            raise StopIteration
+        first, stop = self.next_frame, min(self.next_frame + self.frames, self.dataset.shape[0])
+        budget = self.client._budget
+        frame_bytes = prod(self.dataset.shape[1:]) * self.dataset.dtype.itemsize
+        while budget is not None and not budget.reserve_memory((stop - first) * frame_bytes, "input"):
+            if stop - first == 1:
+                self.close()
+                raise MemoryError("Insufficient RAM budget for one local input frame")
+            stop = first + max(1, (stop - first) // 2)
+        reserved = (stop - first) * frame_bytes
+        try:
+            block = self.dataset[first:stop]
+            if self.writable:
+                block.flags.writeable = True
+            self.lease = _LocalLease(block, first, stop, budget)
+            self.next_frame = stop
+            return self.lease
+        except Exception:
+            if budget is not None:
+                budget.release_memory(reserved, "input")
+            self.close()
+            raise
+
+    def close(self):
+        if not self.closed:
+            self.closed = True
+            if self.lease is not None:
+                self.lease.release()
+            self.client._streams.discard(self)
+
+
 class InputService:
     """Authoritative metadata, bounded source reads and input-buffer ownership.
 
@@ -466,6 +771,10 @@ class InputService:
         self._undeclared = set()
         self._replays, self._jobs, self._pending, self._streams = {}, {}, {}, {}
         self._datasets = {}
+        self._transfers = {}
+        self._direct_pending = {}
+        self._transfer_serial = 0
+        self.locations = {}
         self._serial = 0
         self._stream_serial = 0
         self._cancelled_clients = set()
@@ -504,6 +813,9 @@ class InputService:
 
             walk(source, ancestors=(source.id,))
             self.metadata[slot] = (source.filename, entries)
+            self.locations[slot] = storage_location(source.filename)
+            Logger.log_perf(f"input_source slot={slot} storage={self.locations[slot]}")
+        self._select_backends()
         self._metric("input_metadata_seconds", perf_counter() - started)
         self.thread = Thread(target=copy_context().run, args=(self._serve,), name="EyeFlowInputs", daemon=True)
         self.thread.start()
@@ -518,7 +830,8 @@ class InputService:
         intervals.append(interval)
 
     def configure(self, graphs: Mapping[str, StageGraph | None],
-                  run_settings: Mapping[str, object] | None = None) -> None:
+                  run_settings: Mapping[str, object] | None = None, *,
+                  expected_invocations: Mapping[str, tuple[str, ...]] | None = None) -> None:
         """Resolve graph declarations without running callbacks or reading videos.
 
         Invalid/missing candidates are recorded, leaving branch validation and
@@ -558,16 +871,18 @@ class InputService:
                         semantic[use.source] = key
                         entry = self.metadata[slot][1][key[1]]
                         item = self.manifest.setdefault(key, {
-                            "entry": entry, "consumers": [], "access": set(), "strategy": None})
+                            "entry": entry, "consumers": [], "access": set()})
                         item["consumers"].append((pipeline, stage.id, use))
                         item["access"].add(use.access)
         for item in self.manifest.values():
-            access = item["access"]
-            item["strategy"] = ("metadata" if access == {InputAccess.METADATA} else
-                                "stream" if access <= {InputAccess.METADATA, InputAccess.STREAM} else
-                                "small" if access <= {InputAccess.METADATA, InputAccess.SMALL} else "replay")
-            if sum(use.access == InputAccess.STREAM for _, _, use in item["consumers"]) > 1:
-                item["strategy"] = "replay"
+            item["expected_consumers"] = len({
+                (pipeline, stage, invocation)
+                for pipeline, stage, use in item["consumers"]
+                if not use.optional and use.access != InputAccess.METADATA
+                for invocation in (expected_invocations or {}).get(pipeline, (None,))
+                if invocation is None or use.when is None or use.when == invocation
+            })
+        self._select_backends()
         for left, right in (("hd.moment0", "hd.moment2"), ("hd.band_low", "hd.band_high")):
             if all(source in semantic and any(
                 not use.optional and use.access == InputAccess.SEQUENTIAL
@@ -578,7 +893,33 @@ class InputService:
         self._metric("input_manifest_seconds", perf_counter() - started)
         self._configured = True
         Logger.log_perf(f"input_manifest datasets={len(self.manifest)} unresolved={len(self.unresolved)} "
-                        f"strategies={[(key, item['strategy']) for key, item in self.manifest.items()]}")
+                        f"backends={[(key, item['backend']) for key, item in self.manifest.items()]}")
+
+    def _select_backends(self):
+        for slot, (_, entries) in self.metadata.items():
+            location = self.locations[slot]
+            for path, entry in entries.items():
+                if entry.shape is None:
+                    continue
+                item = self.manifest.get(self.aliases[slot, path], {})
+                consumers = item.get("expected_consumers", 0)
+                replay = self.policy.input_backend == "replay" or (
+                    self.policy.input_backend == "auto" and location == "network" and consumers > 1)
+                backend = "replay" if replay else "local_direct" if (
+                    location == "local" or location == "unknown" and self.policy.unknown_transport == "worker"
+                ) else "nas_direct"
+                entry.backend = backend
+                if item:
+                    item.update(storage_location=location, expected_reuse=consumers > 1, backend=backend)
+                if path == entry.identity:
+                    reason = "override" if self.policy.input_backend != "auto" else (
+                        "nas_reuse" if replay else "local_storage" if location == "local" else
+                        "unknown_fallback" if location == "unknown" else "single_use")
+                    Logger.log_perf(f"input_dataset name=/{path} backend={backend} consumers={consumers} reason={reason}")
+
+    def _backend(self, key):
+        slot, path = self.aliases[key]
+        return self.metadata[slot][1][path].backend
 
     def activate(self, pipeline: str) -> None:
         """Called on actual dispatch, without changing scientific scheduling."""
@@ -600,7 +941,9 @@ class InputService:
             identity = len(self.responses)
             response = self._context.Queue(maxsize=1)
             self.responses[identity] = response
-        return InputClient(identity, self.requests, response, self.stopped)
+        client = InputClient(identity, self.requests, response, self.stopped, self.policy)
+        client._budget = self.storage.budget
+        return client
 
     def files(self, client: InputClient) -> dict[str, InputFile | None]:
         return {slot: InputFile(slot, *self.metadata[slot], client) if slot in self.metadata else None
@@ -639,6 +982,7 @@ class InputService:
         if job_key[0] == "replay":
             _, key, region = job_key
             self._replays[key].states[region] = "not_requested"
+            self._replays[key].tiles.pop(region, None)
             self._metric("input_speculative_jobs_cancelled")
 
     def _frames(self, dataset, frames):
@@ -649,6 +993,8 @@ class InputService:
         if key in self._replays:
             return self._replays[key]
         dataset = self._dataset(key)
+        if dataset.dtype.itemsize > self.policy.max_io_bytes:
+            raise MemoryError("One source element exceeds max_io_bytes")
         if dataset.dtype.hasobject or not dataset.shape or not dataset.size or dataset.nbytes < 4096:
             if key not in self.cache:
                 self.cache[key] = self._stage_small(dataset)
@@ -662,7 +1008,8 @@ class InputService:
         except BaseException:
             path.unlink(missing_ok=True)
             raise
-        frames = self._frames(dataset, dataset.shape[0] if self.manifest.get(key, {}).get("strategy") == "small"
+        access = self.manifest.get(key, {}).get("access", set())
+        frames = self._frames(dataset, dataset.shape[0] if access and access <= {InputAccess.METADATA, InputAccess.SMALL}
                               else self.policy.replay_frames)
         replay = _Replay(array, ArrayReference(str(path), tuple(dataset.shape), dataset.dtype),
                          frames, ["not_requested"] * ((dataset.shape[0] + frames - 1) // frames), array.offset)
@@ -681,7 +1028,11 @@ class InputService:
         replay = self._replay(key)
         if replay is None or replay.error or not 0 <= region < len(replay.states):
             return
-        if replay.states[region] in ("ready", "loading"):
+        if replay.states[region] == "ready":
+            return
+        if replay.states[region] == "loading":
+            # A large frame may be partway through bounded sub-frame tiles.
+            self._enqueue(("replay", key, region), priority, "replay", key, region)
             return
         if self._enqueue(("replay", key, region), priority, "replay", key, region):
             replay.states[region] = "queued"
@@ -693,6 +1044,8 @@ class InputService:
         # methods have no pair entries and are never pulled into this lookahead.
         windows = []
         for candidate in dict.fromkeys((key, self.pairs.get(key, key))):
+            if self._backend(candidate) != "replay":
+                continue
             replay = self._replay(candidate)
             if replay is not None:
                 region = max(0, (stop - 1) // replay.frames)
@@ -707,13 +1060,15 @@ class InputService:
 
     def _handle(self, request):
         identity, operation, args, requested_at = request
+        if identity is not None and identity in self._cancelled_clients:
+            return
         self._metric("input_queue_wait_seconds", max(0, perf_counter() - requested_at))
         try:
             if operation == "read":
                 slot, path, span = args
                 key = self.aliases[slot, path]
                 if self._configured and key not in self.manifest and key not in self._undeclared:
-                    Logger.log_debug(f"Undeclared source demand {slot}:{path}; using safe replay fallback")
+                    Logger.log_debug(f"Undeclared source demand {slot}:{path}; backend={self._backend(key)}")
                     self._undeclared.add(key)
                 replay = self._replay(key)
                 if replay is None:
@@ -729,6 +1084,24 @@ class InputService:
                     # materialization cannot create a volume-sized job queue.
                     self._fulfill()
                     self._lookahead(key, stop if span is not None else min(stop, replay.frames))
+            elif operation == "direct_read":
+                self._enqueue(("direct", identity), 0, "direct", identity, *args)
+            elif operation == "direct_release":
+                transfer = self._transfers.get(identity)
+                if transfer is not None and transfer.get("token") == args[0]:
+                    transfer["busy"] = False
+                    self._wake_direct()
+            elif operation == "metrics":
+                for name, value in args[0].items():
+                    self._metric(name, value)
+            elif operation == "local_io":
+                packed, dropped = args
+                for first, last in struct.iter_unpack("dd", packed):
+                    self._record_interval(self.io_intervals, (first, last))
+                    self._record_interval(self.wait_intervals, (identity, first, last))
+                if dropped:
+                    self._intervals_dropped = True
+                    self._metric("input_interval_samples_dropped")
             elif operation == "dtype":
                 slot, path = args
                 self._reply(identity, self.metadata[slot][1][path].dtype)
@@ -748,7 +1121,7 @@ class InputService:
                 if not self.policy.lookahead:
                     return
                 if operation == "activate":
-                    keys = [key for key, item in self.manifest.items() if item["strategy"] == "replay"
+                    keys = [key for key, item in self.manifest.items() if item["backend"] == "replay"
                             and any(p == args[0] and not use.optional
                                     for p, _, use in item["consumers"])]
                     first = 0
@@ -756,6 +1129,8 @@ class InputService:
                     key, first = args
                     keys = [self.aliases[key]]
                 for key in keys:
+                    if self._backend(key) != "replay":
+                        continue
                     replay = self._replay(key)
                     if replay is not None:
                         self._queue_region(key, first // replay.frames, 2 if operation == "activate" else 3)
@@ -779,13 +1154,81 @@ class InputService:
                     self._close_stream(args[0])
             elif operation in ("client_close", "reclaim"):
                 owner = identity if operation == "client_close" else args[0]
+                if operation == "reclaim" and owner not in self._cancelled_clients:
+                    # An ungraceful exit can lose the worker's batched local I/O
+                    # intervals. Never report complete overlap for that run.
+                    self._intervals_dropped = True
+                    self._metric("input_metrics_clients_lost")
                 self._cancelled_clients.add(owner)
                 self._pending.pop(owner, None)
+                self._close_transfer(owner)
+                self._direct_pending.pop(owner, None)
+                self._jobs.pop(("direct", owner), None)
+                self._wake_direct()
                 for stream_id, stream in list(self._streams.items()):
                     if stream["owner"] == owner:
                         self._close_stream(stream_id)
         except Exception as exc:  # return source failures without killing unrelated consumers
             self._reply(identity, error=f"Input {operation} failed: {exc}")
+
+    def _close_transfer(self, owner):
+        transfer = self._transfers.pop(owner, None)
+        if transfer is not None:
+            transfer["memory"].close()
+            transfer["memory"].unlink()
+            if self.storage.budget is not None:
+                self.storage.budget.release_memory(transfer["size"], "input")
+            self._metric("input_direct_active_bytes", -transfer["size"])
+
+    def _wake_direct(self):
+        for owner, args in self._direct_pending.items():
+            self._enqueue(("direct", owner), 0, "direct", owner, *args)
+        self._direct_pending.clear()
+
+    def _direct_transfer(self, owner, slot, path, selection):
+        started = perf_counter()
+        dataset = self._dataset((slot, path))
+        shape = tuple(item.stop - item.start for item in selection)
+        size = prod(shape) * dataset.dtype.itemsize
+        if dataset.dtype.hasobject or not 0 < size <= self.policy.max_io_bytes:
+            raise ValueError("Invalid or oversized direct-transfer slab")
+        transfer = self._transfers.get(owner)
+        if transfer is not None and transfer["busy"]:
+            raise RuntimeError("Release the current direct transfer before reading")
+        if transfer is not None and transfer["size"] < size:
+            self._close_transfer(owner)
+            transfer = None
+        if transfer is None:
+            # Reclaim idle slabs from other clients instead of retaining a pool
+            # proportional to every pipeline that has ever run.
+            for other, slab in list(self._transfers.items()):
+                if not slab["busy"]:
+                    self._close_transfer(other)
+            budget = self.storage.budget
+            if budget is not None and not budget.reserve_memory(size, "input"):
+                raise MemoryError("Insufficient RAM budget for direct input transfer")
+            try:
+                memory = SharedMemory(create=True, size=size)
+            except BaseException:
+                if budget is not None:
+                    budget.release_memory(size, "input")
+                raise
+            transfer = self._transfers[owner] = dict(memory=memory, size=size, busy=False)
+            self._metric("input_direct_allocations")
+            self._metric("input_direct_active_bytes", size)
+            self.storage.metrics.maximum("input_direct_peak_bytes", sum(item["size"] for item in self._transfers.values()))
+        else:
+            self._metric("input_direct_buffer_reuses")
+        block = np.ndarray(shape, dtype=dataset.dtype, buffer=transfer["memory"].buf)
+        try:
+            self._read_direct(dataset, block, selection if selection else None)
+        finally:
+            del block
+        transfer["busy"] = True
+        self._transfer_serial += 1
+        transfer["token"] = self._transfer_serial
+        self._metric("input_direct_transfer_seconds", perf_counter() - started)
+        self._reply(owner, (transfer["memory"].name, shape, transfer["token"]))
 
     def _fulfill(self):
         for identity, (key, first, stop, full, started) in list(self._pending.items()):
@@ -830,6 +1273,16 @@ class InputService:
         priority, _, operation, args, queued = job
         self._priority, self._job_wait = priority, perf_counter() - queued
         self._metric("input_job_queue_seconds", self._job_wait)
+        if operation == "direct":
+            owner, slot, path, selection = args
+            if sum(item["busy"] for item in self._transfers.values()) >= self.policy.direct_buffers:
+                self._direct_pending[owner] = slot, path, selection
+            else:
+                try:
+                    self._direct_transfer(owner, slot, path, selection)
+                except Exception as exc:
+                    self._reply(owner, error=f"Input direct_read failed: {exc}")
+            return
         if operation == "stream":
             try:
                 self._read_stream(*args)
@@ -846,6 +1299,16 @@ class InputService:
         first = region * replay.frames
         stop = min(first + replay.frames, replay.array.shape[0])
         working_bytes = replay.array[first:stop].nbytes
+        selection = np.s_[first:stop]
+        destination = replay.array[first:stop]
+        if working_bytes > self.policy.max_io_bytes:
+            if region not in replay.tiles:
+                tiles = iter(_tiles(destination.shape, self.policy.max_io_bytes, destination.dtype.itemsize,
+                                    (first, *(0 for _ in destination.shape[1:]))))
+                replay.tiles[region] = next(tiles), tiles
+            selection, _ = replay.tiles[region]
+            destination = replay.array[selection]
+            working_bytes = destination.nbytes
         budget = self.storage.budget
         reserved = budget is None or budget.reserve_memory(working_bytes, "input")
         if not reserved:
@@ -858,22 +1321,41 @@ class InputService:
             self._fulfill()
             return
         replay.states[region] = "loading"
+        staged = perf_counter()
         try:
-            self._read_direct(self._dataset(key), replay.array[first:stop], np.s_[first:stop])
+            # read_direct requires a contiguous destination. A spatial sub-frame
+            # tile may be strided in the mmap, so use one bounded temporary.
+            if destination.flags.c_contiguous:
+                self._read_direct(self._dataset(key), destination, selection)
+            else:
+                tile = np.empty(destination.shape, dtype=destination.dtype)
+                self._read_direct(self._dataset(key), tile, selection)
+                destination[...] = tile
+                del tile
             flushed = perf_counter()
             replay.array.flush()
             self._metric("input_replay_flush_seconds", perf_counter() - flushed)
+            self._metric("input_replay_stage_seconds", perf_counter() - staged)
+            self._metric("input_replay_bytes", working_bytes)
+            if region in replay.tiles:
+                _, tiles = replay.tiles[region]
+                following = next(tiles, None)
+                if following is not None:
+                    replay.tiles[region] = following, tiles
+                    self._enqueue(("replay", key, region), priority, "replay", key, region)
+                    return
+                del replay.tiles[region]
             # Readiness is published only after a successful complete read and
             # flush. No job ever writes this region again.
             replay.states[region] = "ready"
             self.source_reads.setdefault(key, 1)
-            self._metric("input_replay_bytes", replay.array[first:stop].nbytes)
             if sum(state == "ready" for state in replay.states) == 1:
                 self._metric("input_first_region_seconds", perf_counter() - replay.created)
             if all(state == "ready" for state in replay.states):
                 self.cache[key] = replay.reference
                 self._metric("input_replays_completed")
         except Exception as exc:
+            replay.tiles.pop(region, None)
             replay.error = f"Could not read {key} region {region}: {exc}"
             replay.states[region] = "failed"
             self._metric("input_replays_failed")
@@ -898,10 +1380,14 @@ class InputService:
         if isinstance(frames, bool) or not isinstance(frames, (int, np.integer)) or frames < 1:
             raise ValueError("frames must be a positive integer")
         frames = self._frames(dataset, int(frames))
+        frame_bytes = prod(dataset.shape[1:]) * dataset.dtype.itemsize
+        limit = self.policy.max_io_bytes if max_bytes is None else min(self.policy.max_io_bytes, max_bytes)
         if max_bytes is not None:
             if isinstance(max_bytes, bool) or not isinstance(max_bytes, (int, np.integer)) or max_bytes < 1:
                 raise ValueError("max_bytes must be a positive integer")
             frames = min(frames, max(1, max_bytes // max(1, int(np.prod(dataset.shape[1:])) * dataset.dtype.itemsize)))
+        if frame_bytes > limit:
+            raise MemoryError("One stream frame exceeds the input byte limit")
         budget = self.storage.budget
         count = self.policy.stream_buffers
         while True:
@@ -938,7 +1424,7 @@ class InputService:
         self._streams[identity] = dict(owner=owner, key=self.aliases[slot, path], buffers=buffers, frames=frames,
             shape=shape, dtype=dataset.dtype, reserved=reserved, next_fill=0, next_take=0,
             waiting=None, error=None, total=dataset.shape[0],
-            replay=self.manifest.get(self.aliases[slot, path], {}).get("strategy") == "replay")
+            replay=self._backend((slot, path)) == "replay")
         self._metric("input_stream_reserved_bytes", reserved)
         self._metric("input_stream_active_bytes", reserved)
         self._metric("input_stream_active_buffers", len(buffers))
@@ -1064,6 +1550,11 @@ class InputService:
                 self._reply(identity, error="Input service cancelled")
             self._pending.clear()
             self._jobs.clear()
+            for owner in self._direct_pending:
+                self._reply(owner, error="Input service cancelled")
+            self._direct_pending.clear()
+            for owner in list(self._transfers):
+                self._close_transfer(owner)
             for identity in list(self._streams):
                 stream = self._streams[identity]
                 if stream["waiting"] is not None:

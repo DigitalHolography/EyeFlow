@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from multiprocessing.shared_memory import SharedMemory
 import multiprocessing as mp
 from threading import Event
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -17,7 +18,7 @@ from pipeline_engine.stage_graph import InputAccess, InputUse, StageGraph, Stage
 
 
 @contextmanager
-def inputs(tmp_path, values=None, *, policy=None, budget=None):
+def inputs(tmp_path, values=None, *, policy=None, budget=None, location="network"):
     values = np.arange(96 * 4 * 8, dtype=np.float32).reshape(96, 4, 8) if values is None else values
     with h5py.File(tmp_path / "source.h5", "w") as source:
         source["moment0"] = values
@@ -26,9 +27,12 @@ def inputs(tmp_path, values=None, *, policy=None, budget=None):
         source["band_8_2000_4000"] = values + 2
         source["band_0_9000_18000"] = values + 3
         source["HD_parameters"] = '{"sampling_freq":40000,"batch_stride":1}'
+        source.create_group("spectrograms")
+    with h5py.File(tmp_path / "source.h5", "r") as source:
         with ProductStorage(directory=tmp_path / "scratch", budget=budget) as storage:
-            service = InputService({"hd": source}, storage, mp.get_context("spawn"),
-                                   policy=policy or InputPolicy(lookahead=False))
+            with patch("pipeline_engine.data.input_service.storage_location", return_value=location):
+                service = InputService({"hd": source}, storage, mp.get_context("spawn"),
+                                       policy=policy or InputPolicy(lookahead=False, input_backend="replay"))
             clients = []
             def client():
                 item = service.client()
@@ -64,14 +68,13 @@ def test_manifest_methods_aliases_dynamic_sorting_and_no_bulk_reads(tmp_path, me
 
 def test_metadata_optional_and_legacy_spectrogram_group_do_not_read(tmp_path):
     with inputs(tmp_path) as (service, client, _):
-        service.sources["hd"].create_group("spectrograms")
         graph = StageGraph((StageSpec("source", _never_run, inputs=(
             InputUse("hd.moment0", InputAccess.METADATA),
             InputUse("hd.moment0ff", InputAccess.SEQUENTIAL, optional=True),
             InputUse("hd.spectrograms", InputAccess.METADATA, optional=True),
         )),))
         service.configure({"spectra": graph})
-        assert service.manifest[service.aliases["hd", "moment0"]]["strategy"] == "metadata"
+        assert service.manifest[service.aliases["hd", "moment0"]]["access"] == {InputAccess.METADATA}
         assert len(service.unresolved) == 2
         assert service.source_reads == {}
         assert not service._replays
@@ -130,7 +133,7 @@ def test_multiple_clients_wait_for_same_region_and_never_get_partial_data(tmp_pa
 
 def test_urgent_region_overtakes_speculation_at_read_boundary(tmp_path):
     entered, proceed = Event(), Event()
-    with inputs(tmp_path, policy=InputPolicy(lookahead=True)) as (service, client, values):
+    with inputs(tmp_path, policy=InputPolicy(lookahead=True, input_backend="replay")) as (service, client, values):
         original = service._read_direct
         order = []
         def held(dataset, destination, selection):
@@ -194,7 +197,7 @@ def _spawn_consumer(file, results, crash=False):
 
 
 def test_spawn_worker_streams_exact_values_without_materializing_source(tmp_path):
-    with inputs(tmp_path) as (service, client, values):
+    with inputs(tmp_path, policy=InputPolicy(input_backend="direct")) as (service, client, values):
         context = mp.get_context("spawn")
         results = context.Queue()
         file = client()
@@ -221,7 +224,7 @@ def test_spawn_worker_streams_exact_values_without_materializing_source(tmp_path
 def test_two_buffers_overlap_without_overwriting_lease_and_early_exit(tmp_path):
     second_ready = Event()
     budget = ResourceBudget(memory_bytes=64 * 2**20)
-    with inputs(tmp_path, budget=budget) as (service, client, values):
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(input_backend="direct")) as (service, client, values):
         original = service._read_direct
         def measured(dataset, destination, selection):
             original(dataset, destination, selection)
@@ -253,7 +256,7 @@ def test_two_buffers_overlap_without_overwriting_lease_and_early_exit(tmp_path):
 
 def test_worker_termination_reclaims_leased_buffers_and_budget(tmp_path):
     budget = ResourceBudget(memory_bytes=64 * 2**20)
-    with inputs(tmp_path, budget=budget) as (service, client, _):
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(input_backend="direct")) as (service, client, _):
         file, barrier = client(), client()
         context = mp.get_context("spawn")
         results = context.Queue()
@@ -277,7 +280,7 @@ def test_worker_termination_reclaims_leased_buffers_and_budget(tmp_path):
 
 
 def test_stream_exception_cleanup_and_capacity_limit(tmp_path):
-    with inputs(tmp_path, policy=InputPolicy(max_streams=1)) as (service, client, _):
+    with inputs(tmp_path, policy=InputPolicy(max_streams=1, input_backend="direct")) as (service, client, _):
         file = client()
         with pytest.raises(ValueError, match="consumer failure"):
             with file["moment0"].iter_blocks(frames=7) as blocks:
@@ -290,26 +293,27 @@ def test_stream_exception_cleanup_and_capacity_limit(tmp_path):
         assert not service._streams
 
 
-def test_spectral_streaming_preserves_native_gap_and_nonfinite_results(tmp_path):
+@pytest.mark.parametrize("location,mode", [("local", "direct"), ("network", "direct"), ("network", "replay")])
+def test_spectral_streaming_preserves_native_gap_and_nonfinite_results(tmp_path, location, mode):
     from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
     values = np.random.default_rng(5).normal(size=(39, 5, 4, 7)).astype(np.float32)
     values[0, 0, 0, 1] = np.nan
     values[18, 1, 2, 2] = np.inf
     mask = np.eye(4, 7, dtype=bool)
-    with inputs(tmp_path, values) as (service, client, original):
+    with inputs(tmp_path, values, location=location, policy=InputPolicy(input_backend=mode)) as (service, client, original):
         expected = preprocess_spectrograms(original, mask)
         actual = preprocess_spectrograms(client()["moment0"], mask)
         assert actual.keys() == expected.keys()
         for key in expected:
             np.testing.assert_array_equal(actual[key][0], expected[key][0])
             assert actual[key][1] == expected[key][1]
-        assert not service._replays
+        assert bool(service._replays) == (mode == "replay")
 
 
 def test_paired_velocity_current_window_precedes_next_window(tmp_path):
     from pipelines.velocity.runner import velocity_graph
     finished = Event()
-    with inputs(tmp_path, policy=InputPolicy(lookahead=True)) as (service, client, values):
+    with inputs(tmp_path, policy=InputPolicy(lookahead=True, input_backend="replay")) as (service, client, values):
         service.configure({"velocity": velocity_graph()}, {"velocity_workflow_selection": "doppler_moments"})
         order = []
         original = service._read_direct
@@ -344,7 +348,7 @@ def test_stream_and_random_consumers_reuse_progressive_backing(tmp_path):
 
 def test_stream_read_failure_releases_buffers_and_reservations(tmp_path):
     budget = ResourceBudget(memory_bytes=64 * 2**20)
-    with inputs(tmp_path, budget=budget) as (service, client, _):
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(input_backend="direct")) as (service, client, _):
         def fail(*args):
             raise OSError("injected stream failure")
         service._read_direct = fail
@@ -392,7 +396,7 @@ def test_shutdown_cancels_pending_full_replay_without_deadlock(tmp_path):
 
 def test_tight_stream_budget_degrades_to_one_smaller_buffer(tmp_path):
     budget = ResourceBudget(memory_bytes=4096)
-    with inputs(tmp_path, budget=budget) as (service, client, _):
+    with inputs(tmp_path, budget=budget, policy=InputPolicy(input_backend="direct")) as (service, client, _):
         file = client()
         with file["moment0"].iter_blocks(frames=32) as blocks:
             with next(blocks) as block:
@@ -404,7 +408,7 @@ def test_tight_stream_budget_degrades_to_one_smaller_buffer(tmp_path):
 
 def test_cancelling_speculation_keeps_an_urgent_request(tmp_path):
     entered, proceed = Event(), Event()
-    with inputs(tmp_path, policy=InputPolicy(lookahead=True)) as (service, client, values):
+    with inputs(tmp_path, policy=InputPolicy(lookahead=True, input_backend="replay")) as (service, client, values):
         original = service._read_direct
         def held(dataset, destination, selection):
             if selection.start == 0:
@@ -442,7 +446,7 @@ def test_metadata_only_spectra_inventory_never_creates_bulk_backing(tmp_path):
             service.configure({"spectra": graph})
             adapter = HolodopplerSource(RawH5SourceReader(h5file=service.files(client)["hd"], label="HD"))
             assert adapter.spectrograms().shape == (128, 16, 32, 32)
-            assert service.manifest["hd", "spectrograms"]["strategy"] == "metadata"
+            assert service.manifest["hd", "spectrograms"]["access"] == {InputAccess.METADATA}
             assert not service.source_reads and not service._datasets and not service._replays
         finally:
             client.close()
@@ -463,7 +467,7 @@ def test_native_handle_and_chunk_cache_survive_between_reads(tmp_path):
 def test_speculative_job_count_is_bounded(tmp_path):
     entered, proceed = Event(), Event()
     values = np.arange(1024 * 4 * 8, dtype="f4").reshape(1024, 4, 8)
-    with inputs(tmp_path, values, policy=InputPolicy(max_prefetch_jobs=3)) as (service, client, _):
+    with inputs(tmp_path, values, policy=InputPolicy(max_prefetch_jobs=3, input_backend="replay")) as (service, client, _):
         original_read, original_enqueue = service._read_direct, service._enqueue
         counts = []
         def held(dataset, destination, selection):
@@ -490,7 +494,8 @@ def test_small_declared_dv_array_uses_one_bounded_read(tmp_path):
     with h5py.File(tmp_path / "dv.h5", "w") as source, ProductStorage() as storage:
         values = np.ones((128, 128), dtype="u1")
         source[DV_ARTERY_MASK_PATH], source[DV_VEIN_MASK_PATH] = values, values
-        service = InputService({"dv": source}, storage, mp.get_context("spawn"))
+        service = InputService({"dv": source}, storage, mp.get_context("spawn"),
+                               policy=InputPolicy(input_backend="replay"))
         client = service.client()
         try:
             service.configure({"topology": StageGraph((StageSpec("inputs", _never_run, inputs=(

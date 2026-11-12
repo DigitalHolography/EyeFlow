@@ -153,6 +153,8 @@ class RunController:
                 velocity_estimation_method=self.app.settings_store.load_velocity_estimation_method(),
                 band_limited_harmonics=self.app.settings_store.load_band_limited_harmonics(),
                 copy_hd_passthrough=self.app.settings_store.load_copy_hd_passthrough(),
+                input_backend=self.app.settings_store.load_input_backend(),
+                input_unknown_transport=self.app.settings_store.load_input_unknown_transport(),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

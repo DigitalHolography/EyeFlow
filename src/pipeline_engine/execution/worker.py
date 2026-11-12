@@ -52,6 +52,7 @@ def run_worker(spec, events):
         metrics=storage.metrics,
     )
     scratch.budget = spec.memory_account
+    spec.input_client._budget = spec.memory_account
     files = {
         slot: InputFile(slot, *metadata, spec.input_client) if metadata else None
         for slot, metadata in spec.input_metadata.items()

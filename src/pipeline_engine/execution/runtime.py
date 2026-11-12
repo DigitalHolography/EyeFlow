@@ -17,6 +17,8 @@ from app_settings import (
     selected_velocity_methods,
     validate_band_limited_harmonics_setting,
     validate_copy_hd_passthrough,
+    validate_input_backend,
+    validate_input_unknown_transport,
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.readers.h5 import load_h5_sidecar_config
@@ -41,7 +43,7 @@ from pipeline_engine.execution.invocation import _run_pipeline_descriptor
 from pipeline_engine.data.storage import ProductStorage
 from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget, current_resources
-from pipeline_engine.data.input_service import InputService
+from pipeline_engine.data.input_service import InputService, InputPolicy
 from pipeline_engine.execution.scheduler import CoordinatorScheduler
 from pipeline_engine.execution.process_executor import ProcessExecutor
 from pipeline_engine.execution.protocol import InvocationSettings
@@ -82,6 +84,8 @@ def run_pipelines_to_output(
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
     velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    input_backend: str = "auto",
+    input_unknown_transport: str = "coordinator",
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None = None,
@@ -91,6 +95,8 @@ def run_pipelines_to_output(
     on_finalization_ready: Callable[[PendingOutput], None] | None = None,
 ) -> Path:
     """Run resolved pipelines and write outputs through an OutputManager."""
+    input_backend = validate_input_backend(input_backend)
+    input_unknown_transport = validate_input_unknown_transport(input_unknown_transport)
     resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
     resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
@@ -124,6 +130,8 @@ def run_pipelines_to_output(
                     band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
                     band_limited_harmonics=resolved_harmonics,
                     copy_hd_passthrough=resolved_copy_hd_passthrough,
+                    input_backend=input_backend,
+                    input_unknown_transport=input_unknown_transport,
                     velocity_workflow_selection=resolved_velocity_selection,
                     holodoppler_h5=holodoppler_h5,
                     doppler_vision_h5=doppler_vision_h5,
@@ -195,6 +203,8 @@ def _execute_input(
     band_limited_harmonics: int,
     copy_hd_passthrough: bool,
     velocity_workflow_selection: str,
+    input_backend: str,
+    input_unknown_transport: str,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None,
@@ -220,10 +230,13 @@ def _execute_input(
     )
     sources = _prepare_input_replay(
         stack, work_h5, hd_h5, dv_h5, band_limited_harmonics,
+        policy=InputPolicy(input_backend=input_backend, unknown_transport=input_unknown_transport),
     )
     plan = _build_execution_plan(pipelines, target_names, pipeline_options)
     sources.service.configure(
         plan.graphs, {"velocity_workflow_selection": velocity_workflow_selection},
+        expected_invocations={name: selected_velocity_methods(velocity_workflow_selection)
+                              for name in plan.variant_dependents},
     )
     status = _ExecutionStatus()
     variables: dict[str, object] = {}
@@ -260,7 +273,7 @@ def _execute_input(
     return output_h5_path
 
 
-def _prepare_input_replay(stack, work_h5, hd_h5, dv_h5, band_limited_harmonics) -> _InputSources:
+def _prepare_input_replay(stack, work_h5, hd_h5, dv_h5, band_limited_harmonics, *, policy=None) -> _InputSources:
     """Register replay cleanup and build the shared typed HD/DV source views."""
     started = perf_counter()
     Logger.log_perf(
@@ -268,6 +281,7 @@ def _prepare_input_replay(stack, work_h5, hd_h5, dv_h5, band_limited_harmonics) 
     )
     service = InputService(
         {"hd": hd_h5, "dv": dv_h5}, work_h5.storage, multiprocessing.get_context("spawn"),
+        policy=policy,
     )
     stack.callback(service.close)
     client = service.client()

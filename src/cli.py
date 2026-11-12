@@ -152,6 +152,7 @@ def run_cli(
     copy_hd_passthrough: bool | None = None,
     inspect_graph: Path | None = None,
     observed_output: Path | None = None,
+    input_backend: str | None = None,
 ) -> int:
     if inspect_graph is not None and zip_outputs:
         raise ValueError("Graph inspection and ZIP execution are separate operations.")
@@ -199,6 +200,8 @@ def run_cli(
             pipeline_options=pipeline_options,
             band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
             velocity_estimation_method=settings_store.load_velocity_estimation_method(),
+            input_backend=settings_store.load_input_backend() if input_backend is None else input_backend,
+            input_unknown_transport=settings_store.load_input_unknown_transport(),
             band_limited_harmonics=settings_store.load_band_limited_harmonics(),
             copy_hd_passthrough=(
                 settings_store.load_copy_hd_passthrough()
@@ -326,6 +329,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Export the resolved JSON/DOT plan to this filename prefix and exit.")
     parser.add_argument("--observed-output", type=Path,
                         help="Annotate --inspect-graph with a completed or partial EyeFlow HDF5 run.")
+    parser.add_argument("--input-backend", choices=("auto", "direct", "replay"),
+                        help="Source backend override (default: persisted setting or auto).")
     args = parser.parse_args(argv)
     if args.observed_output is not None and args.inspect_graph is None:
         parser.error("--observed-output requires --inspect-graph")
@@ -340,6 +345,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             copy_hd_passthrough=args.copy_hd_passthrough,
             inspect_graph=args.inspect_graph,
             observed_output=args.observed_output,
+            input_backend=args.input_backend,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Error: {exc}", file=sys.stderr)
