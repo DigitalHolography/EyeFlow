@@ -318,7 +318,7 @@ def test_invalid_spectral_source_logs_before_failing() -> None:
     from pipelines.low_freq_spectra.runner import _source
 
     source = SimpleNamespace(
-        optional_spectograms_dataset=lambda: (_ for _ in ()).throw(
+        spectrograms=lambda: (_ for _ in ()).throw(
             ValueError("invalid spectral rank")
         )
     )
@@ -339,7 +339,7 @@ def test_invalid_spectral_source_logs_before_failing() -> None:
 def test_invalid_dopplerview_support_logs_before_spatial_failure() -> None:
     from pipelines.low_freq_spectra.runner import _spatial
 
-    source = SimpleNamespace(optional_spectograms_dataset=lambda: object())
+    source = SimpleNamespace(spectrograms=lambda: object())
     ctx = SimpleNamespace(
         inputs=SimpleNamespace(
             hd=SimpleNamespace(as_holodoppler=lambda: source)

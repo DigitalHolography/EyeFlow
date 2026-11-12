@@ -308,7 +308,7 @@ class RegistrationResources:
 
 def prepare(config, ctx):
     ctx.require_inputs("hd", "dv")
-    moment = ctx.inputs.hd.as_holodoppler().named_root_moment_dataset(config.moment_path)
+    moment = ctx.inputs.hd.as_holodoppler().moment(config.moment_path, required=True)
     fps = resolve_frame_rate(ctx, config.fallback_fps)
     # Run-owned backing survives producer termination and replay cleanup.
     directory = ctx.runtime.work_h5.storage.path("")

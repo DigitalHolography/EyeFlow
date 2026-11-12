@@ -271,6 +271,12 @@ class StageGraphExecutor:
                                 result = stage.run(ctx)
                             finally:
                                 timing["callback_wall_seconds"] = perf_counter() - callback_started
+                                for input_source in (ctx.inputs.hd, ctx.inputs.dv):
+                                    source = getattr(getattr(input_source, "h5", None), "h5file", None)
+                                    client = getattr(source, "client", None)
+                                    if client is not None:
+                                        client.send("compute", callback_started, perf_counter())
+                                        break
                     if result is not None:
                         raise TypeError("Graph stages hand off products and return None.")
                     missing = [p.id for p in stage.products if not p.optional and not self.products.has(p.id)]

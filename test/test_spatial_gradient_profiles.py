@@ -53,7 +53,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
             inputs=SimpleNamespace(
                 hd=SimpleNamespace(
                     as_holodoppler=lambda: SimpleNamespace(
-                        moment0_flat_field_dataset=lambda: moment0ff
+                        moment0ff=lambda: moment0ff
                     )
                 )
             ),

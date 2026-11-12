@@ -16,3 +16,7 @@ class ExecutionMetrics:
     def snapshot(self):
         with self._lock:
             return dict(self._values)
+
+    def maximum(self, name, value):
+        with self._lock:
+            self._values[name] = max(self._values[name], value)

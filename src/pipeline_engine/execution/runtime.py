@@ -4,7 +4,7 @@ import json
 import multiprocessing
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -45,6 +45,7 @@ from pipeline_engine.data.input_service import InputService
 from pipeline_engine.execution.scheduler import CoordinatorScheduler
 from pipeline_engine.execution.process_executor import ProcessExecutor
 from pipeline_engine.execution.protocol import InvocationSettings
+from pipeline_engine.stage_graph.model import StageGraph
 from pipeline_engine.output.finalization import PendingOutput
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry
 from pipeline_engine.product_exchange.acceptance import ProductAcceptance
@@ -146,6 +147,40 @@ def run_pipelines_to_output(
 
 
 
+@dataclass(frozen=True)
+class _InputSources:
+    """Run-owned replay service and the shared source views it supplies."""
+
+    service: InputService
+    files: dict
+    configs: dict
+    shared: PipelineInputs
+
+
+@dataclass(frozen=True)
+class _ExecutionPlan:
+    """Preflight declarations reused by input planning and variant registration."""
+
+    dag: PipelineDAG
+    descriptors: dict[str, PipelineDescriptor]
+    graphs: dict[str, StageGraph | None]
+    variant_dependents: set[str]
+    registry: ProductExchangeRegistry
+    run_id: str
+
+
+@dataclass
+class _ExecutionStatus:
+    """One input's outcomes; the scheduler shares these dictionaries by reference."""
+
+    execution_variants: list[ExecutionVariant] = field(default_factory=list)
+    variant_failures: dict[str, str] = field(default_factory=dict)
+    shared_status: dict[str, str] = field(default_factory=dict)
+    branch_status: dict[str, dict[str, str]] = field(default_factory=dict)
+    pipeline_failures: dict[str, str] = field(default_factory=dict)
+    pipeline_skips: dict[str, str] = field(default_factory=dict)
+
+
 def _execute_input(
     *,
     work_h5,
@@ -168,327 +203,404 @@ def _execute_input(
     background_artifacts: BackgroundArtifacts,
     wait_for_exports: bool,
 ) -> Path:
-    input_open_started = perf_counter()
-    Logger.log_perf(
-        f"START pipeline=run variant=shared stage=input_hdf5_open "
-        f"at={input_open_started:.6f}"
-    )
+    """Prepare sources and execution, run the plan, then finalize input status.
+
+    The caller's ExitStack remains responsible for worker, client and source
+    cleanup. Final output publication remains with PendingOutput.
+    """
     hd_h5, dv_h5 = _open_input_h5_sources(stack, holodoppler_h5, doppler_vision_h5)
-    Logger.log_perf(
-        f"END pipeline=run variant=shared stage=input_hdf5_open "
-        f"at={perf_counter():.6f} wall={perf_counter() - input_open_started:.3f}s"
+    _initialize_work_h5(
+        work_h5=work_h5, pipelines=pipelines, target_names=target_names,
+        pipeline_options=pipeline_options,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+        copy_hd_passthrough=copy_hd_passthrough,
+        velocity_workflow_selection=velocity_workflow_selection,
+        holodoppler_h5=holodoppler_h5, doppler_vision_h5=doppler_vision_h5,
+        hd_source_h5=hd_h5, dv_source_h5=dv_h5,
     )
-    initialize_started = perf_counter()
-    Logger.log_perf(
-        f"START pipeline=run variant=shared stage=output_initialization "
-        f"at={initialize_started:.6f}"
+    sources = _prepare_input_replay(
+        stack, work_h5, hd_h5, dv_h5, band_limited_harmonics,
     )
-    with work_h5.checkpoint():
-        _initialize_work_h5(
-            work_h5=work_h5,
-            pipelines=pipelines,
-            target_names=target_names,
-            pipeline_options=pipeline_options,
-            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-            copy_hd_passthrough=copy_hd_passthrough,
-            velocity_workflow_selection=velocity_workflow_selection,
-            holodoppler_h5=holodoppler_h5,
-            doppler_vision_h5=doppler_vision_h5,
-            hd_source_h5=hd_h5,
-            dv_source_h5=dv_h5,
-        )
-    Logger.log_perf(
-        f"END pipeline=run variant=shared stage=output_initialization "
-        f"at={perf_counter():.6f} wall={perf_counter() - initialize_started:.3f}s"
+    plan = _build_execution_plan(pipelines, target_names, pipeline_options)
+    sources.service.configure(
+        plan.graphs, {"velocity_workflow_selection": velocity_workflow_selection},
     )
-    replay_started = perf_counter()
-    Logger.log_perf(
-        f"START pipeline=run variant=shared stage=input_replay_setup "
-        f"at={replay_started:.6f}"
+    status = _ExecutionStatus()
+    variables: dict[str, object] = {}
+    computation_cache: dict[object, object] = {}
+    settings = InvocationSettings(
+        configs=sources.configs, pipeline_options=dict(pipeline_options),
+        pipeline_order=tuple(pipeline.name for pipeline in pipelines),
+        pipeline_targets=tuple(target_names),
+        velocity_workflow_selection=velocity_workflow_selection,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
     )
-    input_service = InputService({"hd": hd_h5, "dv": dv_h5}, work_h5.storage,
-                                 multiprocessing.get_context("spawn"))
-    stack.callback(input_service.close)
-    input_client = input_service.client()
-    stack.callback(input_client.close)
+    scheduler = _create_scheduler(
+        stack=stack, work_h5=work_h5, output_manager=output_manager,
+        pipelines=pipelines, pipeline_options=pipeline_options,
+        sources=sources, plan=plan, status=status, variables=variables,
+        settings=settings, on_pipeline_start=on_pipeline_start,
+        on_pipeline_success=on_pipeline_success, on_progress=on_progress,
+    )
+    arguments = _coordinator_arguments(
+        work_h5=work_h5, output_h5_path=output_h5_path, output_manager=output_manager,
+        scratch=scratch, sources=sources, settings=settings,
+        pipeline_options=pipeline_options, variables=variables,
+        computation_cache=computation_cache, background_artifacts=background_artifacts,
+    )
+    _execute_coordinator_pipelines(
+        scheduler, plan, status, sources, arguments, background_artifacts,
+        on_pipeline_start=on_pipeline_start, on_pipeline_success=on_pipeline_success,
+        on_progress=on_progress,
+    )
+    _finish_input_execution(
+        work_h5, output_h5_path, status, background_artifacts,
+        wait_for_exports=wait_for_exports,
+    )
+    return output_h5_path
+
+
+def _prepare_input_replay(stack, work_h5, hd_h5, dv_h5, band_limited_harmonics) -> _InputSources:
+    """Register replay cleanup and build the shared typed HD/DV source views."""
+    started = perf_counter()
+    Logger.log_perf(
+        f"START pipeline=run variant=shared stage=input_replay_setup at={started:.6f}"
+    )
+    service = InputService(
+        {"hd": hd_h5, "dv": dv_h5}, work_h5.storage, multiprocessing.get_context("spawn"),
+    )
+    stack.callback(service.close)
+    client = service.client()
+    stack.callback(client.close)
     hd_config = load_h5_sidecar_config(hd_h5, source="hd")
     write_root_attributes(work_h5, {"band_limited_harmonics": band_limited_harmonics})
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
-    files = input_service.files(input_client)
-    hd_h5, dv_h5 = files["hd"], files["dv"]
-    shared_inputs = PipelineInputs(
-        hd=PipelineInputSource(RawH5SourceReader(h5file=hd_h5, label="HD"), hd_config),
-        dv=PipelineInputSource(RawH5SourceReader(h5file=dv_h5, label="DV"), dv_config),
+    files = service.files(client)
+    shared = PipelineInputs(
+        hd=PipelineInputSource(RawH5SourceReader(h5file=files["hd"], label="HD"), hd_config),
+        dv=PipelineInputSource(RawH5SourceReader(h5file=files["dv"], label="DV"), dv_config),
     )
-    initialize_acquisition_metadata(work_h5, shared_inputs.hd)
+    initialize_acquisition_metadata(work_h5, shared.hd)
     Logger.log_perf(
         f"END pipeline=run variant=shared stage=input_replay_setup "
-        f"at={perf_counter():.6f} wall={perf_counter() - replay_started:.3f}s"
+        f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s"
     )
-    context_vars: dict[str, object] = {}
-    computation_cache: dict[object, object] = {}
+    return _InputSources(service, files, {"hd": hd_config, "dv": dv_config}, shared)
 
+
+def _build_execution_plan(pipelines, target_names, pipeline_options) -> _ExecutionPlan:
+    """Build each stage graph once and identify variant-scoped consumers."""
     dag = PipelineDAG(pipelines)
-    selection = PipelineSelection(tuple(item.name for item in pipelines), tuple(target_names), pipeline_options)
-    execution_variants: list[ExecutionVariant] = []
+    selection = PipelineSelection(
+        tuple(item.name for item in pipelines), tuple(target_names), pipeline_options,
+    )
     variant_dependents = {
         name
         for producer in pipelines if producer.produces_execution_variants
         for name in dag.dependents_of(
-            producer.name, transitive=True, pipeline_options=pipeline_options
+            producer.name, transitive=True, pipeline_options=pipeline_options,
         )
     }
-    variant_dependents.difference_update(
-        pipeline.name for pipeline in pipelines if pipeline.run_once
-    )
-    variant_failures: dict[str, str] = {}
-    shared_status: dict[str, str] = {}
-    branch_status: dict[str, dict[str, str]] = {}
-    pipeline_failures: dict[str, str] = {}
-    pipeline_skips: dict[str, str] = {}
-
-    pipeline_count = len(pipelines)
+    variant_dependents.difference_update(p.name for p in pipelines if p.run_once)
     run_id = uuid4().hex
     registry = ProductExchangeRegistry()
+    graphs = {}
     for descriptor in pipelines:
         identity = PipelineInvocationId(run_id, descriptor.name)
         registry.register_invocation(identity)
-        graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()), selection=selection)
-        if graph is not None:
-            for stage in graph.stages:
-                for product in stage.products:
-                    if product.exposed:
-                        registry.declare(ProductId(identity, product.id))
-    descriptors_by_name = {descriptor.name: descriptor for descriptor in pipelines}
+        graph = descriptor.build_graph(
+            pipeline_options.get(descriptor.name, ()), selection=selection,
+        )
+        graphs[descriptor.name] = graph
+        _declare_invocation_products(registry, identity, graph)
+    return _ExecutionPlan(
+        dag, {p.name: p for p in pipelines}, graphs, variant_dependents, registry, run_id,
+    )
+
+
+def _declare_invocation_products(registry, identity, graph) -> None:
+    """Declare exposed graph products for an already registered invocation."""
+    if graph is not None:
+        for stage in graph.stages:
+            for product in stage.products:
+                if product.exposed:
+                    registry.declare(ProductId(identity, product.id))
+
+
+def _create_scheduler(
+    *, stack, work_h5, output_manager, pipelines, pipeline_options,
+    sources, plan, status, variables, settings,
+    on_pipeline_start, on_pipeline_success, on_progress,
+) -> CoordinatorScheduler:
+    """Wire coordinator acceptance and worker transport to the existing scheduler."""
     bound = set()
     for descriptor in pipelines:
-        _bind_product_requirements(registry, descriptors_by_name, PipelineInvocationId(run_id, descriptor.name), bound)
-    acceptance = ProductAcceptance(model=work_h5, state=context_vars,
-        destination=output_manager.layout.ef_dir, inputs=files, registry=registry)
+        _bind_product_requirements(
+            plan.registry, plan.descriptors, PipelineInvocationId(plan.run_id, descriptor.name), bound,
+        )
+    acceptance = ProductAcceptance(
+        model=work_h5, state=variables, destination=output_manager.layout.ef_dir,
+        inputs=sources.files, registry=plan.registry,
+    )
     executor = ProcessExecutor(
-        context=multiprocessing.get_context("spawn"), input_service=input_service,
-        inputs=files, model=work_h5, manager=output_manager, budget=current_resources(),
-        state=context_vars,
-        acceptance=acceptance, registry=registry, run_id=run_id,
-        settings=InvocationSettings(
-            configs={"hd": hd_config, "dv": dv_config},
-            pipeline_options=dict(pipeline_options),
-            pipeline_order=tuple(pipeline.name for pipeline in pipelines),
-            pipeline_targets=tuple(target_names),
-            velocity_workflow_selection=velocity_workflow_selection,
-            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-        ),
+        context=multiprocessing.get_context("spawn"), input_service=sources.service,
+        inputs=sources.files, model=work_h5, manager=output_manager, budget=current_resources(),
+        state=variables, acceptance=acceptance, registry=plan.registry,
+        run_id=plan.run_id, settings=settings,
     )
     stack.callback(executor.close)
-    scheduler = CoordinatorScheduler(
+    return CoordinatorScheduler(
         pipelines=[replace(p, execution_mode="coordinator")
-                   if p.name in variant_dependents or p.produces_execution_variants
-                   or p.wait_for_artifacts
-                   else p for p in pipelines],
-        dag=dag, options=pipeline_options,
-        executor=executor, statuses=shared_status, failures=pipeline_failures, skips=pipeline_skips,
+                   if p.name in plan.variant_dependents or p.produces_execution_variants
+                   or p.wait_for_artifacts else p for p in pipelines],
+        dag=plan.dag, options=pipeline_options, executor=executor,
+        statuses=status.shared_status, failures=status.pipeline_failures, skips=status.pipeline_skips,
         on_start=on_pipeline_start, on_success=on_pipeline_success, on_progress=on_progress,
-        registry=registry,
+        registry=plan.registry,
     )
-    for pipeline_index, pipeline_desc in scheduler.coordinator_jobs():
+
+
+def _coordinator_arguments(
+    *, work_h5, output_h5_path, output_manager, scratch, sources, settings,
+    pipeline_options, variables, computation_cache, background_artifacts,
+) -> dict:
+    """Assemble common invocation arguments; each dispatch receives its own dict."""
+    return {
+        **settings.context_arguments(),
+        "work_h5": work_h5,
+        "output_h5_path": output_h5_path,
+        "output_manager": output_manager,
+        "holodoppler_h5": sources.files["hd"],
+        "doppler_vision_h5": sources.files["dv"],
+        "holodoppler_config": sources.configs["hd"],
+        "doppler_vision_config": sources.configs["dv"],
+        "shared_inputs": sources.shared,
+        "scratch": scratch,
+        "variables": variables,
+        "computation_cache": computation_cache,
+        "pipeline_options": pipeline_options,
+        "on_pipeline_success": None,
+        "on_progress": None,
+        "background_artifacts": background_artifacts,
+    }
+
+
+def _execute_coordinator_pipelines(
+    scheduler, plan, status, sources, common_arguments, background_artifacts,
+    *, on_pipeline_start, on_pipeline_success, on_progress,
+) -> None:
+    """Dispatch ready coordinator jobs, checkpoint outcomes, and notify progress."""
+    work_h5 = common_arguments["work_h5"]
+    executor = scheduler.executor
+    for pipeline_index, descriptor in scheduler.coordinator_jobs():
         # Only consumers of artifacts wait; ordinary calculations keep running.
-        background_artifacts.collect(wait=pipeline_desc.wait_for_artifacts)
+        background_artifacts.collect(wait=descriptor.wait_for_artifacts)
         _write_artifact_status(work_h5, background_artifacts)
-        if pipeline_desc.wait_for_artifacts:
+        if descriptor.wait_for_artifacts:
             work_h5.flush()
         if on_pipeline_start is not None:
-            on_pipeline_start(pipeline_desc.name, pipeline_index, pipeline_count)
+            on_pipeline_start(descriptor.name, pipeline_index, scheduler.total)
+        sources.service.activate(descriptor.name)
         arguments = {
-            "work_h5": work_h5,
-            "output_h5_path": output_h5_path,
-            "output_manager": output_manager,
-            "holodoppler_h5": hd_h5,
-            "doppler_vision_h5": dv_h5,
-            "holodoppler_config": hd_config,
-            "doppler_vision_config": dv_config,
-            "shared_inputs": shared_inputs,
-            "scratch": scratch,
-            "variables": context_vars,
-            "computation_cache": computation_cache,
-            "pipeline_options": pipeline_options,
-            "pipeline_order": tuple(pipeline.name for pipeline in pipelines),
-            "pipeline_targets": target_names,
-            "velocity_estimation_method": None,
-            "velocity_workflow_selection": velocity_workflow_selection,
-            "execution_variant": None,
-            "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
-            "on_pipeline_success": None,
-            "on_progress": None,
-            "background_artifacts": background_artifacts,
-            "product_inputs": executor.product_inputs(pipeline_desc) if pipeline_desc.name not in variant_dependents else {},
-            "on_product_commit": lambda stage, product, handle, descriptor=pipeline_desc:
-                acceptance.accept_local(executor.invocation_id(descriptor), stage, product, handle),
+            **common_arguments,
+            "product_inputs": executor.product_inputs(descriptor)
+                if descriptor.name not in plan.variant_dependents else {},
+            "on_product_commit": lambda stage, product, handle, descriptor=descriptor:
+                executor.acceptance.accept_local(
+                    executor.invocation_id(descriptor), stage, product, handle,
+                ),
         }
-        name = pipeline_desc.name
-        dependencies = dag.dependencies_of(name, pipeline_options=pipeline_options, include_products=False)
-        succeeded = False
-        if name in variant_dependents and execution_variants:
-            if pipeline_desc.produces_execution_variants:
-                raise RuntimeError(
-                    "Nested execution-variant producers are not supported."
-                )
-            variant_state_keys = {
-                key for variant in execution_variants for key in variant.state
-            }
-            for variant in tuple(execution_variants):
-                statuses = branch_status.setdefault(variant.name, {})
-                label = f"{name} [{variant.name}]"
-                blocked = [
-                    dependency for dependency in dependencies
-                    if statuses.get(dependency, shared_status.get(dependency)) != "succeeded"
-                ]
-                if pipeline_desc.wait_for_artifacts:
-                    blocked.extend(background_artifacts.failures)
-                if blocked:
-                    statuses[name] = "skipped"
-                    pipeline_skips[label] = "Unavailable dependencies: " + ", ".join(blocked)
-                    variant_failures.setdefault(variant.name, pipeline_skips[label])
-                    Logger.log_warning(f"Skipping {label}: {pipeline_skips[label]}")
-                    continue
-                # Variant state persists across descriptors; shared producers
-                # are added without replacing variant-owned data.
-                for key, value in context_vars.items():
-                    if key not in variant_state_keys:
-                        variant.state.setdefault(key, value)
-                branch_arguments = {
-                    **arguments,
-                    "variables": variant.state,
-                    "execution_variant": variant,
-                    "processing_root": variant.output_namespace,
-                    "output_provenance": variant.provenance,
-                    "output_manager": output_manager.for_artifact_namespace(
-                        variant.artifact_namespace
-                    ),
-                    "product_inputs": executor.product_inputs(pipeline_desc, variant.name),
-                    "on_product_commit": lambda stage, product, handle, descriptor=pipeline_desc, variant_name=variant.name:
-                        acceptance.accept_local(executor.invocation_id(descriptor, variant_name), stage, product, handle),
-                }
-                try:
-                    outcome = _run_pipeline_descriptor(pipeline_desc, **branch_arguments)
-                except Exception as exc:
-                    Logger.log_warning(f"Failed {label}; continuing safe pipelines: {exc}")
-                    statuses[name] = "failed"
-                    pipeline_failures[label] = str(exc)
-                    variant_failures.setdefault(variant.name, str(exc))
-                else:
-                    statuses[name] = outcome.status
-                    succeeded = outcome.status == "succeeded"
-                    if outcome.reason:
-                        pipeline_skips[label] = outcome.reason
-                acceptance.finalize(executor.invocation_id(pipeline_desc, variant.name), pipeline_failures.get(label))
+        dependencies = plan.dag.dependencies_of(
+            descriptor.name, pipeline_options=scheduler.options, include_products=False,
+        )
+        if descriptor.name in plan.variant_dependents and status.execution_variants:
+            succeeded = _run_variant_pipeline(
+                descriptor, dependencies, arguments, status, executor, background_artifacts,
+            )
         else:
-            # Prefer a complete workflow for unrelated shared pipelines.
-            if execution_variants and not pipeline_desc.run_once:
-                canonical = next(
-                    (variant for variant in execution_variants
-                     if variant.name not in variant_failures), execution_variants[0],
-                )
-                arguments["execution_variant"] = canonical
-                context_vars.update(canonical.state)
-            blocked = [
-                dependency for dependency in dependencies
-                if shared_status.get(dependency) != "succeeded"
-            ]
-            if pipeline_desc.wait_for_artifacts:
-                blocked.extend(background_artifacts.failures)
-            emitted_variants = ()
-            if blocked:
-                shared_status[name] = "skipped"
-                pipeline_skips[name] = "Unavailable dependencies: " + ", ".join(blocked)
-                Logger.log_warning(f"Skipping {name}: {pipeline_skips[name]}")
-            else:
-                try:
-                    outcome = _run_pipeline_descriptor(
-                        pipeline_desc, **arguments,
-                    )
-                except Exception as exc:
-                    shared_status[name] = "failed"
-                    pipeline_failures[name] = str(exc)
-                    Logger.log_warning(f"Failed {name}; continuing safe pipelines: {exc}")
-                else:
-                    shared_status[name] = outcome.status
-                    succeeded = outcome.status == "succeeded"
-                    emitted_variants, emitted_failures = outcome.variants, outcome.variant_failures
-                    if outcome.reason:
-                        pipeline_skips[name] = outcome.reason
-            if emitted_variants:
-                if execution_variants:
-                    raise RuntimeError(
-                        "Multiple active execution-variant producers are not supported."
-                    )
-                execution_variants = list(emitted_variants)
-                variant_failures.update(emitted_failures)
-                for variant in execution_variants:
-                    work_h5.designate_metadata(variant.output_namespace, "runtime")
-                    PipelineH5Output(work_h5, processing_root=variant.output_namespace).set_attrs(variant.provenance)
-                # Variant identities are now known. Declarations remain the same
-                # factories used by execution; only invocation qualification changes.
-                for descriptor in pipelines:
-                    if descriptor.name not in variant_dependents:
-                        continue
-                    registry.remove_placeholder(executor.invocation_id(descriptor))
-                    graph = descriptor.build_graph(pipeline_options.get(descriptor.name, ()), selection=selection)
-                    for variant in execution_variants:
-                        identity = executor.invocation_id(descriptor, variant.name)
-                        registry.register_invocation(identity)
-                        if graph is not None:
-                            for stage in graph.stages:
-                                for product in stage.products:
-                                    if product.exposed:
-                                        registry.declare(ProductId(identity, product.id))
-                for descriptor in pipelines:
-                    if descriptor.name in variant_dependents:
-                        for identity in registry.invocations_for(descriptor.name):
-                            _bind_product_requirements(registry, descriptors_by_name, identity, set())
-            acceptance.finalize(executor.invocation_id(pipeline_desc), pipeline_failures.get(name) or pipeline_skips.get(name))
+            succeeded = _run_shared_pipeline(
+                descriptor, dependencies, arguments, plan, status, executor, background_artifacts,
+            )
         background_artifacts.collect()
         _write_artifact_status(work_h5, background_artifacts)
         _write_execution_variant_status(
             work_h5,
-            [variant for variant in execution_variants if variant.name not in variant_failures],
-            variant_failures,
+            [v for v in status.execution_variants if v.name not in status.variant_failures],
+            status.variant_failures,
         )
-        write_root_attributes(work_h5, {
-            "pipeline_status": json.dumps(
-                {"shared": shared_status, "variants": branch_status}, sort_keys=True,
-            ),
-            "pipeline_failures": json.dumps(pipeline_failures, sort_keys=True),
-            "pipeline_skips": json.dumps(pipeline_skips, sort_keys=True),
-        })
+        _write_pipeline_status(work_h5, status)
         work_h5.flush()
         if succeeded and on_pipeline_success is not None:
-            on_pipeline_success(pipeline_desc.name)
+            on_pipeline_success(descriptor.name)
         if on_progress is not None:
             on_progress()
+
+
+def _run_variant_pipeline(
+    descriptor, dependencies, arguments, status, executor, background_artifacts,
+) -> bool:
+    """Run a consumer independently in each published execution variant."""
+    if descriptor.produces_execution_variants:
+        raise RuntimeError("Nested execution-variant producers are not supported.")
+    variables = arguments["variables"]
+    variant_state_keys = {key for v in status.execution_variants for key in v.state}
+    succeeded = False
+    for variant in tuple(status.execution_variants):
+        statuses = status.branch_status.setdefault(variant.name, {})
+        label = f"{descriptor.name} [{variant.name}]"
+        blocked = [dependency for dependency in dependencies
+                   if statuses.get(dependency, status.shared_status.get(dependency)) != "succeeded"]
+        if descriptor.wait_for_artifacts:
+            blocked.extend(background_artifacts.failures)
+        if blocked:
+            statuses[descriptor.name] = "skipped"
+            status.pipeline_skips[label] = "Unavailable dependencies: " + ", ".join(blocked)
+            status.variant_failures.setdefault(variant.name, status.pipeline_skips[label])
+            Logger.log_warning(f"Skipping {label}: {status.pipeline_skips[label]}")
+            continue
+        # Keep branch bindings isolated while adding newly available shared data.
+        for key, value in variables.items():
+            if key not in variant_state_keys:
+                variant.state.setdefault(key, value)
+        branch_arguments = {
+            **arguments,
+            "variables": variant.state,
+            "execution_variant": variant,
+            "processing_root": variant.output_namespace,
+            "output_provenance": variant.provenance,
+            "output_manager": arguments["output_manager"].for_artifact_namespace(
+                variant.artifact_namespace,
+            ),
+            "product_inputs": executor.product_inputs(descriptor, variant.name),
+            "on_product_commit": lambda stage, product, handle, variant_name=variant.name:
+                executor.acceptance.accept_local(
+                    executor.invocation_id(descriptor, variant_name), stage, product, handle,
+                ),
+        }
+        try:
+            outcome = _run_pipeline_descriptor(descriptor, **branch_arguments)
+        except Exception as exc:
+            Logger.log_warning(f"Failed {label}; continuing safe pipelines: {exc}")
+            statuses[descriptor.name] = "failed"
+            status.pipeline_failures[label] = str(exc)
+            status.variant_failures.setdefault(variant.name, str(exc))
+        else:
+            statuses[descriptor.name] = outcome.status
+            succeeded = outcome.status == "succeeded"
+            if outcome.reason:
+                status.pipeline_skips[label] = outcome.reason
+        executor.acceptance.finalize(
+            executor.invocation_id(descriptor, variant.name), status.pipeline_failures.get(label),
+        )
+    return succeeded
+
+
+def _run_shared_pipeline(
+    descriptor, dependencies, arguments, plan, status, executor, background_artifacts,
+) -> bool:
+    """Run one shared invocation and register any newly published variants."""
+    name = descriptor.name
+    if status.execution_variants and not descriptor.run_once:
+        # Prefer a complete workflow for unrelated shared pipelines.
+        canonical = next(
+            (v for v in status.execution_variants if v.name not in status.variant_failures),
+            status.execution_variants[0],
+        )
+        arguments["execution_variant"] = canonical
+        arguments["variables"].update(canonical.state)
+    blocked = [dependency for dependency in dependencies
+               if status.shared_status.get(dependency) != "succeeded"]
+    if descriptor.wait_for_artifacts:
+        blocked.extend(background_artifacts.failures)
+    succeeded = False
+    if blocked:
+        status.shared_status[name] = "skipped"
+        status.pipeline_skips[name] = "Unavailable dependencies: " + ", ".join(blocked)
+        Logger.log_warning(f"Skipping {name}: {status.pipeline_skips[name]}")
+    else:
+        try:
+            outcome = _run_pipeline_descriptor(descriptor, **arguments)
+        except Exception as exc:
+            status.shared_status[name] = "failed"
+            status.pipeline_failures[name] = str(exc)
+            Logger.log_warning(f"Failed {name}; continuing safe pipelines: {exc}")
+        else:
+            status.shared_status[name] = outcome.status
+            succeeded = outcome.status == "succeeded"
+            if outcome.reason:
+                status.pipeline_skips[name] = outcome.reason
+            if outcome.variants:
+                _register_execution_variants(
+                    outcome.variants, outcome.variant_failures, arguments["work_h5"],
+                    plan, status, executor,
+                )
+    executor.acceptance.finalize(
+        executor.invocation_id(descriptor),
+        status.pipeline_failures.get(name) or status.pipeline_skips.get(name),
+    )
+    return succeeded
+
+
+def _register_execution_variants(variants, failures, work_h5, plan, status, executor) -> None:
+    """Bind variant provenance and qualify downstream product identities."""
+    if status.execution_variants:
+        raise RuntimeError("Multiple active execution-variant producers are not supported.")
+    status.execution_variants = list(variants)
+    status.variant_failures.update(failures)
+    for variant in status.execution_variants:
+        work_h5.designate_metadata(variant.output_namespace, "runtime")
+        PipelineH5Output(work_h5, processing_root=variant.output_namespace).set_attrs(variant.provenance)
+    # Graph declarations are reused; only invocation qualification changes.
+    for name in plan.descriptors:
+        if name not in plan.variant_dependents:
+            continue
+        descriptor = plan.descriptors[name]
+        plan.registry.remove_placeholder(executor.invocation_id(descriptor))
+        for variant in status.execution_variants:
+            identity = executor.invocation_id(descriptor, variant.name)
+            plan.registry.register_invocation(identity)
+            _declare_invocation_products(plan.registry, identity, plan.graphs[name])
+    for name in plan.descriptors:
+        if name in plan.variant_dependents:
+            for identity in plan.registry.invocations_for(name):
+                _bind_product_requirements(plan.registry, plan.descriptors, identity, set())
+
+
+def _write_pipeline_status(work_h5, status) -> None:
+    """Persist shared and branch outcomes without changing their ownership."""
     write_root_attributes(work_h5, {
-        "pipeline_status": json.dumps({"shared": shared_status, "variants": branch_status}, sort_keys=True),
-        "pipeline_failures": json.dumps(pipeline_failures, sort_keys=True),
-        "pipeline_skips": json.dumps(pipeline_skips, sort_keys=True),
+        "pipeline_status": json.dumps(
+            {"shared": status.shared_status, "variants": status.branch_status}, sort_keys=True,
+        ),
+        "pipeline_failures": json.dumps(status.pipeline_failures, sort_keys=True),
+        "pipeline_skips": json.dumps(status.pipeline_skips, sort_keys=True),
     })
-    _write_execution_variant_status(work_h5,
-        [variant for variant in execution_variants if variant.name not in variant_failures],
-        variant_failures)
-    # Reports, archives and run completion must see every completed sidecar.
+
+
+def _finish_input_execution(
+    work_h5, output_h5_path, status, background_artifacts, *, wait_for_exports,
+) -> None:
+    """Join required exports and report failure only after safe work completes."""
+    _write_pipeline_status(work_h5, status)
+    _write_execution_variant_status(
+        work_h5, [v for v in status.execution_variants if v.name not in status.variant_failures],
+        status.variant_failures,
+    )
     if wait_for_exports and background_artifacts.pending:
         Logger.log("Waiting for background figure exports before completing this run...")
     background_artifacts.collect(wait=wait_for_exports)
     _write_artifact_status(work_h5, background_artifacts)
     work_h5.flush()
-    # Report failure only after every safe pipeline has had a chance to run.
-    if (wait_for_exports and background_artifacts.failures) or "failed" in shared_status.values() or (
-        execution_variants
-        and all(variant.name in variant_failures for variant in execution_variants)
-    ):
-        errors = list(pipeline_failures.values()) + [
+    artifacts_failed = wait_for_exports and bool(background_artifacts.failures)
+    shared_failed = "failed" in status.shared_status.values()
+    all_variants_failed = bool(status.execution_variants) and all(
+        v.name in status.variant_failures for v in status.execution_variants
+    )
+    if artifacts_failed or shared_failed or all_variants_failed:
+        errors = list(status.pipeline_failures.values()) + [
             f"{name}: {error}" for name, error in background_artifacts.failures.items()
         ]
         raise PipelineRunError("; ".join(errors), output_h5_path)
-    return output_h5_path
 
 
 def _open_input_h5_sources(
@@ -496,6 +608,10 @@ def _open_input_h5_sources(
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
 ):
+    started = perf_counter()
+    Logger.log_perf(
+        f"START pipeline=run variant=shared stage=input_hdf5_open at={started:.6f}"
+    )
     hd_h5 = (
         stack.enter_context(open_h5(holodoppler_h5, "r")) if holodoppler_h5 is not None else None
     )
@@ -503,6 +619,10 @@ def _open_input_h5_sources(
         stack.enter_context(open_h5(doppler_vision_h5, "r"))
         if doppler_vision_h5 is not None
         else None
+    )
+    Logger.log_perf(
+        f"END pipeline=run variant=shared stage=input_hdf5_open "
+        f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s"
     )
     return hd_h5, dv_h5
 
@@ -521,29 +641,38 @@ def _initialize_work_h5(
     hd_source_h5=None,
     dv_source_h5=None,
 ) -> None:
-    initialize_output_h5(
-        work_h5,
-        holodoppler_source_file=(str(holodoppler_h5) if holodoppler_h5 is not None else None),
-        doppler_vision_source_file=(
-            str(doppler_vision_h5) if doppler_vision_h5 is not None else None
-        ),
-        holodoppler_source_h5=hd_source_h5,
-        doppler_vision_source_h5=dv_source_h5,
-        copy_hd_passthrough=copy_hd_passthrough,
+    started = perf_counter()
+    Logger.log_perf(
+        f"START pipeline=run variant=shared stage=output_initialization at={started:.6f}"
     )
-    write_root_attributes(work_h5, {
-        "pipeline_targets": list(target_names),
-        "pipeline_order": [pipeline.name for pipeline in pipelines],
-        "velocity_estimation_methods": list(selected_velocity_methods(velocity_workflow_selection)),
-        "velocity_quantity": "physical_velocity",
-        "velocity_unit": "mm/s",
-        "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
-        "copy_hd_passthrough": copy_hd_passthrough,
-        "pipeline_options": json.dumps(
-            {name: list(options) for name, options in pipeline_options.items()},
-            sort_keys=True,
-        ),
-    })
+    with work_h5.checkpoint():
+        initialize_output_h5(
+            work_h5,
+            holodoppler_source_file=(str(holodoppler_h5) if holodoppler_h5 is not None else None),
+            doppler_vision_source_file=(
+                str(doppler_vision_h5) if doppler_vision_h5 is not None else None
+            ),
+            holodoppler_source_h5=hd_source_h5,
+            doppler_vision_source_h5=dv_source_h5,
+            copy_hd_passthrough=copy_hd_passthrough,
+        )
+        write_root_attributes(work_h5, {
+            "pipeline_targets": list(target_names),
+            "pipeline_order": [pipeline.name for pipeline in pipelines],
+            "velocity_estimation_methods": list(selected_velocity_methods(velocity_workflow_selection)),
+            "velocity_quantity": "physical_velocity",
+            "velocity_unit": "mm/s",
+            "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
+            "copy_hd_passthrough": copy_hd_passthrough,
+            "pipeline_options": json.dumps(
+                {name: list(options) for name, options in pipeline_options.items()},
+                sort_keys=True,
+            ),
+        })
+    Logger.log_perf(
+        f"END pipeline=run variant=shared stage=output_initialization "
+        f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s"
+    )
 
 
 def _write_artifact_status(work_h5, background_artifacts):

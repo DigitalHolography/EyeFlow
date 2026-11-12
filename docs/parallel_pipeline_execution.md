@@ -5,6 +5,15 @@ ready invocations; `ProcessExecutor` owns workers and reaping. Both process and
 coordinator invocations use the same checkpoints and
 [stage executor](pipeline_stage_graphs.md).
 
+`_execute_input` expresses the lifecycle as explicit phases: open sources,
+initialize output, prepare input replay, build declarations, create the existing
+scheduler, execute coordinator jobs, and finalize status/exports. Shared and
+variant invocations have separate helpers; variant registration and status
+persistence are separate from dispatch. Small records group source views,
+preflight declarations and outcome dictionaries. The dictionaries remain shared
+with the scheduler; cleanup still belongs to the caller's `ExitStack` and final
+publication to `PendingOutput`.
+
 ## Readiness
 
 A descriptor's `graph_factory(options=...)` supplies the same product declarations
@@ -64,9 +73,13 @@ workers; cleanup exceptions report failure; repeated close is safe. One
 `ResourceBudget` covers workers, calculations, renderers and file finalizers.
 There are no fixed per-pipeline RAM declarations.
 
-The input service opens each HD/DV source once and reuses bounded local replay
-across workers and source aliases. Native thread policy belongs to process and
-resource initialization.
+The input service owns each read-only HD/DV source and keeps demanded native
+dataset handles open across slabs. Declarative stage inputs select progressive
+local replay or bounded shared-memory streaming. Workers see only completed
+replay extents or exclusive leased blocks, and source aliases share replay.
+See [input ownership and readiness](hdf5_input_subsystem.md) for lifetime and
+cancellation rules. Native thread policy belongs to process and resource
+initialization.
 
 `test_product_exchange_processes.py` covers actual transport, crash recovery,
 receipt loss, acceptance rollback and exit/resource ordering. Reproduce synthetic

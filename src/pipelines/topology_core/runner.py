@@ -25,6 +25,7 @@ from input_output.schema.doppler_view import (
     DV_RETINAL_VESSEL_LOGITS_PATH,
 )
 from pipeline_engine import read_int_setting, ProductSpec, StageGraph, StageSpec
+from pipeline_engine.stage_graph import InputAccess, InputUse
 from pipeline_engine.context import require_managed_runtime
 from pipelines.vessel_inputs import load_vessel_topology_inputs
 from utils.logger import Logger
@@ -119,10 +120,19 @@ def _pack_topology(prepared, ctx):
 
 def topology_graph(*, options=()):
     return StageGraph((
-        StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),)),
+        StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),), inputs=(
+            InputUse("hd.metadata", InputAccess.SMALL),
+            InputUse("hd.moment2", InputAccess.METADATA, optional=True),
+            InputUse("hd.band_high", InputAccess.METADATA, optional=True),
+            InputUse("dv.vessels", InputAccess.SMALL),
+            InputUse("dv.optional_segmentation", InputAccess.SMALL, optional=True),
+        )),
         StageSpec("gaps", _gaps, requires=("inputs",),
+                  inputs=(InputUse("hd.moment0ff", InputAccess.SEQUENTIAL, optional=True),),
                   products=(ProductSpec("gaps", pack=lambda value, ctx: value[1]),)),
         StageSpec("sampling", _sampling, requires=("inputs",),
+                  inputs=(InputUse("hd.moment0", InputAccess.RANDOM, optional=True),
+                          InputUse("hd.band_low", InputAccess.RANDOM, optional=True)),
                   products=(ProductSpec("topology", pack=_pack_topology),)),
     ))
 
@@ -134,7 +144,7 @@ def run_topology_core(ctx):
 
 def _prepare_gap_masks(ctx, inputs, legacy, optic_disc):
     schema = EyeFlowOutputPaths.active().segmentation
-    volume = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
+    volume = ctx.inputs.hd.as_holodoppler().moment0ff()
     outputs = {}
     sources = []
     if legacy is not None:

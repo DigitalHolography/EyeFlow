@@ -4,6 +4,7 @@ from functools import partial
 
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.stage_graph import StageGraph, StageSpec, ProductSpec
+from pipeline_engine.stage_graph import InputAccess, InputUse
 from pipelines.topology_core.runner import optional_capillary_zones
 from pipelines.velocity import velocity_workflows
 from utils.logger import Logger
@@ -23,7 +24,7 @@ def _packed(value, ctx):
 def _source(ctx):
     ctx.require_inputs("hd")
     try:
-        spectra = ctx.inputs.hd.as_holodoppler().optional_spectograms_dataset()
+        spectra = ctx.inputs.hd.as_holodoppler().spectrograms()
     except (TypeError, ValueError) as exc:
         Logger.log_error(
             "Low-frequency spectra rejected the HD /spectrograms input: "
@@ -59,7 +60,7 @@ def _calibration(ctx):
 
 
 def _spatial(ctx):
-    spectra = ctx.inputs.hd.as_holodoppler().optional_spectograms_dataset()
+    spectra = ctx.inputs.hd.as_holodoppler().spectrograms()
     try:
         values = preprocess_spectrograms(spectra, optional_capillary_zones(ctx))
     except (KeyError, TypeError, ValueError) as exc:
@@ -113,10 +114,12 @@ def _figures(ctx):
 def spectral_graph(*, options=()):
     product = lambda name: (ProductSpec(name, pack=_packed),)
     return StageGraph((
-        StageSpec("source", _source, products=(ProductSpec("source"),)),
+        StageSpec("source", _source, products=(ProductSpec("source"),),
+                  inputs=(InputUse("hd.spectrograms", InputAccess.METADATA, optional=True),)),
         StageSpec("sampling", _sampling, requires=("source",), products=product("sampling")),
         StageSpec("calibration", _calibration, requires=("source", "sampling"), products=product("calibration")),
-        StageSpec("spatial", _spatial, requires=("source",), products=product("spatial")),
+        StageSpec("spatial", _spatial, requires=("source",), products=product("spatial"),
+                  inputs=(InputUse("hd.spectrograms", InputAccess.STREAM, optional=True),)),
         StageSpec("beats", _beats, requires=("spatial",), optional_requires=("calibration",), products=product("beats")),
         StageSpec("qc", _qc, requires=("spatial",), optional_requires=("beats",), products=product("qc")),
         StageSpec("figures", _figures, requires=("spatial",), optional_requires=("calibration", "beats", "qc"), artifact=True),

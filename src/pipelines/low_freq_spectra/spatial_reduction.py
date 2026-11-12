@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from numbers import Integral
 import os
 
@@ -59,6 +59,9 @@ class SpatialReducer:
         futures = [self._executor.submit(
             reduce_spatial_block, rows[start:stop], gap_indices, include_global=include_global,
         ) for start, stop in zip(bounds[:-1], bounds[1:])]
+        # Even a failed partition must finish every other task before a leased
+        # block can be released or unmapped by the caller's exception cleanup.
+        wait(futures)
         parts = [future.result() for future in futures]
         results = [None if parts[0][i] is None else np.concatenate(
             [part[i] for part in parts], axis=0,
@@ -82,6 +85,15 @@ def spectral_batches(source, *, read_buffer_bytes=DEFAULT_READ_BUFFER_BYTES):
         raise ValueError("read_buffer_bytes must be a positive integer.")
     frame_bytes = int(np.prod(source.shape[1:])) * np.dtype(source.dtype).itemsize
     count = min(source.shape[0], max(1, read_buffer_bytes // frame_bytes))
+    stream = getattr(source, "iter_blocks", None)
+    if callable(stream):
+        # The service owns read width and buffer count; this budget is an upper
+        # bound. The lease remains exclusive through all in-place partitioning.
+        with stream(max_bytes=read_buffer_bytes, writable=True) as blocks:
+            for lease in blocks:
+                with lease as block:
+                    yield lease.start, block
+        return
     chunks = getattr(source, "chunks", None)
     if chunks is not None and chunks[0] <= count:
         count = max(chunks[0], count // chunks[0] * chunks[0])

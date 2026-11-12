@@ -35,6 +35,13 @@ Missing mandatory handoffs fail the producer. Missing required inputs skip the
 consumer; `ProductSpec(optional=True)` allows omission and `ctx.dag.skip(reason)`
 records expected absence. Independent stages continue after failure.
 
+`StageSpec.inputs` separately declares immutable `InputUse` source requirements.
+These describe metadata, small arrays, sequential slices, streaming blocks or
+random access; they do not add scientific dependency edges. The coordinator's
+InputService resolves them through the typed HD/DV schemas before callbacks run.
+See [HDF5 input subsystem](hdf5_input_subsystem.md) for declarations, progressive
+readiness and worker lease APIs.
+
 ## Ownership and outcomes
 
 `DataManager` snapshots products into `ProductStorage`; readers share immutable

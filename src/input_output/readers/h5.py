@@ -59,6 +59,7 @@ class RawH5SourceReader:
     def __init__(self, *, h5file: h5py.File | None, label: str) -> None:
         self.h5file = h5file
         self.label = label
+        self._array_cache = {}
 
     @property
     def filename(self) -> str | None:
@@ -94,11 +95,33 @@ class RawH5SourceReader:
     def __contains__(self, path: object) -> bool:
         return isinstance(path, str) and self.get(path) is not None
 
-    def dataset(self, path: str) -> h5py.Dataset:
-        found = self.get(path)
-        if not is_dataset(found):
-            raise KeyError(f"Missing {self.label} dataset at path '{normalize_h5_path(path)}'.")
-        return found
+    def dataset(self, paths: str | tuple[str, ...], *, required: bool = True,
+                ndim: int | None = None, kinds: str | None = None,
+                ignore_groups: bool = False):
+        """Resolve aliases lazily; absent inputs return None unless required."""
+        paths = (paths,) if isinstance(paths, str) else paths
+        for path in paths:
+            node = self.get(path)
+            if node is None or (ignore_groups and not is_dataset(node)):
+                continue
+            if not is_dataset(node):
+                raise KeyError(f"Missing {self.label} dataset at path '{path}'.")
+            dataset = node
+            if ndim is not None and dataset.ndim != ndim:
+                raise ValueError(
+                    f"{self.label} /{path} must be a {ndim}-D dataset, "
+                    f"got shape {dataset.shape}."
+                )
+            if kinds is not None and dataset.dtype.kind not in kinds:
+                quantity = "real numeric" if kinds == "iuf" else "numeric"
+                raise TypeError(
+                    f"{self.label} /{path} must contain {quantity} values, "
+                    f"got dtype {dataset.dtype}."
+                )
+            return dataset
+        if required:
+            raise KeyError(f"Missing {self.label} dataset. Tried: {', '.join(paths)}")
+        return None
 
     def value(self, path: str, default: Any = _MISSING):
         try:
@@ -115,9 +138,18 @@ class RawH5SourceReader:
         dtype=None,
         flatten: bool = False,
         default: Any = _MISSING,
+        cache: bool = False,
     ) -> Any:
         try:
-            array = _read_dataset_array(self.dataset(path), dtype=dtype)
+            if cache:
+                path = normalize_h5_path(path)
+                if path not in self._array_cache:
+                    self._array_cache[path] = _read_dataset_array(self.dataset(path))
+                # Cache native samples once; every caller owns its conversion
+                # and edits, including when another workflow requests a dtype.
+                array = np.array(self._array_cache[path], dtype=dtype, copy=True)
+            else:
+                array = _read_dataset_array(self.dataset(path), dtype=dtype)
         except KeyError:
             if default is _MISSING:
                 raise

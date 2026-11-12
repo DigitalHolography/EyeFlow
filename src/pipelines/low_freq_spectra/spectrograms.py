@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import closing
+
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
@@ -40,8 +42,9 @@ def preprocess_spectrograms(
     median = np.full_like(average, np.nan)
     gap_median = np.full_like(average, np.nan) if prepared is not None else None
     gap_indices = np.flatnonzero(prepared[0]) if prepared is not None else None
-    with SpatialReducer(workers=workers) as reducer:
-        for start, block in spectral_batches(spectrograms, read_buffer_bytes=read_buffer_bytes):
+    with (closing(spectral_batches(spectrograms, read_buffer_bytes=read_buffer_bytes)) as batches,
+          SpatialReducer(workers=workers) as reducer):
+        for start, block in batches:
             stop = start + block.shape[0]
             average[start:stop], median[start:stop], gap_values = reducer(block, gap_indices)
             if gap_median is not None:

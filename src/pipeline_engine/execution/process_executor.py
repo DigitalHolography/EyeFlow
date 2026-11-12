@@ -29,6 +29,7 @@ class ActiveInvocation:
     reservation_released: bool = False
     outcome: InvocationOutcome | None = None
     reported: bool = False
+    input_client_id: int | None = None
 
 
 class ProcessExecutor:
@@ -107,6 +108,7 @@ class ProcessExecutor:
             f"wait={admission_wait:.3f}s"
         )
         try:
+            self.input_service.activate(pipeline.name)
             self.active[pipeline.name] = self._launch(pipeline, request.threads, request.memory)
         except BaseException:
             self.budget.release(request.threads, request.memory)
@@ -141,11 +143,13 @@ class ProcessExecutor:
             process.start()
             self.model.storage.metrics.add("processes_started", 1)
         except BaseException:
+            self.input_service.release_client(spec.input_client.identity)
             process.close()
             account.reclaim()
             raise
         return ActiveInvocation(
             process=process, threads=threads, memory=memory, memory_account=account,
+            input_client_id=spec.input_client.identity,
         )
 
     def _finish(self, name, error, *, status="succeeded", reason=None):
@@ -177,6 +181,8 @@ class ProcessExecutor:
         if active.reaped or active.process.is_alive():
             return
         active.process.join(timeout=0)
+        if active.input_client_id is not None:
+            self.input_service.release_client(active.input_client_id)
         active.memory_account.reclaim()
         if not active.reservation_released:
             self.budget.release(active.threads, active.memory)

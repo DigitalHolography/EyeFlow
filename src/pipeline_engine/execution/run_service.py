@@ -206,10 +206,13 @@ def execute_run(
             on_pipeline_start=on_pipeline_start, on_progress=on_progress,
             should_stop=should_stop,
         )
+    finished_at = perf_counter()
+    elapsed_seconds = finished_at - started_at
     Logger.log_perf(
         f"END pipeline=run variant=shared stage=batch "
-        f"at={perf_counter():.6f} wall={perf_counter() - started_at:.3f}s"
+        f"at={finished_at:.6f} wall={elapsed_seconds:.3f}s"
     )
+    Logger.log_info(f"Total app execution time: {elapsed_seconds:.3f} s")
     return result
 
 

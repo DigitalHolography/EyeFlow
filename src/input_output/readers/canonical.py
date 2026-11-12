@@ -40,20 +40,20 @@ def load_retinal_source_data(
         band_ratio_frequency_scale_hz
     )
     if method == "frequency_bands":
-        band_lf, band_hf = hd.frequency_band_datasets()
+        band_lf, band_hf = hd.frequency_bands()
         image_maps = ImageMaps(
-            moment0=_optional_moment(hd.optional_moment0_dataset),
-            moment2=_optional_moment(hd.optional_moment2_dataset),
+            moment0=_optional_moment(hd.moment0),
+            moment2=_optional_moment(hd.moment2),
             band_lf=band_lf,
             band_hf=band_hf,
-            spectograms=hd.optional_spectograms_dataset() if include_spectrograms else None,
+            spectograms=hd.spectrograms() if include_spectrograms else None,
         )
         spatial_reference = band_lf
     else:
         image_maps = ImageMaps(
-            moment0=hd.moment0_dataset(),
-            moment2=hd.moment2_dataset(),
-            spectograms=hd.optional_spectograms_dataset() if include_spectrograms else None,
+            moment0=hd.moment0(required=True),
+            moment2=hd.moment2(required=True),
+            spectograms=hd.spectrograms() if include_spectrograms else None,
         )
         spatial_reference = image_maps.moment0
     spatial_shape = tuple(int(size) for size in spatial_reference.shape[-2:])
