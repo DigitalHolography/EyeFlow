@@ -1,91 +1,49 @@
-# Velocity-profile analysis
+# Velocity-profile quadratic analysis
 
-Selecting the `velocity_analysis.velocity_profile_analysis` option also selects
-its required `velocity_profiles` and `segments` options. During velocity
-analysis, the fitter consumes the payloads published at both output paths:
+The `velocity_analysis.velocity_profile_analysis` option requires velocity
+profiles and segments. It fits each profile independently from the artery and
+vein `VelocityProfiles/.../Transversal/Masked/VelocityProfile/value` families
+under `/ProcessingMoments` or `/ProcessingBandRatio`. Input axes are
+`(x, time, beat, branch, radius)`. The reusable solver is
+`src/calculations/vessel_segments/profiles/fits/quadratic.py`; the pipeline
+adapter selects source paths and writes the schema.
 
-- `/ProcessingMoments/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value`
-- `/ProcessingMoments/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value`
+## Fit and outputs
 
-The frequency-band workflow uses the corresponding paths under
-`/ProcessingBandRatio`.
+For zero-based sample index `x`, minimize
+`sum(w * (v - (a*x*x + b*x + c))**2)` over finite observations. With
+`u=x/(Nx-1)` and `d=abs(2*u-1)`, use `w=1-d**p`; production uses `p=2`.
+Weights are tied to the complete input domain even when samples are missing.
+The one-sample domain has weight one. The solver uses float64 internally and
+stores coefficients for the original zero-based index coordinate.
 
-Input axes are `(x, time, beat, branch, radius)`. Every profile is fit independently;
-there is no averaging across time, beats, branches or radii.
+Each vessel has output
+`/Processing{Moments|BandRatio}/VelocityProfileAnalysis/{Artery|Vein}/<name>/value`
+with `(time, beat, branch, radius)` axes. Float outputs are float32; counts are
+int32.
 
-The reusable numerical implementation lives in
-`src/calculations/vessel_segments/profiles/fits/quadratic.py`, with the public
-entry point `fit_quadratic_profiles`. The
-velocity-analysis adapter selects the artery and vein source paths and adds the
-EyeFlow output schema and provenance.
-
-The name describes a polynomial model, not a constrained physical flow law.
-It does not assume Poiseuille flow; future physical models should have their
-own fit modules. This structural move retains the five-dimensional input
-contract and historical `Qv` output names; generalizing them is separate work.
-
-## Fit definition
-
-Use `x = 0, ..., Nx-1` and minimize `sum(w * (v - (a*x*x+b*x+c))**2)` over
-finite observed samples. For `u=x/(Nx-1)` and `d=abs(2*u-1)`, use `w=1-d^p`.
-The default `p=2` gives a quadratic decrease from weight one at the domain
-center to weight zero at either border. Direct API callers may supply any finite
-`p>0`. With an even number of samples, the two samples nearest the center have
-equal maximum sampled weights below one. Weights remain tied to the complete
-input domain when some samples are missing. A one-sample domain has weight one.
-
-The solver scales design rows and observations by `sqrt(w)` and works in
-float64 on centered/scaled coordinates. Stored coefficients refer to the original
-zero-based index coordinate. Time slabs contain at most 256 profiles per
-beat/branch/radius, and profiles sharing finite masks reuse the least-squares
-solve within each slab. It does not create a second full-size float64 copy of
-the profile payload.
-
-## Output schema
-
-Each name below is written for both vessel classes at
-`/ProcessingMoments/VelocityProfileAnalysis/{Artery,Vein}/<name>/value`, or the
-corresponding `/ProcessingBandRatio` path, with axes
-`(time, beat, branch, radius)`. Float arrays are float32 and counts are int32.
-
-| Names | Definition |
+| Names | Meaning |
 |---|---|
-| `a`, `b`, `c` | Quadratic coefficients; coefficient `b` is distinct from the input beat axis |
-| `fit_rss` | Sum of squared residuals over finite samples |
-| `fit_rmse` | `sqrt(fit_rss/n_fit_samples)` |
-| `fit_r_squared` | `1-fit_rss/SST`, using the ordinary observed mean |
-| `fit_weighted_rss` | Sum of `w*residual**2` |
-| `fit_weighted_rmse` | `sqrt(fit_weighted_rss/sum(w))` |
-| `fit_weighted_r_squared` | `1-fit_weighted_rss/weighted_SST`, using the weighted observed mean |
-| `n_fit_samples` | Number of finite input samples |
-| `index_center` | Fractional vertex index for a downward-opening, nondegenerate fit |
-| `index_left_zero`, `index_right_zero` | Sorted fractional real roots, not clipped to the input range |
-| `Qv_fit`, `Qv` | Unweighted signed sums of fitted and observed values on identical observed support |
-| `n_area_samples` | Size of that observed support |
+| `a`, `b`, `c` | Quadratic coefficients |
+| `fit_rss`, `fit_rmse`, `fit_r_squared` | Ordinary residual diagnostics |
+| `fit_weighted_rss`, `fit_weighted_rmse`, `fit_weighted_r_squared` | Weighted diagnostics |
+| `n_fit_samples` | Number of finite observations |
+| `index_center`, `index_left_zero`, `index_right_zero` | Vertex and sorted real roots of a downward-opening fit |
+| `Qv_fit`, `Qv`, `n_area_samples` | Signed fitted and observed sums and support count |
 
-Observed support consists of finite input samples whose integer indexes are
-inclusively between the roots. Indexes outside the sampled domain contribute
-nothing. There is no extrapolation, quadrature, absolute value, or pixel-spacing
-factor in either area sum. In particular, negative observed samples retain their
-sign. Coefficients and area sums use index coordinates, not physical distances.
+`Qv_fit` and `Qv` sum over the same observed finite indexes inclusively between
+the roots and inside the sampled domain. They use index coordinates, with no
+extrapolation, absolute value, quadrature, or pixel-spacing factor. Negative
+observations keep their sign. The model is a weighted polynomial fit, without
+a Poiseuille-flow constraint.
 
-All datasets include axis, source path, zero-based-index, model, weighting, and
-integration metadata. The `weight_power` attribute records the production value
-`2.0`.
+## Invalid profiles
 
-## Invalid or degenerate profiles
-
-- Fewer than three finite samples, rank deficiency or nonfinite coefficients:
-  numerical outputs are NaN; the observed sample count is retained.
-- Upward-opening or effectively linear fits retain coefficients and diagnostics,
-  but geometry and areas are NaN. Negligible normalized curvature is at most
-  `64*float64_epsilon*max(1,max(abs(v)))` in magnitude.
-- Downward fits retain the vertex even without two distinct finite real roots.
-  A discriminant within float64 roundoff of zero is treated as a repeated root;
-  the tolerance is `64*epsilon*max(1,alpha**2,beta**2,abs(4*alpha*gamma))` for
-  normalized coefficients `(alpha,beta,gamma)`.
-- No usable roots or no observed indexes between roots: NaN areas and zero area count.
-- Constant observations have undefined R-squared, returned as NaN. Unweighted
-  R-squared may be negative because the fit optimizes weighted residuals.
-- Empty time/beat/branch/radius axes are preserved. Missing input or a wrong
-  dimensionality raises an explicit error before outputs are returned.
+Fewer than three finite samples, rank deficiency, or nonfinite coefficients
+give NaN numerical outputs while preserving the sample count. Upward-opening
+or effectively linear fits retain coefficients and diagnostics but have NaN
+geometry and areas. Downward fits may retain a vertex without usable roots;
+then areas are NaN and the area count is zero. Constant observations have
+undefined R-squared. Missing input or wrong dimensionality raises an error;
+empty non-profile axes are preserved. For curvature/discriminant tolerances and
+solver chunking, use the solver and its numerical-reference tests.

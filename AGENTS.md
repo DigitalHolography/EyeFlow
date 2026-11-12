@@ -1,115 +1,72 @@
-# EyeFlow repository context
+# EyeFlow repository guide
 
-EyeFlow is a desktop and command-line analysis application for retinal Doppler
-holography. It consumes a `.holo` run plus HoloDoppler (HD) and DopplerView
-(DV) companion HDF5 files, resolves a dependency-aware set of analysis
-pipelines, and writes one structured EyeFlow result directory per run. It does
-not perform vessel segmentation.
+EyeFlow analyzes retinal Doppler holography from a `.holo` run plus HD and DV
+HDF5 companions. It does not segment vessels. GUI and CLI both use
+`pipeline_engine.run_service`; one run writes one `<stem>_EF` result directory.
 
-## Start here
+## Read only what the task needs
 
-Read only the context needed for the task:
-
-| Task | Read first | Then inspect |
-|---|---|---|
-| Entry points, end-to-end flow, settings, or subsystem ownership | [Architecture](docs/architecture.md) | `src/launcher.py`, `src/cli.py`, `src/eye_flow.py`, or `src/app_settings.py` as routed there |
-| Pipeline registration, scheduling, options, or execution | [Pipeline engine context](src/pipeline_engine/AGENTS.md) | `src/pipelines/__init__.py` and the affected pipeline declaration |
-| A scientific product or pipeline output | [Pipeline context](src/pipelines/AGENTS.md) | The pipeline package, then only the calculation modules it calls |
-| A numerical primitive, topology, velocity, or waveform algorithm | [Calculation context](src/calculations/AGENTS.md) | The relevant calculation package and mapped tests |
-| Input layout, HDF5 schema, writers, or output folders | [Data contracts](docs/data-contracts.md), then [I/O context](src/input_output/AGENTS.md) | The relevant schema or writer module |
-| GUI workflow or presentation | [UI context](src/ui/AGENTS.md) | One controller plus its view; do not load scientific implementations unless the backend contract changes |
-| Test failure or regression coverage | [Test map](test/AGENTS.md) | The mapped production module and focused test file |
-| Velocity-profile quadratic fitting | [Velocity-profile analysis](docs/velocity_profile_analysis.md) | `src/calculations/vessel_segments/profiles/fits/quadratic.py`, then `src/pipelines/velocity_analysis/outputs/profile_analysis.py` |
-
-## Repository map
-
-| Path | Responsibility |
+| Task | Start with |
 |---|---|
-| `src/pipeline_engine/` | Pipeline metadata, DAG resolution, run specifications, contexts, and execution |
-| `src/pipelines/` | Pipeline declarations and orchestration; hidden core pipelines publish shared state for visible products |
-| `src/calculations/` | Reusable scientific and numerical code, independent of UI and output-folder policy |
-| `src/input_output/` | `.holo` companion discovery, typed HDF5 adapters, output schema, writers, reports, and archives |
-| `src/retinal_source_data.py` | Shared typed, aligned HD/DV retinal input model |
-| `src/plotting/` | Reusable figure styling and layout; I/O writers save the finished figures |
-| `src/ui/` | Tkinter views and controllers; delegates runs to `pipeline_engine.run_service` |
-| `src/utils/` | Process-wide logging; keep domain and orchestration behavior out of this small shared layer |
-| `src/app_settings.py` / `default_settings.json` | Persisted settings behavior / fresh-install defaults |
-| `test/` | Unit, numerical-reference, pipeline-integration, schema, UI-controller, and launcher tests |
-| `.github/workflows/release.yml` | Tag-triggered Windows release and installer publication; it is not the test workflow |
-| `scripts/migrate_artifacts.py` | Local utility for renaming artifacts in existing EyeFlow results |
+| Entry points, settings, or ownership | [Architecture](docs/architecture.md) |
+| Scheduling, options, or execution | [Pipeline engine map](src/pipeline_engine/AGENTS.md) |
+| Scientific product or pipeline output | [Pipeline map](src/pipelines/AGENTS.md) |
+| Numerical algorithm or geometry | [Calculation map](src/calculations/AGENTS.md) |
+| Input layout, HDF5 schema, or writer | [I/O map](src/input_output/AGENTS.md); use [data contracts](docs/data-contracts.md) when changing a public contract |
+| GUI workflow | [UI map](src/ui/AGENTS.md) |
+| Test or regression | [Test guide](test/AGENTS.md) |
+| Quadratic velocity-profile fit | [Profile analysis](docs/velocity_profile_analysis.md) |
 
-## Execution in one view
+Follow the relevant map to the owning module and focused tests. Search both
+producers and consumers before changing a contract.
 
-```text
-GUI (`eye_flow.main`) ----+
-                         +-> resolve_run_spec -> PipelineDAG -> execute_run
-CLI (`cli.main`) --------+                         |
-                                                   v
-                HD + DV typed sources -> ordered pipelines
-                    -> shared run state + EyeFlow HDF5/sidecars
-```
+## Repository boundaries
 
-Both front ends must converge on `pipeline_engine.run_service`; do not create a
-second scheduling or execution path in a controller or CLI handler.
+- `src/pipeline_engine/` owns metadata, DAG resolution, run specs, and execution.
+- `src/pipelines/` declares dependencies/options, adapts sources and
+  calculations, owns run state, and publishes products.
+- `src/calculations/` owns reusable science and has no UI, settings, or
+  output-directory dependency.
+- `src/input_output/` owns HD/DV adapters, schemas, output paths, and writers.
+- `src/ui/` owns Tkinter presentation; `src/app_settings.py` owns persisted
+  settings. Both front ends must converge on the shared run service.
 
-## Global invariants
+## Contracts to preserve
 
-- Array axes are explicit. HD moments and frequency bands are `(frame, y, x)`;
-  masks are `(y, x)`. Do not silently transpose scientific arrays outside the
-  canonical input-alignment layer.
-- HDF5 paths have owners. External paths belong in `src/input_output/schema/`;
-  current EyeFlow output paths come from `EyeFlowOutputPaths.active()`.
-- `@pipeline`/`@registerPipeline` declarations are the source of pipeline
-  dependencies and options. Discovery scans pipeline modules automatically.
-- `dag_requires` names produced data, while `requires` names importable Python
-  packages. Do not interchange them.
-- `ctx.state` is run-local and shared between ordered pipelines; persisted
-  results go through `ctx.output.h5`. Never make a later pipeline depend on an
-  undeclared state producer.
-- `execute_run` replaces an existing `<stem>_EF` directory before each run.
-  Treat that directory as entirely EyeFlow-owned.
-- `velocity_estimation_method="frequency_bands"` converts `HF / LF` to an RMS
-  frequency with the explicit `band_ratio_frequency_scale_hz` calibration,
-  then uses the shared background-difference and mm/s conversion. It does not
-  disable downstream pipelines. Preserve method, calibration, quantity, and
-  unit provenance throughout outputs and presentation. Velocity is always
-  physical in `mm/s`; reject legacy dimensionless velocity metadata.
-- Preserve NaN, boundary, axis, unit, and sign behavior in scientific changes;
-  these are tested contracts, not incidental implementation details.
-- Keep calculation code independent of Tkinter, settings persistence, and
-  filesystem layout. Pipelines adapt calculations to runtime state and output.
+- HD image volumes use `(frame, y, x)`; native masks use `(y, x)`. Published
+  2-D EyeFlow maps use lower-left `(x, y)` alignment. Do not transpose outside
+  the canonical input/output boundaries.
+- External HDF5 paths belong in `src/input_output/schema/`;
+  `EyeFlowOutputPaths.active()` owns current EyeFlow paths.
+- Pipeline declarations own options and dependencies. `requires` names Python
+  packages; `dag_requires` names produced data. A `ctx.state` consumer needs
+  a declared producer. Durable results go through `ctx.output.h5`.
+- `execute_run` replaces the EyeFlow-owned `<stem>_EF` directory for each
+  attempt. Validate destinations before execution.
+- Selected velocity workflows produce physical `mm/s`. Band-ratio estimation
+  converts `HF/LF` to Hz with explicit calibration before the shared velocity
+  conversion. Preserve method, calibration, quantity, unit, and timing
+  provenance; reject dimensionless legacy velocity metadata.
+- Scientific changes must preserve defined NaN, boundary, axis, unit, and sign
+  behavior unless the contract itself is intentionally changed.
 
-## Development commands
+## Documentation and instruction maintenance
 
-From the repository root on PowerShell:
+Update `docs/` only for a material change to user workflow, architecture,
+scientific meaning, or an input/output contract, or to correct guidance that is
+wrong. Do not revise docs for routine refactors or add implementation diaries.
+When text is obsolete, duplicated, or no longer useful, remove it rather than
+adding another qualification. Keep detailed numerical facts in the owning
+code/tests and focused reference pages.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -e .
-pip install pytest
-python -m pytest
-```
+Update any `AGENTS.md` sparingly: only when a durable ownership boundary,
+contract, or navigation path changes. Keep it a short map for future work;
+do not record every implementation step, incident, or test result. Delete stale
+instructions and avoid repeating rules already in this root file.
 
-Run focused tests first, for example:
+## Verification
 
-```powershell
-python -m pytest test/test_run_service.py
-python -m pytest test/test_frequency_band_velocity.py
-```
-
-The source layout requires `src` on `sys.path`; an editable install provides
-that. If using an existing interpreter without an editable install, set
-`PYTHONPATH` to the repository's `src` directory for the command.
-
-Before changing a contract, search both its producer and consumers. Keep
-verification proportional to the change, using [the test map](test/AGENTS.md)
-to find the smallest relevant test cases rather than running every mapped file.
-For simple output-path/name changes, run only a focused contract test; for
-documentation-only changes, do not run tests. Avoid expensive end-to-end
-workflow tests for path, naming, or presentation changes when focused coverage
-verifies the behavior. Crossing a directory or subsystem boundary alone does
-not require the full suite. Run broad integration tests or the full suite only
-when requested or when a concrete behavior risk cannot be covered by smaller
-checks. Do not repeat passing checks unless a relevant change, failure, or
-unresolved concern justifies it.
+For documentation-only changes, do not run tests. For code changes, start
+with the smallest focused test that protects the affected contract; expand only
+for a concrete uncovered risk or when requested. See [test guidance](test/AGENTS.md).
+The source layout needs an editable install or `PYTHONPATH=src`.

@@ -1,175 +1,50 @@
 # Coordinator and process execution
 
-`pipeline_engine.runtime` owns a run's resolved DAG, workflow variants, input
-service, output structure, accepted stage products, resource budget and final
-publication. GUI and CLI continue to enter through `run_service`.
+`pipeline_engine.runtime` owns the resolved run, shared input service, output
+model, resource budget, accepted products, and final publication. GUI and CLI
+enter through `run_service`.
 
-## Scheduling
+## Scheduling and inputs
 
-Declarations may opt into `@pipeline(..., execution_mode="process")`; the default
-is `"coordinator"`. Process entry points must be importable module-level registered
-pipelines. Dependency-ready work starts without a barrier between graph levels.
-Base displacement registration is the first production process pipeline and
-runs once, outside velocity workflow fan-out. Its profile/map analysis is a
-second run-once process that waits for registration, topology, and shared timing.
-Small waveform metrics stay sequential. Workflow
-variant descendants currently retain coordinator execution, even if marked as
-process work; variant scheduling and state isolation keep their established
-semantics during this first rollout.
+Pipeline declarations may set `execution_mode="process"`; coordinator execution
+is the default. Dependency-ready work can overlap across processes and the
+coordinator. Process entry points must be importable registered pipelines.
+The current process path starts with displacement registration and its later
+profile/map analysis. Variant descendants retain coordinator execution.
+`pipeline_engine/scheduler.py`, `worker.py`, and `protocol.py` own dispatch
+and bounded event queues.
 
-The coordinator can run a calculation while independent processes execute. Its
-input-service and result-receiver threads remain responsive during that work.
-Only the coordinator merges results or changes the authoritative output model.
-Input-service and result queues are bounded. Queue messages contain small events
-and local result-file references, rather than videos or large result objects.
+The coordinator opens HD/DV sources once. Workers request data through the
+input service rather than reopening source HDF5 files. Requested numeric
+datasets are staged in bounded reads to local, read-only `.npy` files and
+reused; unrequested datasets are not copied. `EYEFLOW_SCRATCH_DIR` may select
+a local scratch directory. Network scratch is rejected, and exhaustion fails
+explicitly. Input mappings and worker files remain alive until their consumers
+finish.
 
-## Inputs and local storage
+## Commits, failures, and resources
 
-The coordinator opens the HD/DV sources once and reuses their typed adapters,
-schema resolution, sidecar configuration and canonical alignment. Workers receive
-dataset adapters, never open HDF5 handles. A request for an uncached dataset is
-handled by the input service. Numeric datasets are staged in bounded sequential
-reads into a local `.npy`; subsequent slices and other pipelines reuse that file.
-This first implementation stages the complete requested dataset, not individual
-arbitrary slices. Datasets never requested are not copied.
+`OutputModel` holds HDF5 groups, attributes, and payload references before
+final serialization. Managed checkpoints journal changed records only.
+Stage handoffs commit their declared products atomically; later failures keep
+accepted products and discard uncommitted changes. State checkpoints track
+bindings, so committed mutable objects must not be edited in place. A worker
+publishes closed local snapshots by acknowledged queue event; an abrupt exit
+retains its last acknowledged snapshot. Unpublished work cannot be recovered.
 
-Workers and coordinator calculations see read-only input data. A calculation
-requiring writable input must make its own bounded copy. Dataset proxy identities
-remain stable within a run, so pure calculation caches can share results across
-velocity workflows.
+A shared batch budget admits compute, input storage, retained arrays, and
+rendering. It considers CPU availability and RAM reservations, with local spill
+for large retained arrays. Admission estimates are not OS-enforced memory
+limits. `resources.py` owns current thresholds; measure representative input
+and scratch usage before tuning them.
 
-`EYEFLOW_SCRATCH_DIR` selects a local scratch directory. Network locations are
-rejected. Otherwise the storage manager prefers a writable local SSD on Windows
-(using the device seek-penalty query when available), then the normal local
-application-data/temp location. A configured local directory takes precedence.
-Media classification can be unavailable, in which case the default local path
-is retained. Large arrays use `.npy`; snapshots use `.pickle` or `.h5`; artifacts
-use their ordinary suffixes. No engine temporary file uses `.tmp`.
+Reports wait for required artifact jobs and read the assembled output view.
+The coordinator writes the accepted HDF5 locally, copies to a destination-side
+staging file, and renames it to the final path. Incomplete runs can publish
+accepted products with failure status. Analysis of the next input may overlap
+the preceding input's export and publication; batch return waits for all
+started inputs.
 
-Scratch exhaustion is reported explicitly. It does not trigger an unbounded RAM
-allocation or fallback to NAS scratch. Source data, retained products, and worker
-directories remain local until their consumers finish. File mappings and worker
-processes close before their owning scratch directory is removed.
-
-## Simple commits and failures
-
-`OutputModel` holds groups, attributes, payload references and HDF5 storage
-options in memory. Numeric payloads at least 64 KiB are stored in local `.npy`
-files. Existing scientific serialization policies (dtype conversion, compression,
-NaN chunk storage, mirrored FFT virtual datasets and provenance) remain owned by
-the shared I/O writers and are applied when serializing the final file.
-
-Managed checkpoints journal only changed output records. Handoff commits advance
-the relevant dataset paths and their parent attributes; later failures discard
-uncommitted records. They do not visit/snapshot the whole output hierarchy.
-Standalone callers using real HDF5 handles retain the existing HDF5 checkpoint
-adapter. State checkpoints track bindings, not arbitrary in-place edits to nested
-mutable objects; committed products must not be mutated in place.
-
-Each process has its own output structure and private state. It publishes only
-changed state bindings, avoiding replacement of newer coordinator state with an
-old input snapshot. No Git repository, content hashing, conflict reconciliation or
-large version-history metadata is created. Known workflow namespaces determine
-placement; duplicate dataset paths raise a programming error.
-
-The event protocol is:
-
-```text
-WorkerStarted
-LogMessage
-StageStarted
-ProductCommit
-StageFinished / StageFailed / StageSkipped
-InvocationFinished
-```
-
-Log messages are acknowledged and forwarded by the result-receiver thread as
-they arrive, so process progress remains visible while the coordinator is inside
-another long calculation. They are not buffered into the final result snapshot.
-
-A product commit references a closed local snapshot containing stable products,
-state changes, owned artifacts and the stage summary. The result receiver
-registers and acknowledges it before the worker continues. This acknowledgement
-also prevents loss of a queue feeder's buffered handoff on abrupt process exit.
-The final invocation message returns all completed work, including partial
-results after a handled failure. If a process dies, the coordinator retains the
-last acknowledged stable snapshot and records its exit failure. Unpublished
-work cannot be recovered.
-
-The existing intra-pipeline DAG API continues to distinguish required products,
-optional products and successful-stage dependencies. A failed stage does not
-cancel consumers of products it already committed. Other nodes and exports
-continue. Displacement prepares one replay and then has separate artery/vein
-nodes: a missing or failed vessel is skipped, does not erase the other vessel's
-AVI or field state, and does not block later profile analysis when at least one
-field remains. The registration pipeline fails when neither vessel succeeds.
-Legacy pipelines are initially one transactional stage. Existing
-inter-pipeline dependencies still require whole-pipeline success.
-
-## Resources
-
-One budget spans a batch, including overlapping file completion and renderers.
-It supersedes the former independent fixed limits in `runtime_limits.py`; that
-module now bootstraps native libraries and delegates worker allowances.
-
-The default compute allowance is 75% of currently unused logical CPU capacity,
-respecting CPU affinity. External load is estimated from utilization, excluding
-EyeFlow's process tree, and smoothed for subsequent admissions. Software thread
-counts are not subtracted from logical CPU counts. At least one compute slot is
-allowed. Running native operations are not interrupted when the allowance falls.
-
-The run RAM reservation limit is 50% of available memory at budget creation. It
-is not repeatedly halved as EyeFlow allocates memory. Shared counters separate
-transient calculations, retained outputs, input data and transfers. Retained allocations leave working-memory headroom for downstream consumers.
-Worker-owned
-reservations are reclaimed after a crashed process exits. Large retained arrays
-spill locally. Internal Python pools respect the invocation allowance, while
-native libraries are configured to avoid multiplying Python worker counts.
-Process declarations may use `native_parallelism=True` (base displacement does): their
-native libraries receive the allowance and Python pools are capped to one. Other
-workers, including displacement profile/map analysis, give the allowance to
-Python pools and keep native libraries at one. Retained displacement profile and
-map arrays use run scratch, spilling to local `.npy` storage when RAM admission
-cannot reserve them.
-Both displacement processes declare a 512 MiB bounded working allowance at
-admission. When the run budget cannot grant it in full, admission retains
-consumer headroom and displacement profile chunking uses the granted allowance.
-The memory ledger uses the larger of explicit reservations and observed
-process-tree RSS above the run baseline, so opaque native allocations are no
-longer treated as free memory when admitting more work.
-Export admission uses the same budget, with separate dispatch and publication
-threads. Artifact barriers release compute reservations while waiting.
-
-These are admission limits and allocation accounting, not an OS-enforced hard
-limit on future native-library allocations or mapped file pages. A monitor
-tracks process-tree RSS quietly; one observed peak RAM summary is logged when
-the batch finishes. Scheduling delays are logged as events. The initial process
-and renderer working-memory reservations are estimates
-(up to 64 MiB each, bounded by one quarter of the run budget); representative data is needed to tune
-them. Helper/IPC/monitor threads are not active compute slots.
-
-## Reports and final publication
-
-Reports run after numerical work and required artifact publication. They read the
-assembled output through `output_source`, without reopening a future result
-filename. Existing disk-HDF5 report callers remain supported.
-
-The coordinator serializes the accepted structure to a local `.h5` after exports
-finish, then copies it to a destination-side staging name ending in `.h5` and
-renames it to the final filename. There is no extra read-back verification pass.
-An incomplete run still publishes its accepted datasets and failure records.
-Batch analysis may overlap the preceding input's exports/final serialization;
-the final path does not exist until that input's publication finishes. Required
-payload storage is retained until serialization completes.
-
-## Verification
-
-`test_parallel_coordinator.py` exercises real Windows spawn, simultaneous
-independent work, one-read input replay, immutable local array transfers, partial
-stage failure, abrupt worker exit, reservation reclamation and the production
-displacement pipeline. Existing stage-graph, failure-isolation, writer, spectral,
-dual-workflow, report and batch-export tests cover the adapters and consumers.
-
-Concurrency correctness does not establish a NAS speedup. Measure representative
-runs through final HDF5 publication, including input bytes read, local scratch
-usage, peak RAM, native thread utilization and all exports.
+For per-product dependencies and artifact ownership, see
+[stage graphs](pipeline_stage_graphs.md). Tests for process spawn, input replay,
+crash recovery, and final publication start in `test/test_parallel_coordinator.py`.

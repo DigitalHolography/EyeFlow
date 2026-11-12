@@ -1,308 +1,39 @@
-# Pipeline context
+# Pipeline map
 
-## Boundary
+Pipelines declare their dependencies/options, adapt typed sources to
+calculations, own run-local state keys, and pack products. The engine owns DAG
+execution; `calculations` owns reusable formulas; `input_output/schema` owns
+shared HDF5 paths. Discovery imports top-level packages automatically through
+`src/pipelines/__init__.py`. Start with the affected package's `__init__.py`
+declaration, then its runner and output module.
 
-Pipelines adapt typed inputs and shared scientific calculations to the runtime.
-They declare dependencies/options, orchestrate calculations, own run-local state
-keys, pack HDF5 datasets, and export product-specific artifacts. Generic DAG and
-execution behavior belongs in `pipeline_engine`; reusable formulas belong in
-`calculations`; external path aliases belong in `input_output/schema`.
-
-## Discovery and package shape
-
-`pipelines/__init__.py` scans top-level modules/packages and imports them.
-Registration occurs through `@pipeline` or `@registerPipeline`; no registry list
-needs editing. A helper-only top-level module must not register a pipeline.
-Tutorial pipelines live under `pipelines/tutorials/` and are hidden from normal
-selection.
-
-Small pipelines may be one module. Larger pipelines use:
-
-```text
-pipeline_name/
-  __init__.py       declaration only
-  runner.py         orchestration and state ownership
-  sources.py        typed input assembly, when needed
-  outputs.py        schema packing/artifact export
-  calculator.py     product-specific calculation, when not broadly reusable
-```
-
-Keep imports in `__init__.py` light enough that catalog discovery remains
-predictable and reports missing optional dependencies as descriptor
-availability rather than unrelated import crashes.
-
-## Current product groups
-
-| Group | Responsibility and important upstream state |
+| Product or concern | Start with |
 |---|---|
-| `velocity` (hidden) | Physical retinal velocity and cardiac timing; produces `velocity`, `cardiac_cycles`, and typed `velocity_workflows` |
-| `low_freq_spectra` (hidden) | Automatically follows velocity once per run when HD spectral video is available; owns shared spatial/gap spectra, beat alignment, filters, and spectral metrics |
-| `topology_core` (hidden) | Canonical artery/vein prepared topology and combined legacy/intensity gap mask; produces `prepared_topology` and `capillary_analysis_zones` |
-| `velocity_analysis` | Shared per-beat/segment/profile state plus selectable persisted continuous, quadrant, profile-fit, FFT, map, and movie products; requires velocity and topology |
-| `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
-| `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
-| `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `velocity_analysis` |
-| `pdf_report` / hidden `pdf_width_report` | Variant velocity reports plus one shared, conditional displacement/gradient report; measurement selection and page layout stay here, while `input_output/reports` handles file I/O |
-| `displacement_map` / `displacement_profiles` | Early independent image registration producing magnitude videos and run-local dense fields; later shared-timing profiles/metrics with separately gated per-segment maps |
+| Canonical HD/DV source assembly | `vessel_inputs.py`, `src/retinal_source_data.py` |
+| Physical velocity and cardiac timing | `velocity/` |
+| Shared topology and gap masks | `topology_core/` |
+| Per-beat, segment, profile, map, and movie products | `velocity_analysis/` |
+| Shared HD spectra, metrics, and QC | `low_freq_spectra/` |
+| Gradient-derived lumen products | `spatial_gradient_moment0/` |
+| Flow rate option families | `blood_volume_rate/` |
+| Displacement registration and profiles | `displacement_map/` |
+| Waveform descriptors | `waveform_shape_metrics/`, `absolute_waveform_metrics/`, `lowrank_waveform_decomposition/` |
+| PDF measurements and page composition | `pdf_report/` |
 
-The declarations in each package are authoritative if this table drifts.
+Hidden `velocity`, `topology_core`, and `low_freq_spectra` publish shared work.
+Visible products declare their upstream requirements; never infer availability
+from UI selection alone. State keys need one owning producer and a declared DAG
+edge. Durable values go through `ctx.output.h5` with units, axes, and provenance.
 
-## Shared scientific flow
+Velocity moments and calibrated frequency bands produce separate physical
+`mm/s` workflows under `/ProcessingMoments` and `/ProcessingBandRatio`.
+Shared segmentation and spectra are written once. Preserve method,
+calibration, source, unit, and timing information in derived outputs. See
+[data contracts](../../docs/data-contracts.md) for input/output boundaries;
+[spectral metrics](../../docs/spectral_metric_selection.md) and
+[profile analysis](../../docs/velocity_profile_analysis.md) for those
+specialized numerical contracts.
 
-`vessel_inputs.py` builds canonical `RetinalSourceData`: active HD volumes,
-aligned vessel masks, optic-disc geometry, timing/pitch, DV background settings,
-and velocity method. The velocity and velocity-analysis pipelines use compatible
-sources.
-
-The velocity pipeline estimates the physical velocity field and detects
-zero-based cardiac-cycle boundaries. Native geometry lives in
-`calculations/topology`; the spatial `SegmentSamplingPlan` is prepared by
-`calculations/vessel_segments/sampling` and cached by `topology_core` in run
-state. The existing `prepared_topology` DAG key is unchanged.
-Velocity analysis consumes both results and produces the common
-per-beat, segment, and profile state used by visible products.
-
-The velocity estimator is product-specific and therefore remains in
-`velocity/estimation.py` rather than `calculations`. It processes `(frame, y,
-x)` volumes in bounded temporal chunks, uses moments or calibrated frequency
-bands as its active source, applies the shared local-background difference, and
-returns physical velocity in `mm/s`. Moment normalization uses each frame's
-spatial M0 mean, floored at float32 epsilon (`eps('single')`); NaNs propagate.
-In band mode, finite negative samples in
-both HF and LF are replaced with zero during chunk validation, with a warning
-naming the dataset and frame interval. Zero LF denominators map to ratio zero
-without division. Both bands must remain finite; validation and calibration provenance are part of the
-pipeline contract.
-
-Both velocity workflows use OpenCV Telea background inpainting with a fixed
-5-pixel radius on independent float32 frames within the estimator's bounded
-chunks. Method and radius remain recorded in velocity provenance.
-
-`low_freq_spectra/spectrograms.py` reads HD frequency-bin spectra once per frame for
-full-frame `Global/SpatialAverage`/`Global/SpatialMedian` reductions and optional gap median
-power. `low_freq_spectra/preprocessing.py` interpolates Boolean gap support with
-nearest neighbors to the spectrogram video's last two dimensions. The low-frequency spectral
-runner publishes `/ProcessingSpectrograms/Gaps/SpatialMedian` with `(time, freq)`
-axes. HD frames are flipped in spatial Y then transposed into EF's published
-lower-left `(x, y)` mask frame at the canonical input boundary. Empty native or
-interpolated support skips gap analysis with a warning; segmentation and other
-pipeline work continue. Nonfinite included samples produce NaN per pair;
-finite negative gap spatial medians are clamped to zero after reduction and before
-beat subdivision. Gap provenance records `spatial_aggregation_method="median"`.
-Individual raw pixels are not clipped. The hidden `low_freq_spectra`
-pipeline runs once after velocity and passes detected moments timing to gap analysis,
-falling back to detected band-ratio timing when moments timing is unavailable,
-producing `/ProcessingSpectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.
-It uses 128 linear phase samples without bridging NaNs. Missing detected timing in both workflows
-warns and skips per-beat analysis while other products remain available. Timing
-workflow and HDF5 source paths are recorded in per-beat/filter/aggregate metadata.
-`TimeAggregated/MedianPhaseBeat` pools phase and beats into a `(freq,)` spectrum;
-`TimeAggregated/MedianBeat` reduces beats only, preserving `(phase, freq)` and
-phase coordinates. Both ignore NaNs and keep all-missing output cells as NaN.
-`TimeAggregated/MedianPhaseBeatEarly` and `MedianPhaseBeatLate` take phase
-medians of `MedianBeat` over closed intervals `[0,1/3]` and `[1/3,1]`, yielding
-`(freq,)` spectra. They share the phase-window helper with metric summaries,
-include a one-third boundary sample in both windows, and retain NaN where a
-frequency has no valid samples in that window. Preserve source timing, units,
-frequency order, window endpoints, and selected/valid sample counts.
-`TimeAggregated/StdBeat`, `StdBeatEarly`, and `StdBeatLate` take population STD
-over beats after each beat's whole/early/late phase median, reusing `PerBeat/Raw`.
-Ignore NaNs; one valid beat gives zero, none gives NaN. Persist raw power units,
-`ddof=0`, reduction order, windows, and valid beat counts per frequency.
-Positive-frequency PNG/EPS overlays use the actual positive/DC half of the
-source, ending before the first negative center in `FrequencyBinTable`.
-Normalize each curve by the
-Hv, the same NaN-aware central-quarter median of the full spectrum used by A0
-(64 source bins use bins 24 through 39), before cropping from stored `Metrics/index_max1`
-through bin `P-1` inclusive. Scale STD by the same per-curve divisor, retain
-linear power. The runner publishes the full signed frequency mapping once at
-`/ProcessingSpectrograms/FrequencyBinTable`, as a `(freq,)` array in `kHz` where
-each zero-based array index identifies the source bin. Use the
-shared conversions in `calculations/math/frequency.py` for tables, metrics, and
-plots. The original FFT length is HD `batch_size`; selection bounds come from
-HD_parameters `spectrogram_frequency_start` and `spectrogram_frequency_end`.
-Unresolved bounds fall back together to `(0, 0.5)`, meaning the full FFT.
-Mirror HD selection `[:int(B*end)]` followed by `[int(B*start)+B//2:]`, then
-average the contributing signed FFT frequencies. Derive the averaging factor
-from selected samples and exported bins, validating recorded
-`spectrogram_frequency_binning` when available. Table publication requires
-valid sampling and FFT calibration, independently of
-gap support, cardiac timing, and figure export. Missing/invalid stored peaks,
-all-NaN neighborhoods, or nonpositive divisors omit the affected figures.
-Median/early/late use solid/dashed/dotted signals and envelope patterns.
-The full-domain heatmap/median frequency axes use the persisted averaged centers,
-positive-then-negative order, and kHz labels. DC is included in the first average;
-it is not the center of that average. A 256-to-64 full export averages four samples,
-starting at `1.5*fs/256` Hz with spacing `4*fs/256` Hz. Resolve `fs` from shared
-`Meta/SamplingFrequencyHz/value`; publish it from HD timing parameters/config
-before export if absent, since velocity analysis may run later. Missing/invalid
-sampling metadata skips frequency figures while keeping other products.
-The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
-All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
-Pooled `MedianPhaseBeat` selects one maximum in each half, ignoring NaNs with
-lowest-index tie breaking. Missing halves retain NaN indices and log warnings.
-Phase curves use `MedianBeat` with these peak indices fixed as integration
-bounds. Flood heights use the actual maximum per frequency half at each phase,
-ignoring NaNs, independently of those bounds. `A`/`A_t` integrate between peaks with calibrated
-positive kHz spacing, including both endpoints, without signed-axis sorting.
-`A0`/`A0_t` multiply the peak-to-peak width by the central-neighborhood median.
-Default neighborhood length is one quarter of the actual domain, rounded to
-the nearest even length (ties up), at least two bins; 32 bins uses 12 through 19,
-64 uses 24 through 39. An explicit even length overrides this. Ignore valley
-NaNs; all-missing neighborhoods remain NaN.
-
-`A_25`, `A_50`, and `A_75` integrate `min(S,h_p)` from zero between peaks,
-where `h_p=(p/100)*mean(two peak heights)`. Fractions describe height, not
-fractions of total spectral area. Include exact piecewise-linear crossings
-inside bin intervals, not just trapezoids of clipped bin samples. Phase curves
-`A_25_t`, `A_50_t`, and `A_75_t` use current half-domain maxima for height,
-while retaining the pooled peak indices for integration bounds.
-Nonfinite/negative interval power invalidates new references; zero gives zero.
-No marker-based watershed segmentation or valley water-volume calculation is
-used. Pooled areas come from the pooled spectrum, not temporal curve medians.
-
-Original `SE=(A_t-A0_t)/A0_t` is preserved. New `SE_p=(A_t-A_p_t)/A_p_t` uses
-the corresponding reference. Ratios require finite positive references and
-finite numerator/results; invalid phases remain NaN. New `SEII_p_t` curves
-calculate `(A_p_t-A0_t)/A0_t` for p=25/50/75, preserving negative values.
-Their whole-cycle medians are `SEII_p`, with `SEII_p_early`, `SEII_p_late`, and
-`delta_SEII_p` window summaries. SEII requires positive finite A0 and finite
-flooded area/result; it has unit `1`. `SEI`, `SEI_p`, and `SEII_p` are
-NaN-aware whole-cycle medians of their respective phase curves, emitted only
-with phase spectra, without pooled-ratio fallback. Each curve also has closed
-early/late window medians (defaults `[0,1/3]` and `[1/3,1]`) and a signed
-late-minus-early delta. Summary bases are `A0`, `A`, `A_p`, `SEI`, `SEI_p`, and `SEII_p`,
-with `_early`, `_late`, and `delta_` forms. Shared phase-window helpers preserve
-boundary inclusion and NaNs. `run_gap_analysis`/`pack_spectrum_metrics` accept
-custom windows; apply them to spectra, STD, and metrics consistently.
-
-`A2`/`R1` families and central-bin `index_min1`, `index_min2`, `min1`, `min2`
-outputs and calculations are removed. There are no `R2`, `Z2`, `h0`, `h1`, `hv`,
-or `rho_h` datasets. Metrics has 64 datasets when phase spectra are available:
-9 pooled scalars, 12 curves, 36 window/delta summaries, and 7 SEI/SEII scalars.
-Areas use power-times-kHz; ratios use `1`; heights use power. Record calibration,
-spacing, integration, source/timing/peak provenance, flood fractions and height
-evaluation, corresponding ratio references, and valid counts. Resolve calibration
-from shared `Meta/SamplingFrequencyHz/value`; missing/invalid calibration skips
-Metrics while retaining spectra/filters. All twelve curves export shared
-`gaps_<metric>` PNG/EPS plots. Figure labels abbreviate `a.u.*kHz` to `a.u.`.
-See data contracts for full definitions and metadata.
-`low_freq_spectra/qc.py` packs descriptive diagnostics under the schema-owned
-`ProcessingSpectrograms/Gaps/QC` families: DataCompleteness,
-ValleyRepeatability, SEIBeatSensitivity, PotentialMotionContamination, and
-SpatialSupportQuality. The runner writes these after scientific gap products.
-QC persists only six datasets: AcquisitionValidFraction, ValidSEPhaseFraction,
-RelativeMAD, DeltaSEI, RelativeBroadbandChange, and RetainedFieldFraction in
-their owning families. Reconstruct counts, valley heights/dispersion, and the
-reference SEI from existing source datasets for plotting; do not duplicate them
-under QC. QC never changes SE/SEI or rejects samples. Compare valley heights across beats
-at the same phase; unscaled MAD needs two valid beats. Leave-one-beat-out SEI
-repeats raw production reductions, reselects pooled peaks, and records phase
-support as metadata alongside signed omission-minus-full changes. Broadband relative consecutive-
-frame changes are descriptive and not a validated saccade detector. Mask coverage
-uses the whole reduced rectangular field; anatomy needs visual review. Reuse
-reduced spectra, never rescan the HD spatial video. Missing timing still permits
-acquisition/mask QC. `artifacts.py` exports a diagnostic `gaps_qc.png` only,
-without article formatting or automatic EPS. See data contracts for definitions.
-Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
-(default 12) via the shared bandlimiting API in signed mode, using
-periodic phase boundaries. Original durations define each effective Hz cutoff.
-Incomplete beat/bin series remain unchanged with
-a warning. `PerBeat/SVDContinuous` concatenates the raw beats as `(beat * phase, freq)`,
-subtracts the temporal mean per bin, removes the first two modes, restores the
-mean, and retains the 2-D `(time, freq)` continuous output. Sample spacing is
-uniform within each beat but can differ between beats; retain source durations
-and within-beat phase coordinates. All-invalid bins/incomplete rows
-are excluded from the SVD fit and retained unchanged; insufficient dimensions
-warn and leave the output unchanged. Preserve filtered undershoots to retain
-DC power. Shared spectra are written after workflow cleanup and have no
-`ProcessingBandRatio` duplicate. Full-frame spatial products remain available when
-gap support is empty or missing. Settings/support/order travel in attributes.
-`topology_core` owns native gap support and its segmentation outputs:
-`Segmentation/Gaps/Legacy` preserves the vessel/disc/cutoff mask,
-`GapsFromM0ff` thresholds bright vessels in the temporally median HD flat-field
-moment after percentile stretch, CLAHE, and Gaussian smoothing, dilates the
-vessels with the legacy 7x7 square, then inverts to white gaps. It has no
-anatomical exclusions. `Mask` ORs their vessel/exclusion complements before
-inverting, equivalent to AND of the saved white-gap masks, restricted to the image-centered
-80%-width disc and excluding the optic disc (DV mask or centered 1.91 mm
-fallback), used in shared state, spectral reductions, and the mask figure.
-Missing moment0ff falls back to Legacy; missing Legacy permits the intensity
-mask with the same disc constraints. Preserve native HD
-axes, finite-sample temporal medians, and lower-left output serialization.
-`low_freq_spectra` declares that dependency alongside `velocity_workflows`.
-The pipeline automatically enters plans that schedule velocity, stays hidden from
-selection, and skips absent/legacy-group spectra. Runtime source assembly keeps
-spectra validation independent of velocity/topology; malformed spectra fail only
-the spectral descriptor and preserve safe velocity analyses.
-Physical capillary velocity remains deferred.
-
-`spatial_gradient_moment0` shares cardiac-cycle/topology state but owns its
-gradient profiles and lumen edges. Do not put gradient work into velocity
-analysis.
-Its continuous moment0ff segment measurements are reused between velocity
-workflows through `ctx.computation_cache` when the open HD dataset, masks,
-prepared geometry/rotations, measurement settings, and filter settings match.
-Cached measurement arrays are read-only; only successful continuous extraction
-is shared. Each workflow still packs its own beats, lumen metrics, and outputs
-with its own cardiac timing. Extraction failures are not cached.
-It requires the optional HD flat-field moment at `/moment0ff` or `/M0FF`, and
-publishes under `/ProcessingMoments/SpatialGradientProfiles` and
-`/ProcessingMoments/SpatialGradientMetrics` only when it is a direct target. When it
-runs solely as a blood-volume-rate dependency, keep the products in `ctx.state`
-without persisting those intermediate HDF5 families. Its branch lumen plots
-come from the computed `(time, branch)` metric, not a separate plot-only
-calculation.
-`blood_volume_rate` retrieves the products required by each enabled option and
-must keep segment labels, centers, branch/radius dimensions, and pixel scale
-aligned.
-
-## Velocity semantics
-
-All selected downstream targets run for both automatic velocity workflows. `doppler_moments`
-and `frequency_bands` represent physical velocity (`mm/s`); band mode first
-converts `HF / LF` to frequency using the recorded
-`band_ratio_frequency_scale_hz`. `velocity/semantics.py`
-centralizes display and dataset interpretation. Moments publish under
-`/ProcessingMoments`, bands under `/ProcessingBandRatio`, with isolated downstream state and
-`moments`/`bandratio` artifact folders. The single velocity pipeline declares
-itself as an execution-variant producer and publishes one typed
-`ExecutionVariant` per successful method; the engine fans out its declared DAG
-dependents. Each workflow detects its own cycles from signed whole-vessel
-physical velocity after estimation and uses them for its downstream analyses;
-timing provenance records physical velocity in `mm/s`. Segmentation remains
-under `/Segmentation`. New velocity-derived outputs or plots must resolve
-semantics from payload/provenance instead of hard-coding `mm/s`.
-
-Velocity is never dimensionless. Reject legacy unit-`1` or relative-index
-velocity metadata instead of adapting labels or output units for it.
-
-Historically physical downstream pipeline names are not scheduling guards.
-Retain clear method, calibration, and unit provenance for their results.
-
-## State and output rules
-
-- Give shared state keys one owning runner and a declared producer DAG key.
-- Use typed objects for multi-field state and validate type/shape in consumers.
-- Put durable products in the HDF5 result, not only in `ctx.state` or figures.
-- Use `EyeFlowOutputPaths.active()` for centralized output families.
-- Pack data with units and `dimDesc`; method-dependent velocity datasets also
-  need velocity semantics.
-- Options should control only their described product families. Express their
-  intra-pipeline prerequisites with `PipelineOption.requires` and upstream data
-  with `PipelineOption.dag_requires`.
-- Do not infer whether a sibling pipeline ran from target selection; use
-  `ctx.pipeline_scheduled` or retrieve declared state.
-
-## Change navigation
-
-| Change | Read/inspect | Usually skip |
-|---|---|---|
-| New pipeline or option | `CONTRIBUTING.md`, package `__init__.py`, runner, DAG tests | GUI views; discovery is automatic |
-| Velocity source/semantics | `vessel_inputs.py`, velocity sources/runner/estimator, data contracts | displacement internals |
-| Per-beat/segment output | velocity-analysis builder and packers, output schema, profile/segment tests | settings UI |
-| Spatial-gradient lumen metric | spatial-gradient package, vessel-segment sampling/measurement, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
-| Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
-| Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
-| Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics |
-| Profile fit | `calculations/vessel_segments/profiles/fits/quadratic.py`, then `velocity_analysis/outputs/profile_analysis.py`, dedicated doc/test | GUI and settings |
+For new options and examples, see [CONTRIBUTING](../../CONTRIBUTING.md).
+Search producer, consumers, and focused tests before changing a shared state
+key or output family.
