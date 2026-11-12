@@ -13,17 +13,6 @@ from input_output.schema.provenance import read_dataset_attrs
 
 
 @dataclass(frozen=True)
-class SpectralReportData:
-    se_curve: np.ndarray | None = None
-    sei: float | None = None
-    sei_early: float | None = None
-    sei_late: float | None = None
-    acquisition_valid_fraction: float | None = None
-    valid_se_phase_fraction: float | None = None
-    retained_field_fraction: float | None = None
-
-
-@dataclass(frozen=True)
 class VolumeRateReportData:
     beat_curves: np.ndarray
     phase_curve: np.ndarray
@@ -36,12 +25,11 @@ class ReportData:
     parameters: dict[str, Any] = field(default_factory=dict)
     velocity_per_beat: dict[str, np.ndarray] = field(default_factory=dict)
     velocity_units: dict[str, str] = field(default_factory=dict)
-    spectral: SpectralReportData | None = None
     volume_rates: dict[str, dict[str, VolumeRateReportData]] = field(default_factory=dict)
 
 
-def extract_report_data(h5file, *, include_optional: bool = True) -> ReportData:
-    """Select one workflow's inputs from its assembled H5 output view."""
+def extract_report_data(h5file, *, include_bvr: bool = True) -> ReportData:
+    """Select velocity and BVR inputs from the moments output view."""
     params: dict[str, Any] = {}
     schema = EyeFlowOutputPaths.active()
     velocities, units = _extract_velocity_metrics(h5file, schema, params)
@@ -52,8 +40,7 @@ def extract_report_data(h5file, *, include_optional: bool = True) -> ReportData:
         parameters=params,
         velocity_per_beat=velocities,
         velocity_units=units,
-        spectral=_extract_spectral_summary(h5file, schema) if include_optional else None,
-        volume_rates=_extract_volume_rates(h5file, schema) if include_optional else {},
+        volume_rates=_extract_volume_rates(h5file, schema) if include_bvr else {},
     )
 
 
@@ -133,41 +120,6 @@ def _extract_attributes(h5file, params) -> None:
                 params[name] = {"value": value, "unit": ""}
 
 
-def _scalar(h5file, path: str) -> float | None:
-    dataset = _dataset(h5file, path)
-    if dataset is None or dataset.size != 1:
-        return None
-    value = float(np.asarray(dataset, dtype=float).reshape(-1)[0])
-    return value if np.isfinite(value) else None
-
-
-def _extract_spectral_summary(h5file, schema) -> SpectralReportData | None:
-    root = schema.spectrograms_masked_metrics_root
-    qc = schema.spectrograms_masked_qc
-    se_dataset = _dataset(h5file, f"{root}/SE")
-    se_curve = None if se_dataset is None else np.asarray(se_dataset, dtype=float)
-    if se_curve is not None and se_curve.ndim != 1:
-        se_curve = None
-    summary = SpectralReportData(
-        se_curve=se_curve,
-        sei=_scalar(h5file, f"{root}/SEI"),
-        sei_early=_scalar(h5file, f"{root}/SEI_early"),
-        sei_late=_scalar(h5file, f"{root}/SEI_late"),
-        acquisition_valid_fraction=_scalar(h5file, f"{qc.data_completeness}/AcquisitionValidFraction"),
-        valid_se_phase_fraction=_scalar(h5file, f"{qc.data_completeness}/ValidSEPhaseFraction"),
-        retained_field_fraction=_scalar(h5file, f"{qc.spatial_support_quality}/RetainedFieldFraction"),
-    )
-    if summary.se_curve is None and all(
-        value is None for value in (
-            summary.sei, summary.sei_early, summary.sei_late,
-            summary.acquisition_valid_fraction, summary.valid_se_phase_fraction,
-            summary.retained_field_fraction,
-        )
-    ):
-        return None
-    return summary
-
-
 def _extract_volume_rates(
     h5file, schema,
 ) -> dict[str, dict[str, VolumeRateReportData]]:
@@ -197,16 +149,16 @@ def _extract_volume_rates(
 
 
 def _gradient_beat_curves(dataset) -> np.ndarray:
-    """Reduce local branch/radius flow without loading the full 4-D dataset."""
+    """Sum branches per ring, then median rings, one phase slab at a time."""
     curves = np.full(dataset.shape[:2], np.nan, dtype=float)
     for phase in range(dataset.shape[0]):
         values = np.asarray(dataset[phase], dtype=float)
         finite = np.isfinite(values)
-        counts = np.sum(finite, axis=(1, 2))
-        curves[phase] = np.divide(
-            np.sum(np.where(finite, values, 0.0), axis=(1, 2)), counts,
-            out=np.full(dataset.shape[1], np.nan), where=counts > 0,
-        )
+        ring_totals = np.sum(np.where(finite, values, 0.0), axis=1)
+        ring_totals[~np.any(finite, axis=1)] = np.nan
+        curves[phase] = np.ma.median(
+            np.ma.masked_invalid(ring_totals), axis=1,
+        ).filled(np.nan)
     return curves
 
 

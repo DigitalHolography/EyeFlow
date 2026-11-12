@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
+from time import perf_counter
 
 from calculations.compute_backend import optional_cupy_backend
 from app_settings import (
@@ -192,14 +193,18 @@ def execute_run(
 
     with _batch_compute_backend():
         budget = ResourceBudget()
+        started_at = perf_counter()
         with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
         ) as completions:
-            return _execute_batch(
+            result = _execute_batch(
                 spec, workers, completions, on_file_start=on_file_start,
                 on_pipeline_start=on_pipeline_start, on_progress=on_progress,
                 should_stop=should_stop,
             )
+            ended_at = perf_counter()
+            Logger.log_info(f"[RUN COMPLETE] Total elapsed time: {ended_at - started_at:.1f} seconds")
+        return result
 
 
 @contextmanager

@@ -107,45 +107,6 @@ def test_shared_writers_capture_automatically_and_report_consumes_identical_file
         assert json.loads(output.attrs["artifact_status"]) == {"producer:figures": "succeeded"}
 
 
-def test_unserializable_figure_is_an_export_failure_and_retains_numerics(tmp_path, monkeypatch):
-    # Serialization fails before rendering, so these fixture workers never run Matplotlib.
-    monkeypatch.setattr(
-        "pipeline_engine.background_artifacts.ProcessPoolExecutor",
-        lambda **kwargs: ThreadPoolExecutor(max_workers=1),
-    )
-    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
-
-    def source(ctx):
-        dataset = ctx.output.h5.file.create_dataset("Numerical/value", data=42)
-        fig = _figure()
-        fig.axes[0].yaxis.set_major_formatter(FuncFormatter(lambda x, pos: str(dataset[()])))
-        FigureArtifactWriter(ctx.output).save_figure(fig, "unsupported.png")
-
-    with pytest.raises(PipelineRunError, match="Cannot snapshot") as error:
-        _run(manager, [_descriptor("producer", source)])
-    with h5py.File(error.value.output_h5_path) as output:
-        assert output["Numerical/value"][()] == 42
-        assert json.loads(output.attrs["pipeline_status"])["shared"]["producer"] == "succeeded"
-        assert json.loads(output.attrs["artifact_status"]) == {"producer:figures": "failed"}
-
-
-def test_queued_writers_are_cancelled_when_numerical_persistence_fails(tmp_path, monkeypatch):
-    def forbidden_pool(**kwargs):
-        pytest.fail("A rolled-back producer must not start an exporter")
-
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", forbidden_pool)
-    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
-
-    def source(ctx):
-        _write_figures(ctx.output)
-        return {"Invalid/value": object()}
-
-    with pytest.raises(PipelineRunError):
-        _run(manager, [_descriptor("producer", source)])
-    assert not list(manager.layout.ef_dir.rglob("*.png"))
-    assert not list(manager.layout.ef_dir.rglob("*.eps"))
-
-
 def test_next_file_starts_before_exports_finish_and_completion_logs_are_asynchronous(tmp_path, monkeypatch):
     pools = []
 

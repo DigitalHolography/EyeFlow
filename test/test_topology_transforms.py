@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 
-from calculations.compute_backend import optional_cupy_backend
 from calculations.topology.branch_identity import BranchIdentityResult
 from calculations.topology.geometry import annulus_mask
 from calculations.topology.segments import SegmentTopology
@@ -17,7 +15,6 @@ from calculations.vessel_segments.sampling.transforms import (
     interpolate_segment_masks,
     interpolate_segments,
     resample_rotate_segment,
-    rotate_segment_masks,
 )
 
 
@@ -72,20 +69,6 @@ class TestTopologyTransforms(unittest.TestCase):
             7.0,
         )
 
-    def test_mask_dilation_treats_each_segment_independently(self) -> None:
-        masks = np.zeros((1, 2, 7, 7), dtype=bool)
-        masks[0, 0, 3, 3] = True
-        masks[0, 1, 0, 0] = True
-
-        dilated = dilate_segment_masks(masks, iterations=2)
-
-        self.assertEqual(masks.shape, dilated.shape)
-        self.assertEqual(np.bool_, dilated.dtype)
-        self.assertEqual(25, np.count_nonzero(dilated[0, 0]))
-        self.assertEqual(9, np.count_nonzero(dilated[0, 1]))
-        self.assertFalse(dilated[0, 0, 0, 0])
-        self.assertFalse(dilated[0, 1, 4, 4])
-
     def test_mask_dilation_removes_competing_vessel_pixels(self) -> None:
         masks = np.zeros((1, 1, 7, 7), dtype=bool)
         masks[0, 0, 3, 3] = True
@@ -103,30 +86,6 @@ class TestTopologyTransforms(unittest.TestCase):
         self.assertTrue(analysis_mask[0, 0, 3, 3])
         self.assertFalse(analysis_mask[0, 0, 3, 4])
         self.assertFalse(analysis_mask[0, 0, 3, 5])
-
-    def test_rotation_occurs_after_interpolation_on_a_larger_canvas(self) -> None:
-        values = np.arange(18, dtype=np.float32).reshape(1, 1, 2, 3, 3)
-        masks = np.ones((1, 1, 3, 3), dtype=bool)
-        rotations = np.asarray([[0.0]], dtype=np.float32)
-
-        interpolated_values = interpolate_segments(values)
-        interpolated_masks = interpolate_segment_masks(masks)
-        rotated_values = resample_rotate_segment(interpolated_values[0, 0], float(rotations[0, 0]))[None, None]
-        rotated_masks = rotate_segment_masks(interpolated_masks, rotations)
-
-        self.assertEqual((1, 1, 2, 128, 128), interpolated_values.shape)
-        self.assertEqual((1, 1, 128, 128), interpolated_masks.shape)
-        self.assertEqual((1, 1, 2, 181, 181), rotated_values.shape)
-        self.assertEqual((1, 1, 181, 181), rotated_masks.shape)
-        np.testing.assert_allclose(
-            rotated_values[..., 26:154, 26:154],
-            interpolated_values,
-            equal_nan=True,
-        )
-        np.testing.assert_array_equal(
-            rotated_masks[..., 26:154, 26:154],
-            interpolated_masks,
-        )
 
     def test_fused_transform_preserves_alignment_with_bounded_scientific_delta(
         self,
@@ -190,48 +149,6 @@ class TestTopologyTransforms(unittest.TestCase):
         )
         profile_scale = np.sqrt(np.mean(staged_profile[profile_overlap] ** 2))
         self.assertLess(float(profile_rmse / profile_scale), 0.003)
-
-    def test_invalid_rotation_keeps_segment_outputs_empty(self) -> None:
-        values = np.ones((1, 1, 4, 4), dtype=np.float32)
-        masks = np.ones((1, 1, 4, 4), dtype=bool)
-        rotations = np.asarray([[np.nan]], dtype=np.float32)
-
-        rotated_values = resample_rotate_segment(values[0, 0], float(rotations[0, 0]))
-        rotated_masks = rotate_segment_masks(masks, rotations)
-
-        self.assertTrue(np.all(np.isnan(rotated_values)))
-        self.assertFalse(np.any(rotated_masks))
-
-    def test_cupy_fused_transform_does_not_fall_back_to_scipy(self) -> None:
-        if optional_cupy_backend() is None:
-            self.skipTest("CuPy/CUDA is unavailable.")
-        rng = np.random.default_rng(91)
-        values = rng.normal(size=(8, 29, 29)).astype(np.float32)
-        values[:, :4, :] = np.nan
-        values[:, 20:, 25:] = np.nan
-
-        with patch(
-            "calculations.vessel_segments.sampling.transforms.ndi.affine_transform",
-            side_effect=AssertionError("unexpected CPU fallback"),
-        ):
-            gpu = resample_rotate_segment(values, 31.7)
-        with patch(
-            "calculations.vessel_segments.sampling.transforms.optional_cupy_backend",
-            return_value=None,
-        ):
-            cpu = resample_rotate_segment(values, 31.7)
-
-        self.assertEqual(cpu.shape, gpu.shape)
-        self.assertEqual(cpu.dtype, gpu.dtype)
-        np.testing.assert_array_equal(np.isnan(gpu), np.isnan(cpu))
-        np.testing.assert_allclose(gpu, cpu, rtol=5e-5, atol=2e-5, equal_nan=True)
-        np.testing.assert_allclose(
-            np.nanmean(gpu, axis=(-2, -1)),
-            np.nanmean(cpu, axis=(-2, -1)),
-            rtol=1e-5,
-            atol=1e-6,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

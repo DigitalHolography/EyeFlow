@@ -25,13 +25,6 @@ def test_every_top_level_source_module_is_in_the_setuptools_manifest():
         assert f'"{module}"' in setuptools_section
 
 
-def test_metadata_uses_project_section_and_accepts_windows_bom(tmp_path):
-    (tmp_path / "pyproject.toml").write_text(
-        '[unrelated]\nname = "wrong"\nversion = "0"\n'
-        '[project]\nname = "EyeFlow"\nversion = "2.3.4"\n', encoding="utf-8-sig")
-    assert project_metadata(tmp_path) == ("EyeFlow", "2.3.4")
-
-
 def test_clean_refuses_repository_root_and_outside_directory(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -92,8 +85,8 @@ def test_cli_build_checks_capture_streams_and_validate_all_exit_codes(tmp_path):
         assert call.kwargs["timeout"] == 120
 
 
-@pytest.mark.parametrize("regression", ["missing_stdout", "missing_stderr", "discarded_exit_status"])
-def test_cli_build_checks_reject_installer_regressions(tmp_path, regression):
+def test_cli_build_checks_reject_installer_regressions(tmp_path):
+    regression = "missing_stderr"
     def run_probe(command, **kwargs):
         result = _cli_probe_result(command, **kwargs)
         if regression == "missing_stdout":

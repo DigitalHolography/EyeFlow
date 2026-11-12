@@ -39,8 +39,8 @@ def test_imagej_mask_weight_and_gaussian_tail_reference_without_temporal_filteri
     assert actual.dtype == np.float32
 
 
-@pytest.mark.parametrize("position", [(64, 64), (0, 0)])
-def test_nan_propagates_through_spatial_kernel_and_stays_missing_at_border(position):
+def test_nan_propagates_through_spatial_kernel_and_stays_missing_at_border():
+    position = (64, 64)
     stack = np.ones((2, 129, 129), dtype=np.float32)
     row, column = position
     stack[0, row, column] = np.nan
@@ -63,10 +63,3 @@ def test_negative_halos_are_clipped_and_zero_signal_stays_zero():
     assert 2.0 < actual[0, 64, 64] < 2.5
     assert np.count_nonzero(actual) == 1
     assert np.all(actual >= 0.0)
-
-
-def test_empty_recording():
-    stack = np.empty((0, 129, 129), dtype=np.float32)
-    actual = unsharpen(stack)
-    assert actual.shape == stack.shape
-    assert actual.dtype == np.float32

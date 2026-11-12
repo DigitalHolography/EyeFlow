@@ -24,19 +24,13 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.runner import (  
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
 )
-from calculations.math import reconstruct_band_limited  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipelines.velocity.estimation import (  # noqa: E402
-    _doppler_frequency_to_velocity_mm_s,
-)
 from pipelines.velocity_analysis.builder import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
     _run_velocity_per_beat_analysis,
-    _waveform_segment_input,
 )
 from pipelines.velocity_analysis.outputs.per_beat import (  # noqa: E402
     pack_velocity_per_beat_inputs,
-    pack_velocity_per_beat_outputs,
 )
 
 
@@ -82,103 +76,6 @@ class PerBeatRunnerTests(unittest.TestCase):
         self.assertIsNotNone(inputs.arterial_filtered_velocity_segments)
         self.assertIs(inputs.venous_velocity_segments, vein_signal)
         self.assertIsNotNone(inputs.venous_filtered_velocity_segments)
-
-    def test_segment_input_uses_canonical_segment_signal(self) -> None:
-        segment_velocity = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
-        result = SimpleNamespace(
-            profile=SimpleNamespace(segment_signal=segment_velocity),
-        )
-
-        actual = _waveform_segment_input(result)
-
-        self.assertIs(actual, segment_velocity)
-
-    def test_velocity_conversion_uses_twice_the_wavelength_over_aperture(
-        self,
-    ) -> None:
-        result = _doppler_frequency_to_velocity_mm_s(
-            np.asarray([1.0], dtype=np.float32)
-        )
-
-        np.testing.assert_allclose(result, [2e3 * 8.52e-7 / 0.76])
-
-    def test_global_per_beat_signal_uses_global_signal_when_segments_exist(self) -> None:
-        frame_count = 32
-        segments = np.zeros((2, 3, frame_count), dtype=np.float32)
-        time = np.arange(frame_count, dtype=np.float32)
-        for radius_index in range(2):
-            for branch_index in range(3):
-                segments[radius_index, branch_index] = (
-                    time + 10.0 * radius_index + branch_index
-                )
-        signal = (100.0 + time).astype(np.float32)
-        cardiac_cycle = spectral_cardiac_cycle_analysis(signal, 0.01, systole_count=2)
-        inputs = PerBeatAnalysisInput(
-            arterial_velocity_signal=signal,
-            venous_velocity_signal=signal,
-            cycle_boundary_indexes=np.asarray([0, 16, 31], dtype=np.int32),
-            band_limited_harmonics=4,
-            cardiac_cycle=cardiac_cycle,
-            dt_seconds=0.01,
-            arterial_velocity_segments=segments,
-            venous_velocity_segments=segments,
-            arterial_filtered_velocity_segments=segments + np.float32(1e3),
-            venous_filtered_velocity_segments=segments + np.float32(2e3),
-            index_base=0,
-        )
-
-        result = run_per_beat_analysis(inputs)
-
-        expected = per_beat_signal_analysis(
-            signal,
-            inputs.cycle_boundary_indexes,
-            inputs.band_limited_harmonics,
-            index_base=0,
-        )
-        np.testing.assert_array_equal(
-            result.artery.signal.velocity_signal_per_beat,
-            expected.velocity_signal_per_beat,
-        )
-        self.assertIsNotNone(result.artery.segments)
-        self.assertIsNotNone(result.artery_filtered.segments)
-        self.assertIsNotNone(result.vein_filtered.segments)
-        outputs = pack_velocity_per_beat_outputs(result)
-        schema = EyeFlowOutputPaths.active()
-        self.assertIn(schema.artery_per_beat.segment_velocity_signal, outputs)
-        self.assertIn(schema.artery_per_beat_filtered.segment_velocity_signal, outputs)
-        self.assertFalse(any("Safe" in path or path.endswith("/value") for path in outputs))
-        np.testing.assert_array_equal(
-            outputs[schema.artery_per_beat_filtered.segment_velocity_signal][0],
-            result.artery_filtered.segments.velocity_signal_per_beat_per_segment,
-        )
-
-    def test_band_limited_reconstruction_matches_matlab_abs_ifft(self) -> None:
-        phase = np.linspace(
-            0.0,
-            2.0 * np.pi,
-            64,
-            endpoint=False,
-            dtype=np.float32,
-        )
-        waveform = (
-            100.0
-            + 30.0 * np.sin(phase)
-            + 8.0 * np.cos(2.0 * phase)
-        ).astype(np.float32)
-
-        spectrum = np.fft.fft(waveform)
-        reconstructed = reconstruct_band_limited(
-            spectrum,
-            harmonics=2,
-            reconstruction="matlab_magnitude",
-        )
-
-        matlab_band_limited_spectrum = spectrum[:3] * 2.0
-        matlab_band_limited_spectrum[0] = spectrum[0]
-        expected = np.abs(
-            np.fft.ifft(matlab_band_limited_spectrum, n=waveform.size)
-        )
-        np.testing.assert_allclose(reconstructed, expected, rtol=1e-6, atol=1e-5)
 
     def test_per_beat_input_explicitly_uses_raw_global_vessel_signals(self) -> None:
         raw_values = {

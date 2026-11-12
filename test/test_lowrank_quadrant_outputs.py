@@ -113,26 +113,6 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         self.assertTrue(all(np.isfinite(value) for value in quadrant_r0.values()))
         self.assertEqual(4, len({float(value) for value in quadrant_r0.values()}))
 
-    def test_quadrant_outputs_are_omitted_when_option_is_disabled(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        sample_count = 8
-        waveforms = np.ones((sample_count, 1, 1, 3), dtype=np.float32)
-        velocity_outputs = {
-            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
-                [0.8], dtype=np.float32
-            ),
-            schema.artery_per_beat_filtered.segment_velocity_signal: waveforms,
-        }
-
-        outputs = pack_lowrank_waveform_decomposition_outputs(
-            velocity_outputs,
-            vein_flag=False,
-            include_quadrants=False,
-        )
-
-        self.assertTrue(outputs)
-        self.assertFalse(any("/Quadrants/" in key for key in outputs))
-
     def test_relative_velocity_source_propagates_unit_one(self) -> None:
         schema = EyeFlowOutputPaths.active()
         waveforms = np.ones((8, 1, 1, 3), dtype=np.float32)

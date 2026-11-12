@@ -14,7 +14,6 @@ from input_output.writers.png import ReportImagePaths
 
 from .data import (
     ReportData,
-    SpectralReportData,
     VolumeRateReportData,
 )
 from .palette import VESSEL_COLORS
@@ -26,21 +25,19 @@ GRAPH_TITLE_STYLE = {
 }
 
 VOLUME_RATE_METHODS = (
-    ("gradient_edges", "Spatial-Gradient Edge (Static)", "local"),
+    ("gradient_edges", "Spatial-Gradient Edge (Static)", "total"),
     ("masked_edges", "Mask-Derived Geometry", "total"),
 )
 
 
-def build_report_pages(
+def build_velocity_bvr_pages(
     report: ReportData, folder_name: str, png_dir: Path | None,
     report_images: ReportImagePaths,
 ) -> list[Figure]:
-    """Build ordered velocity, BVR, and spectral report pages."""
+    """Build the moments-only velocity and BVR report pages."""
     pages = [_velocity_page(report, folder_name, png_dir, report_images)]
     if report.volume_rates:
         pages.append(_volume_rate_page(report.volume_rates, folder_name))
-    if report.spectral is not None:
-        pages.append(_spectral_page(report.spectral, folder_name))
     return pages
 
 
@@ -127,8 +124,8 @@ def _plot_filtered_velocity(
         np.nansum(samples, axis=0), counts,
         out=np.full(values.shape[1], np.nan), where=counts > 0,
     )
-    _plot_beat_whiskers(
-        ax, phase, samples.T, mean_beat, color="0.45", label="Beat min/max",
+    _plot_beat_envelope(
+        ax, phase, samples.T, color="0.55", label="Beat min/max envelope",
     )
     ax.plot(phase, mean_beat, color="black", linewidth=1.5, label="Mean beat")
 
@@ -143,7 +140,7 @@ def _plot_filtered_velocity(
 
     ax.set_xlim(0, 1)
     ax.set_xlabel("Cardiac phase", fontsize=8)
-    ax.set_ylabel(f"Velocity ({unit})", fontsize=8)
+    ax.set_ylabel(f"Velocity ({_display_unit(unit)})", fontsize=8)
     ax.tick_params(labelsize=7)
     ax.legend(loc="lower right", fontsize=6)
 
@@ -178,54 +175,6 @@ def _volume_rate_page(
     return fig
 
 
-def _spectral_page(data: SpectralReportData, folder_name: str) -> Figure:
-    fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
-    fig.patch.set_facecolor("white")
-    _add_page_header(fig, folder_name, "Low-Frequency Spectra")
-    fig.text(
-        0.08, 0.84, "Low-Frequency Gap Spectra (Shared Across Workflows)",
-        fontsize=13, fontweight="bold", va="top",
-    )
-    text_ax = fig.add_axes((0.08, 0.43, 0.38, 0.36))
-    plot_ax = fig.add_axes((0.54, 0.43, 0.38, 0.36))
-    text_ax.axis("off")
-    _draw_spectral_section(text_ax, plot_ax, data)
-    return fig
-
-
-def _draw_spectral_section(text_ax, plot_ax, data: SpectralReportData) -> None:
-    def number(value, suffix=""):
-        return "unavailable" if value is None else f"{value:.2f}{suffix}"
-
-    lines = [
-        f"Median spectral excess (SEI): {number(data.sei)}",
-        f"Early / late SEI: {number(data.sei_early)} / {number(data.sei_late)}",
-        "",
-        "Descriptive quality indicators (no pass/fail threshold):",
-        f"Finite acquisition spectra: {number(_percent(data.acquisition_valid_fraction), '%')}",
-        f"Valid cardiac phases for SE: {number(_percent(data.valid_se_phase_fraction), '%')}",
-        f"Retained gap-mask field: {number(_percent(data.retained_field_fraction), '%')}",
-        "",
-        "SEI is the median of the phase-resolved SE curve.",
-        "Mask coverage is not an anatomical quality score.",
-    ]
-    text_ax.text(0, 0.95, "\n".join(lines), va="top", fontsize=9,
-                 linespacing=1.5, transform=text_ax.transAxes)
-    if data.se_curve is None or not data.se_curve.size:
-        plot_ax.text(0.5, 0.5, "Phase-resolved SE unavailable",
-                     ha="center", va="center", transform=plot_ax.transAxes)
-    else:
-        phase = np.arange(data.se_curve.size) / data.se_curve.size
-        plot_ax.plot(phase, data.se_curve, color="black", linewidth=1.2)
-        if data.sei is not None:
-            plot_ax.axhline(data.sei, color="tab:blue", linestyle="--",
-                            linewidth=0.9, label="Median SEI")
-            plot_ax.legend(fontsize=8)
-    plot_ax.set_xlim(0, 1)
-    plot_ax.set_xlabel("Cardiac phase")
-    plot_ax.set_ylabel("Spectral excess SE (unitless)")
-
-
 def _draw_volume_method(
     text_ax, plot_ax, rates: dict[str, VolumeRateReportData], scope: str,
 ) -> None:
@@ -249,8 +198,8 @@ def _draw_volume_method(
             "",
         ))
         phase = np.arange(data.phase_curve.size) / data.phase_curve.size
-        _plot_beat_whiskers(
-            plot_ax, phase, data.beat_curves, data.phase_curve,
+        _plot_beat_envelope(
+            plot_ax, phase, data.beat_curves,
             color=VESSEL_COLORS[vessel],
         )
         plot_ax.plot(
@@ -260,61 +209,42 @@ def _draw_volume_method(
     text_ax.text(0, 0.98, "\n".join(lines), va="top", fontsize=8.5,
                  linespacing=1.35, transform=text_ax.transAxes)
     plot_ax.set_title(
-        f"Median {scope} BVR with beat min/max whiskers", **GRAPH_TITLE_STYLE,
+        f"Median {scope} BVR with beat min/max envelope", **GRAPH_TITLE_STYLE,
     )
     plot_ax.set_xlim(0, 1)
     plot_ax.set_xlabel("Cardiac phase")
-    plot_ax.set_ylabel(f"BVR ({unit})")
+    plot_ax.set_ylabel(f"BVR ({_display_unit(unit)})")
     plot_ax.axhline(0, color="0.5", linestyle=":", linewidth=0.8)
     plot_ax.legend(fontsize=8)
 
 
 def _rate_value(value: float | None, unit: str) -> str:
-    return "Unavailable" if value is None else f"{value:.2f} {unit}"
+    return "Unavailable" if value is None else f"{value:.2f} {_display_unit(unit)}"
 
 
-def _plot_beat_whiskers(
+def _plot_beat_envelope(
     ax,
     phase: np.ndarray,
     beat_curves: np.ndarray,
-    center: np.ndarray,
     *,
     color: str,
     label: str | None = None,
-    maximum_count: int = 24,
 ) -> None:
-    """Draw sparse capped min/max ranges around a phase-resolved center."""
+    """Fill the phase-wise range of finite beat samples."""
     values = np.asarray(beat_curves, dtype=float)
-    center = np.asarray(center, dtype=float)
-    if values.ndim != 2 or values.shape[0] != center.size:
+    if values.ndim != 2 or values.shape[0] != phase.size:
         return
     masked = np.ma.masked_invalid(values)
     minimum = np.asarray(masked.min(axis=1).filled(np.nan), dtype=float)
     maximum = np.asarray(masked.max(axis=1).filled(np.nan), dtype=float)
-    step = max(1, int(np.ceil(center.size / maximum_count)))
-    indexes = np.arange(0, center.size, step)
-    valid = (
-        np.isfinite(center[indexes])
-        & np.isfinite(minimum[indexes])
-        & np.isfinite(maximum[indexes])
-    )
-    indexes = indexes[valid]
-    if not indexes.size:
+    valid = np.isfinite(minimum) & np.isfinite(maximum)
+    if not np.any(valid):
         return
-    ax.errorbar(
-        phase[indexes], center[indexes],
-        yerr=np.vstack((
-            center[indexes] - minimum[indexes],
-            maximum[indexes] - center[indexes],
-        )),
-        fmt="none", ecolor=color, alpha=0.32,
-        elinewidth=0.7, capsize=1.8, capthick=0.7,
-        label=label, zorder=1,
+    ax.fill_between(
+        phase, minimum, maximum, where=valid,
+        color=color, alpha=0.18, linewidth=0,
+        label=label, zorder=0,
     )
-
-
-def _percent(fraction: float | None) -> float | None:
-    return None if fraction is None else 100 * fraction
 
 
 def _add_page_header(fig: Figure, folder_name: str, section: str) -> None:
@@ -397,7 +327,16 @@ def _parameter_value(
     if value is None:
         return "Unavailable"
     unit = str(parameter.get("unit", "")).strip()
-    return f"{value:.{decimals}f}{f' {unit}' if unit else ''}"
+    return f"{value:.{decimals}f}{f' {_display_unit(unit)}' if unit else ''}"
+
+
+def _display_unit(unit: str) -> str:
+    """Format report units with typographic powers and inverse time."""
+    normalized = str(unit).strip().replace("³", "^3")
+    return {
+        "mm/s": r"$\mathrm{mm\,s^{-1}}$",
+        "mm^3/s": r"$\mathrm{mm^3\,s^{-1}}$",
+    }.get(normalized, str(unit).strip())
 
 
 def _try_load_report_image(

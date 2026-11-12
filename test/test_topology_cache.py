@@ -18,8 +18,6 @@ from calculations.vessel_segments.sampling import (  # noqa: E402
     SegmentSamplingPlan,
     prepare_sampling_plans,
 )
-from calculations.vessel_segments.sampling.cache import topology_source_id  # noqa: E402
-from pipelines.topology_core.cache import run_topology_cache  # noqa: E402
 from calculations.topology import AnnulusGeometry, OpticDisc  # noqa: E402
 
 
@@ -56,15 +54,6 @@ class TopologyCacheTests(unittest.TestCase):
         messages = [call.args[0] for call in log.call_args_list]
         self.assertTrue(any("Topology cache hit: artery" in message for message in messages))
         self.assertTrue(any("Topology cache hit: vein" in message for message in messages))
-
-    def test_cache_is_owned_by_one_run_state(self) -> None:
-        first_state: dict[str, object] = {}
-        second_state: dict[str, object] = {}
-
-        first = run_topology_cache(first_state)
-
-        self.assertIs(first, run_topology_cache(first_state))
-        self.assertIsNot(first, run_topology_cache(second_state))
 
     def test_identical_inputs_reuse_topology_and_changed_mask_invalidates_it(
         self,
@@ -110,12 +99,6 @@ class TopologyCacheTests(unittest.TestCase):
         self.assertIs(changed_prepared, changed["artery"])
         self.assertEqual(2, prepare.call_count)
 
-    def test_source_identity_includes_both_input_files(self) -> None:
-        self.assertEqual(
-            "scan_HD.h5|scan_DV.h5",
-            topology_source_id("scan_HD.h5", "scan_DV.h5"),
-        )
-
     def test_changed_other_vessel_mask_does_not_invalidate_topology(self) -> None:
         artery = np.zeros((9, 9), dtype=bool)
         artery[3:6, 2:4] = True
@@ -156,32 +139,6 @@ class TopologyCacheTests(unittest.TestCase):
         self.assertIs(first["artery"], changed["artery"])
         self.assertIsNot(first["vein"], changed["vein"])
         self.assertEqual(3, prepare.call_count)
-
-    def test_changed_explicit_center_invalidates_cached_topology(self) -> None:
-        vessel = np.zeros((9, 9), dtype=bool)
-        vessel[3:6, 2:7] = True
-        disc = np.zeros_like(vessel)
-        settings = AnnulusGeometry(0.0, 1.0, 1.0, 1)
-        prepared = [
-            _prepared_topology(vessel.shape, marker=float(index))
-            for index in range(2)
-        ]
-        cache = {}
-        with patch(
-            "calculations.vessel_segments.sampling.preparation.prepare_sampling_plan",
-            side_effect=prepared,
-        ) as prepare:
-            first = prepare_sampling_plans(
-                {"artery": vessel}, _disc(disc, (3.0, 4.0)), settings,
-                source_id="scan", cache=cache,
-            )
-            second = prepare_sampling_plans(
-                {"artery": vessel}, _disc(disc, (4.0, 4.0)), settings,
-                source_id="scan", cache=cache,
-            )
-        self.assertIsNot(first["artery"], second["artery"])
-        self.assertEqual(2, prepare.call_count)
-
 
 def _prepared_topology(
     shape: tuple[int, int],

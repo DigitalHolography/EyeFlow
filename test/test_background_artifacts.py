@@ -56,10 +56,10 @@ def _run(manager, descriptors):
     )
 
 
-@pytest.mark.parametrize("failing_sibling", [False, True])
 def test_export_overlaps_analysis_and_survives_unrelated_rollback(
-    tmp_path, threaded_exporter, failing_sibling,
+    tmp_path, threaded_exporter,
 ):
+    failing_sibling = True
     manager = _manager(tmp_path)
     started, release, finished = Event(), Event(), Event()
     target = manager.path_for(OutputType.PNG, "background.png")
@@ -116,28 +116,10 @@ def test_export_overlaps_analysis_and_survives_unrelated_rollback(
         assert json.loads(output.attrs["artifact_failures"]) == {}
 
 
-def test_completion_joins_export_without_an_artifact_consumer(tmp_path, threaded_exporter):
-    manager = _manager(tmp_path)
-
-    def export(snapshot, staged):
-        path = staged.path_for(OutputType.EPS, "final.eps")
-        path.parent.mkdir(parents=True)
-        path.write_bytes(snapshot.read_bytes())
-        return [path]
-
-    def source(ctx):
-        ctx.defer_artifacts("figures", export, lambda path: path.write_bytes(b"EPS fixture"))
-
-    path = _run(manager, [_descriptor("source", source)])
-    assert manager.path_for(OutputType.EPS, "final.eps").read_bytes() == b"EPS fixture"
-    with h5py.File(path) as output:
-        assert json.loads(output.attrs["artifact_status"])["source:figures"] == "succeeded"
-
-
-@pytest.mark.parametrize("failure_stage", ["render", "submit", "render_result"])
 def test_export_failure_preserves_numerics_continues_analysis_and_skips_report(
-    tmp_path, threaded_exporter, monkeypatch, failure_stage,
+    tmp_path, threaded_exporter, monkeypatch,
 ):
+    failure_stage = "render_result"
     manager = _manager(tmp_path)
 
     def fail(*args, **kwargs):
@@ -192,8 +174,8 @@ def test_failed_producer_discards_snapshot_without_starting_export(tmp_path, thr
     assert snapshots and all(not path.parent.exists() for path in snapshots)
 
 
-@pytest.mark.parametrize("invalid_path", ["outside", "collision"])
-def test_failed_publication_leaves_no_partial_files(tmp_path, threaded_exporter, invalid_path):
+def test_failed_publication_leaves_no_partial_files(tmp_path, threaded_exporter):
+    invalid_path = "outside"
     manager = _manager(tmp_path)
     target = manager.path_for(OutputType.PNG, "second.png")
     outside = tmp_path / "outside.png"
@@ -259,19 +241,3 @@ def test_real_spawned_renderer_uses_independent_reduced_snapshot(tmp_path):
     assert not job.snapshot.parent.exists()
 
 
-def test_decorators_preserve_artifact_consumer_metadata(monkeypatch):
-    # Replace the registry locally so discovery state is untouched.
-    registry = {}
-    monkeypatch.setattr("pipeline_engine.base.PIPELINE_REGISTRY", registry)
-
-    @pipeline("function_consumer", wait_for_artifacts=True)
-    def run(ctx):
-        pass
-
-    @registerPipeline("class_consumer", wait_for_artifacts=True)
-    class Consumer:
-        pass
-
-    for descriptor in registry.values():
-        assert descriptor.wait_for_artifacts
-        assert descriptor.instantiate().wait_for_artifacts

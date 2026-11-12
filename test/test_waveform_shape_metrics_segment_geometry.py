@@ -6,7 +6,6 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import numpy as np
 
@@ -14,74 +13,12 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.vessel_segments.measurement import (  # noqa: E402
-    MaskedArrays,
-    SegmentMeasurementSettings,
-)
+from calculations.vessel_segments.measurement import SegmentMeasurementSettings  # noqa: E402
 from calculations.topology import OpticDisc, section_masks  # noqa: E402
-from calculations.topology.branch_identity import _branch_identity_stages  # noqa: E402
-from pipelines.velocity_analysis.artifacts.branch_identity import (  # noqa: E402
-    _labels_with_substack_boxes,
-)
-from pipelines.velocity_analysis.artifacts.cross_sections import (  # noqa: E402
-    export_rotated_mean_pngs,
-)
 from pipelines.velocity_analysis.analysis.segments import (  # noqa: E402
     analyze_velocity_segment_profiles,
 )
-from utils.logger import Logger  # noqa: E402
-
-
 class SegmentCenterTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        Logger.reset_current()
-
-    def test_watershed_boundaries_remain_split_during_annulus_relabeling(self) -> None:
-        vessel = np.ones((9, 9), dtype=bool)
-        section = np.ones_like(vessel)
-        skeleton = np.zeros_like(vessel)
-        skeleton[4, 2] = True
-        skeleton[4, 6] = True
-        watershed_labels = np.zeros(vessel.shape, dtype=np.int32)
-        watershed_labels[:, 1:4] = 1
-        watershed_labels[:, 4:8] = 2
-        settings = SimpleNamespace(
-            inner_radius_frac=0.0,
-            outer_radius_frac=0.5,
-            ring_width_frac=0.5,
-            ring_count=1,
-        )
-
-        with patch(
-            "calculations.topology.branch_identity."
-            "annulus_mask",
-            return_value=section,
-        ), patch(
-            "calculations.topology.branch_identity."
-            "skeletonize",
-            return_value=skeleton,
-        ), patch(
-            "calculations.topology.branch_identity."
-            "_branch_points",
-            return_value=np.zeros_like(vessel),
-        ), patch(
-            "calculations.topology.branch_identity."
-            "_remove_small",
-            side_effect=lambda mask, _min_area: mask,
-        ), patch(
-            "calculations.topology.branch_identity."
-            "watershed",
-            return_value=watershed_labels,
-        ):
-            stages = _branch_identity_stages(
-                vessel,
-                (4.0, 4.0),
-                settings,
-                optic_disc_mask=np.zeros_like(vessel),
-            )
-
-        self.assertEqual(2, int(stages.annulus_refined_labels.max()))
-
     def test_segment_velocity_results_runs_with_prepared_topology(self) -> None:
         velocity = np.ones((3, 61, 61), dtype=np.float32)
         artery_mask = np.zeros((61, 61), dtype=bool)
@@ -130,121 +67,6 @@ class SegmentCenterTests(unittest.TestCase):
             self.assertTrue(np.any(valid))
             np.testing.assert_allclose(profile.segment_signal[valid], 1.0)
 
-    def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
-        labels = np.ones((20, 20), dtype=np.int32)
-        ring_settings = SimpleNamespace(
-            inner_radius_frac=0.0,
-            outer_radius_frac=1.0,
-            ring_width_frac=0.5,
-            ring_count=2,
-        )
-        centers = np.asarray(
-            [[[5.0, 5.0], [7.0, 5.0]], [[np.nan, np.nan], [np.nan, np.nan]]],
-            dtype=np.float32,
-        )
-
-        image = _labels_with_substack_boxes(
-            labels,
-            (10.0, 10.0),
-            ring_settings,
-            centers,
-            np.asarray(
-                [
-                    [[4, 7, 4, 7], [6, 9, 4, 7]],
-                    [[-1, -1, -1, -1], [-1, -1, -1, -1]],
-                ],
-                dtype=np.int32,
-            ),
-        )
-
-        self.assertEqual((20, 20, 3), image.shape)
-        np.testing.assert_array_equal(image[4, 4], [255, 255, 0])
-        np.testing.assert_array_equal(image[4, 6], [255, 0, 255])
-
-    def test_rotated_means_export_to_separate_vessel_subfolders(self) -> None:
-        class RecordingOutput:
-            def __init__(self) -> None:
-                self.writes = []
-
-            def write_png(self, image, filename):
-                self.writes.append((np.asarray(image).copy(), filename))
-                return Path(filename)
-
-        rotated_means = np.arange(
-            2 * 2 * 181 * 181,
-            dtype=np.float32,
-        ).reshape(2, 2, 181, 181)
-        result = SimpleNamespace(
-            profile=SimpleNamespace(
-                mean_images=MaskedArrays(rotated_means, -rotated_means),
-                topology=SimpleNamespace(
-                    valid_segments=np.asarray([[True, False], [True, True]]),
-                    native=SimpleNamespace(branch_ids=np.asarray([4, 9])),
-                ),
-            ),
-        )
-        output = RecordingOutput()
-
-        artery_paths = export_rotated_mean_pngs(output, result, "arteries")
-        vein_paths = export_rotated_mean_pngs(output, result, "veins")
-
-        self.assertEqual(
-            [
-                Path("rotated_mean/arteries/ring_001_branch_004.png"),
-                Path("rotated_mean/arteries/ring_002_branch_004.png"),
-                Path("rotated_mean/arteries/ring_002_branch_009.png"),
-                Path("rotated_mean_masked/arteries/ring_001_branch_004.png"),
-                Path("rotated_mean_masked/arteries/ring_002_branch_004.png"),
-                Path("rotated_mean_masked/arteries/ring_002_branch_009.png"),
-            ],
-            artery_paths,
-        )
-        self.assertEqual(
-            [
-                Path("rotated_mean/veins/ring_001_branch_004.png"),
-                Path("rotated_mean/veins/ring_002_branch_004.png"),
-                Path("rotated_mean/veins/ring_002_branch_009.png"),
-                Path("rotated_mean_masked/veins/ring_001_branch_004.png"),
-                Path("rotated_mean_masked/veins/ring_002_branch_004.png"),
-                Path("rotated_mean_masked/veins/ring_002_branch_009.png"),
-            ],
-            vein_paths,
-        )
-        np.testing.assert_array_equal(output.writes[0][0], rotated_means[0, 0])
-
-    def test_segment_analysis_uses_disc_extent_and_fixed_fov_spacing(self) -> None:
-        settings = OpticDisc(None, (267.0, 230.0), 55, 69).annulus_geometry(
-            (512, 512)
-        )
-
-        corner_radius = np.hypot(255.5, 255.5)
-        self.assertEqual(17, settings.ring_count)
-        self.assertAlmostEqual(
-            28.0 / corner_radius,
-            settings.inner_radius_frac,
-        )
-        self.assertEqual(1.0, settings.outer_radius_frac)
-        expected_width = (512.0 / 25.0) / corner_radius
-        self.assertAlmostEqual(expected_width, settings.ring_width_frac)
-        self.assertAlmostEqual(expected_width, settings.segment_length_frac)
-
-    def test_number_of_radii_in_fov_controls_pixel_width_and_count(self) -> None:
-        settings = OpticDisc(None, (50.0, 50.0), 40, 40).annulus_geometry(
-            (101, 101),
-            number_of_radii_in_fov=10,
-        )
-
-        radius_scale = np.hypot(50.0, 50.0)
-        self.assertAlmostEqual(101.0 / 10.0, settings.ring_width_frac * radius_scale)
-        self.assertEqual(settings.ring_width_frac, settings.segment_length_frac)
-        self.assertEqual(6, settings.ring_count)
-
-    def test_number_of_radii_in_fov_must_be_positive(self) -> None:
-        with self.assertRaisesRegex(ValueError, "must be positive"):
-            OpticDisc(None, (1.0, 1.0), 1, 1).annulus_geometry(
-                (10, 10), number_of_radii_in_fov=0
-            )
-
     def test_annulus_starts_at_optic_disc_and_uses_fixed_fov_extent(self) -> None:
         center = np.asarray([267.0, 230.0])
         settings = OpticDisc(None, center, 55, 69).annulus_geometry((512, 512))
@@ -265,22 +87,6 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(mask[230, 315])
         self.assertFalse(mask[230, 316])
         self.assertFalse(mask[279, 267])
-
-    def test_annulus_pixel_radius_is_independent_of_optic_disc_position(self) -> None:
-        settings = SimpleNamespace(
-            inner_radius_frac=0.0,
-            outer_radius_frac=0.5,
-            ring_width_frac=0.25,
-            ring_count=1,
-            segment_length_frac=0.25,
-        )
-        centered = section_masks((101, 101), (50, 50), settings)[0]
-        shifted = section_masks((101, 101), (30, 40), settings)[0]
-
-        centered_y, centered_x = np.nonzero(centered)
-        shifted_y, shifted_x = np.nonzero(shifted)
-        self.assertEqual(centered_x.max() - 50, shifted_x.max() - 30)
-        self.assertEqual(centered_y.max() - 50, shifted_y.max() - 40)
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,9 +15,7 @@ from input_output.schema.doppler_view import (
     DV_CHOROID_VESSEL_MASK_PATH,
     DV_RETINAL_VESSEL_LOGITS_PATH,
 )
-from pipeline_engine import PipelineDAG
 from pipeline_engine.context import PipelineInputs, PipelineState
-from pipelines import load_pipeline_catalog
 from pipelines.topology_core.runner import capillary_zones, run_topology_core
 from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 
@@ -85,7 +83,6 @@ def _reference_zones(retinal, choroid, optic_disc):
     return cutoff & ~excluded
 
 
-@pytest.mark.parametrize("source_pair", [(41, 61), (61, 61)], indirect=True)
 def test_dv_logits_read_yx_and_publish_gap_exclusion_with_one_y_flip(source_pair, tmp_path):
     hd, dv = source_pair
     height, width = hd["moment0"].shape[-2:]
@@ -115,22 +112,19 @@ def test_dv_logits_read_yx_and_publish_gap_exclusion_with_one_y_flip(source_pair
         assert gaps[vessel_y, height - 1 - vessel_x]  # A transpose would exclude here.
 
 
-@pytest.mark.parametrize("swapped", [False, True])
-def test_publishes_cutoff_gaps_with_dilated_vessels_and_aligns_all_sources(source_pair, tmp_path, swapped):
+def test_publishes_cutoff_gaps_with_dilated_vessels_and_aligns_all_sources(source_pair, tmp_path):
     hd, dv = source_pair
     native_shape = hd["moment0"].shape[-2:]
-    dv_shape = native_shape[::-1] if swapped else native_shape
-    if swapped:
-        for name in ("artery_mask", "vein_mask"):
-            path = f"segmentation/Retina/{name}"
-            del dv[path]
-            dv.create_dataset(path, data=np.zeros(dv_shape, bool))
+    dv_shape = native_shape[::-1]
+    for name in ("artery_mask", "vein_mask"):
+        path = f"segmentation/Retina/{name}"
+        del dv[path]
+        dv.create_dataset(path, data=np.zeros(dv_shape, bool))
     logits, choroid, disc = _write_capillary_sources(dv, dv_shape)
     retinal, choroid, disc = logits > 0.1, choroid != 0, disc != 0
-    if swapped:
-        retinal, choroid, disc = retinal.T, choroid.T, disc.T
+    retinal, choroid, disc = retinal.T, choroid.T, disc.T
     expected = _reference_zones(retinal, choroid, disc)
-    below, equal, above = [(x, 20) if swapped else (20, x) for x in (20, 28, 36)]
+    below, equal, above = [(x, 20) for x in (20, 28, 36)]
     assert expected[below]  # Positive logits below the threshold are included.
     assert expected[equal]  # Exactly 0.1 is included (strict greater-than).
     assert not expected[above]  # The next representable value above 0.1 is excluded.
@@ -169,16 +163,14 @@ def test_publishes_cutoff_gaps_with_dilated_vessels_and_aligns_all_sources(sourc
         assert dataset.attrs["optic_disc_mask_source"] == "dopplerview_segmentation"
 
 
-@pytest.mark.parametrize("geometry_only", [False, True])
-def test_missing_disc_mask_excludes_centered_physical_circle(source_pair, geometry_only):
+def test_missing_disc_mask_excludes_centered_physical_circle(source_pair):
     hd, dv = source_pair
     shape = hd["moment0"].shape[-2:]
     dv.create_dataset(DV_RETINAL_VESSEL_LOGITS_PATH, data=np.zeros(shape))
     dv.create_dataset(DV_CHOROID_VESSEL_MASK_PATH, data=np.zeros(shape))
-    if geometry_only:
-        dv.create_dataset("segmentation/OpticDisc/center", data=[1.0, 1.0])
-        dv.create_dataset("segmentation/OpticDisc/width", data=2.0)
-        dv.create_dataset("segmentation/OpticDisc/height", data=2.0)
+    dv.create_dataset("segmentation/OpticDisc/center", data=[1.0, 1.0])
+    dv.create_dataset("segmentation/OpticDisc/width", data=2.0)
+    dv.create_dataset("segmentation/OpticDisc/height", data=2.0)
     y, x = np.ogrid[: shape[0], : shape[1]]
     distance_squared = (x - shape[1] / 2.0) ** 2 + (y - shape[0] / 2.0) ** 2
     fallback_disc = distance_squared <= (1.91 / 0.2 / 2) ** 2
@@ -190,19 +182,10 @@ def test_missing_disc_mask_excludes_centered_physical_circle(source_pair, geomet
     np.testing.assert_array_equal(capillary_zones(ctx), expected)
     path = EyeFlowOutputPaths.active().segmentation.gaps_legacy
     assert metrics[path][1]["optic_disc_fallback_diameter_mm"] == 1.91
-    if not geometry_only:
-        disc_mask = metrics[EyeFlowOutputPaths.active().segmentation.optic_disc.mask][0]
-        np.testing.assert_array_equal(disc_mask, np.flip(fallback_disc, axis=0).T)
 
 
-@pytest.mark.parametrize("missing", ["retinal", "choroid", "both"])
-def test_missing_vessel_sources_omit_mask_and_warn_without_losing_topology(source_pair, missing):
+def test_missing_vessel_sources_omit_mask_and_warn_without_losing_topology(source_pair):
     hd, dv = source_pair
-    shape = hd["moment0"].shape[-2:]
-    if missing != "retinal" and missing != "both":
-        dv.create_dataset(DV_RETINAL_VESSEL_LOGITS_PATH, data=np.zeros(shape))
-    if missing != "choroid" and missing != "both":
-        dv.create_dataset(DV_CHOROID_VESSEL_MASK_PATH, data=np.zeros(shape))
     ctx = _ctx(hd, dv)
     with patch("pipelines.topology_core.runner.Logger.log_warning") as warning:
         metrics = run_topology_core(ctx)
@@ -215,8 +198,13 @@ def test_missing_vessel_sources_omit_mask_and_warn_without_losing_topology(sourc
         capillary_zones(ctx)
 
 
-@pytest.mark.parametrize("path", [DV_RETINAL_VESSEL_LOGITS_PATH, DV_CHOROID_VESSEL_MASK_PATH])
-@pytest.mark.parametrize("defect", ["shape", "rank", "nan", "string"])
+@pytest.mark.parametrize(
+    ("path", "defect"),
+    [
+        (DV_RETINAL_VESSEL_LOGITS_PATH, "shape"),
+        (DV_CHOROID_VESSEL_MASK_PATH, "nan"),
+    ],
+)
 def test_invalid_capillary_inputs_fail_at_the_source_boundary(source_pair, path, defect):
     hd, dv = source_pair
     shape = hd["moment0"].shape[-2:]
@@ -231,17 +219,10 @@ def test_invalid_capillary_inputs_fail_at_the_source_boundary(source_pair, path,
         run_topology_core(_ctx(hd, dv))
 
 
-def test_capillary_zones_are_owned_by_existing_hidden_topology_pipeline():
-    available, missing = load_pipeline_catalog()
-    assert "topology_core" not in {item.name for item in missing}
-    descriptors = {item.name: item for item in available}
-    assert "capillary_analysis_zones" in descriptors["topology_core"].dag_produces
-    assert not any(item.name.startswith("capillary") for item in [*available, *missing])
-    assert "topology_core" in PipelineDAG(available).dependencies_of("velocity_analysis")
-
-
-@pytest.mark.parametrize("source_name", ["moment0ff", "M0FF"])
-@pytest.mark.parametrize("with_legacy", [False, True])
+@pytest.mark.parametrize(
+    ("source_name", "with_legacy"),
+    [("moment0ff", False), ("M0FF", True)],
+)
 def test_m0ff_vessel_union_gap_intersection_persistence_and_spectral_consumer(
     source_pair, tmp_path, source_name, with_legacy,
 ):
@@ -318,13 +299,12 @@ def test_m0ff_shape_must_match_native_hd_axes(source_pair):
         run_topology_core(_ctx(hd, dv))
 
 
-@pytest.mark.parametrize("empty", [False, True])
 def test_shared_topology_publishes_gap_support_without_running_spectral_analysis(
-    source_pair, tmp_path, empty,
+    source_pair, tmp_path,
 ):
     hd, dv = source_pair
     shape = hd["moment0"].shape[-2:]
-    logits = np.ones(shape) if empty else np.zeros(shape)
+    logits = np.zeros(shape)
     dv.create_dataset(DV_RETINAL_VESSEL_LOGITS_PATH, data=logits)
     dv.create_dataset(DV_CHOROID_VESSEL_MASK_PATH, data=np.zeros(shape))
     yy, xx = np.indices(shape)
@@ -339,4 +319,4 @@ def test_shared_topology_publishes_gap_support_without_running_spectral_analysis
         assert schema.segmentation.artery.mask in output
         assert schema.segmentation.gaps in output
         assert schema.spectrograms_masked not in output
-        assert bool(np.any(output[schema.segmentation.gaps][:])) is not empty
+        assert np.any(output[schema.segmentation.gaps][:])

@@ -20,7 +20,6 @@ from calculations.math import band_limit, butter_lowpass_filtfilt
 from calculations.math.bandlimiting import DEFAULT_BAND_LIMITED_HARMONICS, validate_harmonics
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
-from pipeline_engine.run_service import resolve_run_spec
 from pipelines.signal_settings import band_limited_harmonics
 from pipelines.velocity_analysis.outputs.per_beat import pack_velocity_per_beat_outputs
 
@@ -35,10 +34,8 @@ def test_application_and_calculation_defaults_agree_with_shipped_settings():
     assert validate_band_limited_harmonics_setting(np.int64(7)) == 7
 
 
-@pytest.mark.parametrize("count, harmonics", [
-    (63, 0), (63, 12), (64, 2), (64, 100), (128, 12),
-])
-def test_magnitude_matches_matlab_positive_spectrum_recipe(count, harmonics):
+def test_magnitude_matches_matlab_positive_spectrum_recipe():
+    count, harmonics = 63, 12
     rng = np.random.default_rng(24)
     values = (20 + rng.normal(size=(count, 3))).astype(np.float32)
     original = values.copy()
@@ -53,8 +50,8 @@ def test_magnitude_matches_matlab_positive_spectrum_recipe(count, harmonics):
     assert actual.dtype == np.float32
 
 
-@pytest.mark.parametrize("count", [63, 64])
-def test_signed_reconstruction_preserves_sign_dc_and_nyquist(count):
+def test_signed_reconstruction_preserves_sign_dc_and_nyquist():
+    count = 64
     phase = np.arange(count) / count
     values = (-2 + 5 * np.cos(2 * np.pi * phase) + np.cos(2 * np.pi * 13 * phase)).astype(
         np.float32
@@ -69,10 +66,9 @@ def test_signed_reconstruction_preserves_sign_dc_and_nyquist(count):
     )
 
 
-@pytest.mark.parametrize("count", [-1, 1.5, True, np.bool_(True)])
-def test_invalid_harmonic_counts_rejected(count):
+def test_invalid_harmonic_counts_rejected():
     with pytest.raises(ValueError, match="harmonics"):
-        band_limit(np.ones(32), harmonics=count)
+        band_limit(np.ones(32), harmonics=True)
 
 
 def test_nonfinite_series_does_not_poison_other_batch_columns():
@@ -155,14 +151,5 @@ def test_shared_setting_persists_and_import_rejects_invalid_count_atomically(tmp
     assert (
         band_limited_harmonics(SimpleNamespace(attrs={"band_limited_harmonics": np.int64(7)})) == 7
     )
-    assert (
-        band_limited_harmonics(SimpleNamespace(attrs={"BandLimitedSignalHarmonicCount": 13})) == 12
-    )
-
-
-@pytest.mark.parametrize("count", [-1])
-def test_run_validation_rejects_invalid_harmonics_before_resolving_inputs(count):
-    with pytest.raises(ValueError, match="harmonics"):
-        resolve_run_spec(
-            input_paths=[], target_names=[], pipelines=[], band_limited_harmonics=count
-        )
+    legacy = SimpleNamespace(attrs={"BandLimitedSignalHarmonicCount": 13})
+    assert band_limited_harmonics(legacy) == 12

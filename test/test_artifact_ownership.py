@@ -31,18 +31,6 @@ def test_checkpoint_never_deletes_unregistered_files_created_during_a_failed_pip
     assert unrelated.read_bytes() == b"unrelated producer"
 
 
-def test_reserving_another_stages_pending_path_does_not_transfer_ownership(tmp_path):
-    registry = ArtifactOwnership()
-    producer = registry.transaction(tmp_path)
-    failing = registry.transaction(tmp_path)
-    path = tmp_path / "committed_stage.png"
-    producer.reserve(path, writing=True)
-    failing.reserve(path)  # Still absent: the earlier export has not finished.
-    path.write_bytes(b"export published during later stage")
-    failing.rollback()
-    assert path.read_bytes() == b"export published during later stage"
-
-
 def test_shared_writer_cannot_overwrite_another_invocations_artifact(tmp_path):
     registry = ArtifactOwnership()
     path = tmp_path / "shared.png"

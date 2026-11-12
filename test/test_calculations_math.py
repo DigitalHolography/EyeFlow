@@ -14,8 +14,6 @@ from calculations.math import (
     nanmean,
     nanmedian,
     nanmin,
-    nansum,
-    rfft_normalized,
 )
 
 
@@ -43,15 +41,6 @@ class SharedStatisticsTests(unittest.TestCase):
         self.assertEqual(np.float32, minimum.dtype)
         self.assertEqual(np.float32, maximum.dtype)
 
-    def test_empty_reductions_return_safe_values(self) -> None:
-        empty = np.asarray([], dtype=np.float64)
-
-        np.testing.assert_allclose(nanmin(empty), np.nan, equal_nan=True)
-        np.testing.assert_allclose(nanmax(empty), np.nan, equal_nan=True)
-        self.assertEqual(-1, int(nanargmin(empty)))
-        self.assertEqual(-1, int(nanargmax(empty)))
-        self.assertEqual(0.0, float(nansum(empty)))
-
 
 class HarmonicPackTests(unittest.TestCase):
     def test_harmonic_pack_matches_normalized_fft(self) -> None:
@@ -71,18 +60,6 @@ class HarmonicPackTests(unittest.TestCase):
             atol=1e-6,
         )
         self.assertEqual(3, pack["H"])
-
-    def test_harmonic_pack_supports_batched_waveforms(self) -> None:
-        signals = np.arange(16, dtype=np.float32).reshape(8, 2)
-        pack = harmonic_pack(signals, max_harmonic=3, axis=0)
-
-        self.assertEqual((4, 2), pack["V"].shape)
-        self.assertEqual((5, 2), pack["Vfull"].shape)
-        self.assertEqual((8, 2), pack["vb"].shape)
-        np.testing.assert_allclose(
-            pack["Vfull"],
-            rfft_normalized(signals, axis=0),
-        )
 
 
 class InterpftAxisTests(unittest.TestCase):

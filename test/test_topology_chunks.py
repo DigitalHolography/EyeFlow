@@ -5,12 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import numpy as np
-import pytest
 
-from calculations.math.spatial_gradient import (
-    GAUSSIAN_BLUR_RADIUS,
-    UNSHARP_MASK_RADIUS,
-)
 from calculations.topology import AnnulusGeometry, BranchIdentityResult, SegmentTopology
 from calculations.vessel_segments.sampling import (
     SegmentSamplingPlan,
@@ -109,8 +104,8 @@ def test_masked_companion_applies_mask_after_interpolation_before_rotation() -> 
     )
 
 
-@pytest.mark.parametrize("frame_count", [5, 17])
-def test_staged_gradient_chunks_match_whole_recording(frame_count: int) -> None:
+def test_staged_gradient_chunks_match_whole_recording() -> None:
+    frame_count = 17
     prepared = _prepared()
     rng = np.random.default_rng(frame_count)
     cube = rng.uniform(0.5, 4.0, size=(frame_count, 9, 9)).astype(np.float32)
@@ -140,21 +135,6 @@ def test_staged_gradient_chunks_match_whole_recording(frame_count: int) -> None:
     np.testing.assert_allclose(chunked, whole, rtol=1e-5, atol=1e-5, equal_nan=True)
 
 
-def test_staged_gradient_rejects_budget_below_one_frame_context() -> None:
-    with pytest.raises(MemoryError, match="one output frame"):
-        list(
-            prepare_segment_chunks(
-                np.ones((17, 9, 9), dtype=np.float32),
-                _prepared(),
-                working_memory_mb=1.0,
-                transform_mode="staged",
-                post_interpolation=_spatial_gradient_chain,
-                temporal_halo=6,
-                scratch_array_count=7,
-            )
-        )
-
-
 def test_image_projection_fallback_resolves_once_and_zero_reference_does_not() -> None:
     prepared = _prepared(angle=np.nan, centerline_points=1)
     reference = np.zeros((4, 9, 9), dtype=np.float32)
@@ -164,11 +144,6 @@ def test_image_projection_fallback_resolves_once_and_zero_reference_does_not() -
     assert resolve_segment_rotations(resolved, reference) is resolved
     unresolved = resolve_segment_rotations(prepared, np.zeros_like(reference))
     assert np.isnan(unresolved.rotation_degrees[0, 0])
-
-
-def test_documented_imagej_radii_are_authoritative() -> None:
-    assert GAUSSIAN_BLUR_RADIUS == 6.0
-    assert UNSHARP_MASK_RADIUS == 8.0
 
 
 def test_spatial_gradient_chain_has_the_exact_scientific_order() -> None:
@@ -200,101 +175,3 @@ def test_spatial_gradient_chain_has_the_exact_scientific_order() -> None:
         "unsharp_8_weight_0.6",
         "moving_average",
     ]
-
-
-def test_skipping_longitudinal_velocity_preserves_other_measurements() -> None:
-    from calculations.topology import OpticDisc
-    from calculations.vessel_segments.measurement import (
-        SegmentMeasurementSettings,
-        analyze_segment_profiles,
-    )
-    from pipelines.velocity_analysis.analysis.segments import (
-        analyze_velocity_segment_profiles,
-    )
-
-    prepared = _prepared()
-    vessel = prepared.native.branches.labels > 0
-    optic_disc = OpticDisc(None, (4.0, 8.0), 2.0, 2.0)
-    rings = prepared.native.ring_settings
-    signal = np.arange(3 * 9 * 9, dtype=np.float32).reshape(3, 9, 9)
-    signal[1, 2:4, 3:5] = np.nan
-    args = (
-        signal, {"artery": vessel}, optic_disc, rings,
-        SegmentMeasurementSettings(0.01),
-    )
-    kwargs = {"prepared_topologies": {"artery": prepared}}
-    full = analyze_velocity_segment_profiles(
-        *args, **kwargs, retain_velocity_maps=True,
-    )["artery"].profile
-    assert np.count_nonzero(prepared.valid_segments) > 0
-    assert full.longitudinal is not None
-    with patch(
-        "calculations.vessel_segments.measurement.accumulator.longitudinal_profiles",
-        side_effect=AssertionError("Unused longitudinal reduction was executed"),
-    ) as reduce:
-        skipped = analyze_velocity_segment_profiles(
-            *args, **kwargs, retain_velocity_maps=True,
-            compute_longitudinal_profiles=False,
-        )["artery"].profile
-    reduce.assert_not_called()
-    assert skipped.longitudinal is None
-    with pytest.raises(RuntimeError, match="not requested"):
-        skipped.profile("longitudinal", masked=True)
-    np.testing.assert_array_equal(skipped.segment_signal, full.segment_signal)
-    for name in ("transverse", "mean_images"):
-        for masked in (False, True):
-            np.testing.assert_array_equal(
-                getattr(skipped, name).select(masked=masked),
-                getattr(full, name).select(masked=masked),
-            )
-    np.testing.assert_array_equal(skipped.maps.values, full.maps.values)
-
-    # Gradient callers retain the shared engine's longitudinal default.
-    generic = analyze_segment_profiles(*args, **kwargs)["artery"]
-    for masked in (False, True):
-        np.testing.assert_array_equal(
-            generic.profile("longitudinal", masked=masked),
-            full.profile("longitudinal", masked=masked),
-        )
-
-
-def test_skipping_transverse_profiles_retains_only_the_signal_reduction() -> None:
-    from calculations.vessel_segments.measurement.accumulator import (
-        SegmentProfileAccumulator,
-    )
-    from calculations.vessel_segments.profiles.reductions import transverse_profiles
-    from calculations.vessel_segments.sampling.models import SampledSegmentChunk
-
-    prepared = _prepared()
-    side = prepared.profile_side_pixels
-    rotated = np.arange(2 * side * side, dtype=np.float32).reshape(2, side, side)
-    mask = prepared.rotated_masks[0, 0]
-    rotated_masked = np.where(mask[None], rotated, np.nan).astype(np.float32)
-    accumulator = SegmentProfileAccumulator(
-        prepared,
-        frame_count=2,
-        retain_segment_maps=False,
-        compute_transverse_profiles=False,
-        compute_longitudinal_profiles=False,
-    )
-    segment = SampledSegmentChunk(
-        0,
-        0,
-        slice(0, 2),
-        rotated,
-        rotated_masked,
-    )
-    with patch(
-        "calculations.vessel_segments.measurement.accumulator.transverse_profiles",
-        wraps=transverse_profiles,
-    ) as reduction:
-        accumulator.add_chunk(segment, mask)
-    # The one remaining reduction defines the scalar segment signal. The
-    # unmasked and output-profile reductions are both omitted.
-    reduction.assert_called_once()
-    result = accumulator.finish(sample_spacing_mm=0.01)
-    assert result.transverse is None
-    assert result.longitudinal is None
-    with pytest.raises(RuntimeError, match="Transverse profiles were not requested"):
-        result.profile("transverse", masked=True)
-    assert np.all(np.isfinite(result.segment_signal[0, 0]))

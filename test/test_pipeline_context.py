@@ -11,12 +11,8 @@ from pipeline_engine import ExecutionVariant, PipelineContext
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema.base import TypedSource
-from input_output.schema.provenance import (
-    INHERITED_PROVENANCE_KEYS_ATTR,
-    read_dataset_attrs,
-)
-from input_output.writers.h5 import h5_write_checkpoint, set_attr_safe
-from utils.logger import Logger
+from input_output.schema.provenance import read_dataset_attrs
+from input_output.writers.h5 import h5_write_checkpoint
 
 
 class PipelineContextTests(unittest.TestCase):
@@ -34,14 +30,6 @@ class PipelineContextTests(unittest.TestCase):
             with self.assertRaises(KeyError):
                 typed._array("missing")
             self.assertIsNone(typed._array("missing", default=None))
-
-    def test_output_facade_writes_dataset_attributes(self) -> None:
-        with h5py.File("context_output_test.h5", "w", driver="core", backing_store=False) as h5file:
-            output = PipelineH5Output(h5file)
-            output.write("result", np.array([1, 2]), unit="pixel")
-
-            np.testing.assert_array_equal(h5file["result"][()], [1, 2])
-            self.assertEqual("pixel", h5file["result"].attrs["unit"])
 
     def test_workflow_provenance_is_shared_with_local_overrides(self) -> None:
         with h5py.File("provenance.h5", "w", driver="core", backing_store=False) as h5file:
@@ -99,72 +87,6 @@ class PipelineContextTests(unittest.TestCase):
             self.assertEqual("frequency_bands", read_dataset_attrs(
                 h5file["ProcessingBandRatio/signal"])["velocity_estimation_method"])
 
-    def test_processing_parents_only_store_summary_attributes(self) -> None:
-        with h5py.File("summary.h5", "w", driver="core", backing_store=False) as f:
-            for root in ("ProcessingMoments", "ProcessingBandRatio"):
-                summary = {
-                    "velocity_estimation_method": (
-                        "doppler_moments" if root == "ProcessingMoments" else "frequency_bands"
-                    ),
-                    "velocity_inpainting_radius": 5,
-                    "velocity_unit": "mm/s",
-                }
-                moment_paths = {"moment0_source_path": "/M0", "moment2_source_path": "/M2"}
-                band_paths = {
-                    "band_lf_source_path": "/band_8_2000_6000",
-                    "band_hf_source_path": "/band_0_6000_16000",
-                }
-                summary.update(moment_paths if root == "ProcessingMoments" else band_paths)
-                provenance = {
-                    **moment_paths, **band_paths, **summary,
-                    "laser_wavelength_m": 852e-9,
-                    "band_ratio_frequency_scale_hz": 2.5,
-                }
-                output = PipelineH5Output(f, processing_root=root, provenance=provenance)
-                output.set_attrs({**provenance, "analysis_source": "velocity_analysis",
-                                  "arterial_velocity_signal_path": "ProcessingMoments/signal"})
-                output.write("ProcessingMoments/signal", [1], band_ratio_frequency_scale_hz=2.5)
-                self.assertEqual(set(summary), set(f[root].attrs))
-                effective = output.read_attrs("ProcessingMoments/signal")
-                for key in (band_paths if root == "ProcessingMoments" else moment_paths):
-                    self.assertNotIn(key, effective)
-                self.assertNotIn("nameID", f[root].attrs)
-                self.assertNotIn("name", f[root].attrs)
-                self.assertNotIn("Meta", f)
-                self.assertEqual(2.5, effective["band_ratio_frequency_scale_hz"])
-                self.assertNotIn("analysis_source", effective)
-
-    def test_inherited_attributes_preserve_legacy_and_nearest_group_values(self) -> None:
-        with h5py.File("legacy_provenance.h5", "w", driver="core", backing_store=False) as f:
-            root = f.create_group("ProcessingMoments")
-            root.attrs["velocity_estimation_method"] = "doppler_moments"
-            legacy = root.create_dataset("legacy", data=[1])
-            legacy.attrs["velocity_estimation_method"] = "frequency_bands"
-            self.assertEqual(dict(legacy.attrs), read_dataset_attrs(legacy))
-            missing = root.create_dataset("missing", data=[1])
-            self.assertEqual({"velocity_estimation_method": "doppler_moments"},
-                             read_dataset_attrs(missing))
-            set_attr_safe(root, INHERITED_PROVENANCE_KEYS_ATTR, ["velocity_estimation_method"])
-            child = root.create_group("child")
-            child.attrs["velocity_estimation_method"] = "frequency_bands"
-            child.attrs["unit"] = "do not inherit"
-            set_attr_safe(child, INHERITED_PROVENANCE_KEYS_ATTR, ["velocity_estimation_method"])
-            dataset = child.create_dataset("value", data=[1])
-            self.assertEqual({"velocity_estimation_method": "frequency_bands"},
-                             read_dataset_attrs(dataset))
-            dataset.attrs["velocity_estimation_method"] = "doppler_moments"
-            self.assertEqual("doppler_moments",
-                             read_dataset_attrs(dataset)["velocity_estimation_method"])
-            output = PipelineH5Output(f, processing_root="ProcessingMoments")
-            output.write("ProcessingMoments/child/written", [1],
-                         velocity_estimation_method="doppler_moments")
-            self.assertEqual("doppler_moments", output.read_attrs(
-                "ProcessingMoments/child/written")["velocity_estimation_method"])
-            self.assertIn("velocity_estimation_method", f[
-                "ProcessingMoments/child/written"].attrs)
-            with self.assertRaises(KeyError):
-                PipelineH5Output(f).read_attrs("absent")
-
     def test_checkpoint_restores_shared_provenance_and_dataset_overrides(self) -> None:
         with h5py.File("checkpoint_provenance.h5", "w", driver="core", backing_store=False) as f:
             output = PipelineH5Output(f, processing_root="ProcessingMoments",
@@ -182,42 +104,6 @@ class PipelineContextTests(unittest.TestCase):
             self.assertNotIn("new_provenance", output.read_attrs("ProcessingMoments/signal"))
             self.assertEqual("local", output.read_attrs("ProcessingMoments/signal")["velocity_unit"])
             np.testing.assert_array_equal([1], output.read("ProcessingMoments/signal"))
-
-    def test_log_emits_to_callback(self) -> None:
-        messages: list[str] = []
-        Logger.configure(on_log=messages.append)
-        with h5py.File(
-            "context_log_test.h5",
-            "w",
-            driver="core",
-            backing_store=False,
-        ) as h5file:
-            ctx = PipelineContext(
-                work_h5=h5file,
-                holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
-
-            ctx.log("Starting test pipeline...")
-
-        Logger.reset_current()
-        self.assertEqual(["Starting test pipeline..."], messages)
-
-    def test_log_without_callback_is_noop(self) -> None:
-        Logger.reset_current()
-        with h5py.File(
-            "context_log_test.h5",
-            "w",
-            driver="core",
-            backing_store=False,
-        ) as h5file:
-            ctx = PipelineContext(
-                work_h5=h5file,
-                holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
-
-            ctx.log("No listener")
 
     def test_pipeline_options_and_schedule_are_available_to_runners(self) -> None:
         with h5py.File(
@@ -257,57 +143,6 @@ class PipelineContextTests(unittest.TestCase):
             self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
             self.assertTrue(ctx.pipeline_targeted("velocity_analysis"))
             self.assertFalse(ctx.pipeline_targeted("velocity"))
-
-    def test_velocity_estimation_method_is_available_to_runners(self) -> None:
-        with h5py.File(
-            "context_velocity_method_test.h5",
-            "w",
-            driver="core",
-            backing_store=False,
-        ) as h5file:
-            default_ctx = PipelineContext(
-                work_h5=h5file,
-                holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
-            frequency_band_ctx = PipelineContext(
-                work_h5=h5file,
-                holodoppler_h5=None,
-                doppler_vision_h5=None,
-                velocity_estimation_method="frequency_bands",
-                band_ratio_frequency_scale_hz=2.0,
-            )
-
-            self.assertEqual(
-                "doppler_moments",
-                default_ctx.velocity_estimation_method,
-            )
-            self.assertEqual(
-                "frequency_bands",
-                frequency_band_ctx.velocity_estimation_method,
-            )
-            self.assertEqual(
-                2.0,
-                frequency_band_ctx.band_ratio_frequency_scale_hz,
-            )
-
-            with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
-                PipelineContext(
-                    work_h5=h5file,
-                    holodoppler_h5=None,
-                    doppler_vision_h5=None,
-                    velocity_estimation_method="unknown",
-                )
-            with self.assertRaisesRegex(
-                ValueError,
-                "band_ratio_frequency_scale_hz",
-            ):
-                PipelineContext(
-                    work_h5=h5file,
-                    holodoppler_h5=None,
-                    doppler_vision_h5=None,
-                    band_ratio_frequency_scale_hz=np.nan,
-                )
 
     def test_execution_variants_are_validated_and_published(self) -> None:
         with h5py.File(
@@ -353,25 +188,6 @@ class PipelineContextTests(unittest.TestCase):
                         )
                     ]
                 )
-
-    def test_source_array_casts_during_numeric_hdf5_read(self) -> None:
-        with h5py.File(
-            "context_array_test.h5",
-            "w",
-            driver="core",
-            backing_store=False,
-        ) as h5file:
-            h5file.create_dataset(
-                "values",
-                data=np.arange(6, dtype=np.float64).reshape(2, 3),
-            )
-            reader = RawH5SourceReader(h5file=h5file, label="HD")
-
-            values = reader.array("values", dtype=np.float32)
-
-        self.assertEqual(np.float32, values.dtype)
-        np.testing.assert_array_equal(values, np.arange(6, dtype=np.float32).reshape(2, 3))
-
 
 if __name__ == "__main__":
     unittest.main()

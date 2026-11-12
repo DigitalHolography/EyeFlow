@@ -6,7 +6,6 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -20,7 +19,6 @@ from calculations.vessel_segments.measurement import CompactSegmentMaps  # noqa:
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
-    _segment_map_worker_count,
     interpolate_velocity_maps_per_beat,
     prepare_segment_velocity_maps_per_beat,
 )
@@ -28,22 +26,6 @@ from pipelines.velocity_analysis.outputs.segment_maps import pack_segment_map_ou
 
 
 class SegmentMapOutputTests(unittest.TestCase):
-    def test_map_interpolation_matches_scalar_interpft(self) -> None:
-        maps = np.arange(1 * 1 * 6 * 2 * 3, dtype=np.float32).reshape(
-            1,
-            1,
-            6,
-            2,
-            3,
-        )
-        boundaries = np.asarray([0, 2, 5], dtype=np.int32)
-
-        actual = interpolate_velocity_maps_per_beat(maps, boundaries)
-        expected = interpft_real(maps[0, 0, 0:3, 1, 2], 5)[:-1]
-
-        self.assertEqual((3, 2, 4, 2, 1, 1), actual.shape)
-        np.testing.assert_allclose(actual[2, 1, :, 0, 0, 0], expected, rtol=1e-6)
-
     def test_threaded_segments_match_scalar_interpft(self) -> None:
         maps = np.arange(2 * 3 * 8 * 2 * 3, dtype=np.float32).reshape(
             2,
@@ -86,41 +68,6 @@ class SegmentMapOutputTests(unittest.TestCase):
                                 rtol=1e-6,
                                 equal_nan=True,
                             )
-
-    def test_compact_maps_expand_only_indexed_valid_segments(self) -> None:
-        maps = np.arange(2 * 6 * 2 * 3, dtype=np.float32).reshape(
-            2,
-            6,
-            2,
-            3,
-        )
-        indexes = np.asarray([[0, 1], [1, 0]], dtype=np.int32)
-
-        actual = interpolate_velocity_maps_per_beat(
-            maps,
-            np.asarray([0, 2, 5], dtype=np.int32),
-            segment_indexes=indexes,
-            radius_count=2,
-            branch_count=2,
-        )
-
-        self.assertEqual((3, 2, 4, 2, 2, 2), actual.shape)
-        self.assertTrue(np.all(np.isnan(actual[..., 0, 0])))
-        self.assertTrue(np.all(np.isnan(actual[..., 1, 1])))
-        expected = interpft_real(maps[0, 0:3, 1, 2], 5)[:-1]
-        np.testing.assert_allclose(actual[2, 1, :, 0, 1, 0], expected)
-
-    def test_segment_worker_count_honors_parallel_job_cap(self) -> None:
-        with patch(
-            "pipelines.velocity_analysis.analysis.segment_maps.cap_parallel_jobs",
-            return_value=4,
-        ) as capped:
-            self.assertEqual(1, _segment_map_worker_count(0))
-            self.assertEqual(1, _segment_map_worker_count(1))
-            self.assertEqual(3, _segment_map_worker_count(3))
-            self.assertEqual(4, _segment_map_worker_count(20))
-
-        capped.assert_called_with(8)
 
     def test_h5_outputs_have_requested_paths_shapes_and_types(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)

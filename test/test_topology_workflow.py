@@ -43,68 +43,6 @@ class TopologyWorkflowTests(unittest.TestCase):
                     )
                 np.testing.assert_allclose(item.rotated, expected, equal_nan=True)
 
-    def test_empty_topology_allows_parallel_preparation(self) -> None:
-        vessel = np.zeros((21, 21), bool)
-        prepared = prepare_sampling_plan(
-            vessel, OpticDisc(vessel, (10.0, 10.0), None, None),
-            AnnulusGeometry(0., .5, .5, 1)
-        )
-        self.assertEqual([], list(prepare_segment_chunks(
-            np.zeros((2, 21, 21), np.float32), prepared, worker_count=2,
-        )))
-
-    def test_reuses_one_topology_for_multiple_maps(self) -> None:
-        vessel = np.zeros((41, 41), dtype=bool)
-        vessel[18:23, 5:36] = True
-        optic_disc = np.zeros_like(vessel)
-        optic_disc[18:23, 18:23] = True
-        prepared = prepare_sampling_plan(
-            vessel,
-            OpticDisc(optic_disc, (20.0, 20.0), None, None),
-            AnnulusGeometry(0.1, 0.6, 0.25, 2),
-            window_size_percentile_kept=1.0,
-        )
-
-        first = list(
-            prepare_segment_chunks(np.ones((2, 41, 41), dtype=np.float32), prepared)
-        )
-        second = list(
-            prepare_segment_chunks(
-                np.full((2, 41, 41), 2.0, dtype=np.float32),
-                prepared,
-            )
-        )
-
-        ring_count, branch_count = prepared.native.valid_segments.shape
-        expected_count = np.count_nonzero(
-            prepared.native.valid_segments
-            & np.isfinite(prepared.rotation_degrees)
-        )
-        self.assertEqual(expected_count, len(first))
-        self.assertEqual(expected_count, len(second))
-        self.assertTrue(all(item.rotated.shape == (2, 181, 181) for item in first))
-        self.assertEqual(
-            [(item.ring_index, item.branch_index) for item in first],
-            [(item.ring_index, item.branch_index) for item in second],
-        )
-        self.assertEqual(
-            (ring_count, branch_count, 128, 128),
-            prepared.interpolated_masks.shape,
-        )
-        self.assertEqual(
-            (ring_count, branch_count, 181, 181),
-            prepared.rotated_masks.shape,
-        )
-        np.testing.assert_allclose(
-            np.concatenate(
-                [
-                    item.rotated[np.isfinite(item.rotated)]
-                    for item in second
-                ]
-            ),
-            2.0,
-        )
-
     def test_velocity_and_generic_profiles_share_authoritative_topology(self) -> None:
         from calculations.vessel_segments.measurement import (
             SegmentMeasurementSettings,

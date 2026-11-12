@@ -905,9 +905,12 @@ The output root is `<stem>_EF`. `execute_run` removes an existing output root
 before a new attempt, so a failed run leaves only that attempt's partial files.
 Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
 `eps`. Velocity-derived artifacts are separated beneath each type directory
-into `moments/` and `bandratio/`, including PDF reports. Each report reads its
-corresponding processing group and the actual PNG paths registered by its
-velocity-analysis variant. The first page embeds the existing artery/vein
+into `moments/` and `bandratio/`, except for reports. The moments-only velocity
+and BVR report is written directly as
+`pdf/<stem>_velocityBvrReport.pdf`; no BandRatio velocity PDF or variant PDF
+folder is created. The report reads `/ProcessingMoments` and the actual PNG
+paths registered by the moments velocity-analysis variant. Its first page
+embeds the existing artery/vein
 RMS-frequency maps and systole-index figures. It also plots the finite filtered
 per-beat velocity samples and their mean beat directly from the same arrays used
 for report statistics; missing products are shown as unavailable. In both
@@ -922,22 +925,25 @@ separately without a surrounding box.
 When both vessel curves share a graph, arteries use red and veins use blue;
 vessel-specific traces stay black. When either blood-volume-rate method is
 available, the second page is dedicated to BVR. It keeps spatial-gradient-edge
-local flow calculated with static edge positions and mask-derived total flow as
+total flow calculated with static edge positions and mask-derived total flow as
 separate methods, places the gradient method first, and fits both on that page
-when both were selected. Each method
-shows phase-wise beat medians for artery and vein with sparse capped min/max
-beat whiskers, plus cycle median, minimum, maximum, and pulsatile range
-summaries. The first-page filtered per-beat velocity plots use the same whisker
-convention around their mean-beat curves.
-Shared low-frequency gap spectra move to the following page when BVR is present,
-or remain the second page when BVR is absent. Optional pipelines are not run
-merely because a PDF was selected. The
-PDF pipeline selects measurements and builds pages from the assembled output
-view; `input_output/reports` only reads report images and writes the PDF. The
+when both were selected. Static spatial-gradient flow is summed over branches
+within each radius ring, then reduced by the median over rings. Each method
+shows phase-wise beat medians for artery and vein with translucent min/max beat
+envelopes, plus cycle median, minimum, maximum, and pulsatile range summaries.
+The first-page filtered per-beat velocity plots use the same envelope convention
+around their mean-beat curves. Display labels render inverse-time and cubic
+units typographically, while persisted HDF5 units remain unchanged.
+Shared low-frequency spectra and gap quality results are written once to the
+standalone `pdf/<stem>_spectraGapsReport.pdf`; they are not appended to either
+velocity workflow report. Optional pipelines are not run merely because a PDF
+was selected. The PDF pipeline selects measurements and builds pages from the
+assembled output view; `input_output/reports` only reads report images and
+writes the PDFs. The
 hidden, once-per-run `pdf_width_report` companion adds `pdf/<stem>_width_report.pdf`
 when persisted displacement profiles or spatial-gradient metrics exist. Its
 planning trigger is velocity timing, shared by those analyses; it waits for
-optional analyses and can run without either velocity PDF being selected. Its
+optional analyses and can run without the velocity/BVR PDF being selected. Its
 single page shows phase-median radial movement amplitude and lumen width with
 finite-sample coverage, branch counts, and available beat counts. It reads
 both gradient velocity workflows when present, does not trigger either width

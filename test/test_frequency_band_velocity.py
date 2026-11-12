@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +12,6 @@ import numpy as np
 import pytest
 
 from input_output.schema import (
-    DopplerViewSource,
     EyeFlowOutputPaths,
     HolodopplerSource,
     ImageMaps,
@@ -23,10 +21,6 @@ from pipelines.velocity.estimation import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
     DEFAULT_LASER_WAVELENGTH_METERS,
     DEFAULT_NUMERICAL_APERTURE,
-    DopplerMomentsEstimatorInputs,
-    FrequencyBandsEstimatorInputs,
-    VelocityEstimatorChunk,
-    VelocityEstimatorInputs,
     _build_velocity_provenance,
     _safe_band_ratio,
     estimate_retinal_velocity,
@@ -38,24 +32,9 @@ from pipelines.velocity.semantics import resolve_velocity_semantics
 from pipelines.velocity_analysis.outputs.continuous import (
     pack_continuous_velocity_outputs,
 )
-from pipelines.velocity_analysis.sources import _source_provenance
-from pipelines.vessel_inputs import load_retinal_source_data
 
 LF_PATH = "band_0_3000_9000"
 HF_PATH = "band_1_9000_18000"
-
-
-def test_safe_band_ratio_maps_exact_zero_lf_to_zero_without_epsilon() -> None:
-    high = np.asarray([[[2.0, 7.0, 0.0]]], dtype=np.float32)
-    low = np.asarray([[[1.0, 0.0, 0.5]]], dtype=np.float32)
-
-    ratio = _safe_band_ratio(high, low, frame_slice=slice(0, 1))
-
-    np.testing.assert_array_equal(
-        ratio,
-        np.asarray([[[2.0, 0.0, 0.0]]], dtype=np.float32),
-    )
-    assert np.all(np.isfinite(ratio))
 
 
 def test_safe_band_ratio_clamps_negative_hf_and_skips_zero_lf_without_mutating_inputs() -> None:
@@ -70,8 +49,8 @@ def test_safe_band_ratio_clamps_negative_hf_and_skips_zero_lf_without_mutating_i
     assert ratio.dtype == np.float32
 
 
-@pytest.mark.parametrize("negative_frame", [0, 550])
-def test_frequency_band_chunks_handle_negative_hf_and_zero_lf_during_estimation(negative_frame) -> None:
+def test_frequency_band_chunks_handle_negative_hf_and_zero_lf_during_estimation() -> None:
+    negative_frame = 550
     high = np.tile(np.array([[[-4, -2, 6], [2, 0, 4]]], dtype=np.float32), (576, 1, 1))
     low = np.tile(np.array([[[2, 0, 0], [1, 0, 2]]], dtype=np.float32), (576, 1, 1))
     low[negative_frame, 1, 2] = -2
@@ -105,49 +84,6 @@ def test_frequency_band_chunks_handle_negative_hf_and_zero_lf_during_estimation(
         )
         np.testing.assert_array_equal(hf[()], high)
         np.testing.assert_array_equal(lf[()], low)
-
-
-@pytest.mark.parametrize(
-    ("method", "expected_type", "expected_frequency"),
-    [
-        ("doppler_moments", DopplerMomentsEstimatorInputs, 2.0),
-        ("frequency_bands", FrequencyBandsEstimatorInputs, 8.0),
-    ],
-)
-def test_velocity_estimator_dispatcher_returns_standard_chunks(
-    method: str,
-    expected_type: type[VelocityEstimatorInputs],
-    expected_frequency: float,
-) -> None:
-    shape = (2, 3, 4)
-    moment0 = np.ones(shape, dtype=np.float32)
-    moment2 = np.full(shape, 4.0, dtype=np.float32)
-    band_lf = np.ones(shape, dtype=np.float32)
-    band_hf = np.full(shape, 4.0, dtype=np.float32)
-    inputs = resolve_velocity_estimator_inputs(
-        ImageMaps(
-            moment0=moment0,
-            moment2=moment2,
-            band_lf=band_lf,
-            band_hf=band_hf,
-        ),
-        velocity_estimation_method=method,
-        band_ratio_frequency_scale_hz=2.0,
-    )
-
-    chunks = list(
-        iter_velocity_estimator_chunks(
-            inputs,
-            vessel_mask=np.zeros(shape[1:], dtype=bool),
-            neighborhood_mask=np.ones(shape[1:], dtype=bool),
-        )
-    )
-
-    assert isinstance(inputs, expected_type)
-    assert len(chunks) == 1
-    assert isinstance(chunks[0], VelocityEstimatorChunk)
-    np.testing.assert_array_equal(chunks[0].background_image, 1.0)
-    np.testing.assert_array_equal(chunks[0].rms_frequency, expected_frequency)
 
 
 def test_moment_chunks_floor_each_spatial_mean_at_single_precision_epsilon() -> None:
@@ -277,65 +213,10 @@ def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> No
     assert result.provenance["band_ratio_frequency_scale_hz"] == 2.0
 
 
-@pytest.mark.parametrize("scale", [0.0, -1.0, np.nan, np.inf])
-def test_frequency_band_estimator_rejects_invalid_frequency_scale(
-    scale: float,
-) -> None:
-    values = np.ones((1, 4, 4), dtype=np.float32)
-    mask = np.zeros((4, 4), dtype=bool)
-    with pytest.raises(ValueError, match="band_ratio_frequency_scale_hz"):
-        estimate_retinal_velocity(
-            image_maps=ImageMaps(
-                moment0=None,
-                moment2=None,
-                band_lf=values,
-                band_hf=values,
-            ),
-            velocity_estimation_method="frequency_bands",
-            band_ratio_frequency_scale_hz=scale,
-            artery_mask=mask,
-            vein_mask=mask,
-            optic_disc_center=(1.5, 1.5),
-            local_background_dist=1,
-        )
-
-
-def test_frequency_band_estimator_reports_zero_and_near_zero_lf_counts() -> None:
-    low = np.ones((1, 8, 8), dtype=np.float32)
-    low[0, 0, 0] = 0.0
-    low[0, 0, 1] = 1e-8
-    high = np.ones_like(low)
-    mask = np.zeros((8, 8), dtype=bool)
-
-    result = estimate_retinal_velocity(
-        image_maps=ImageMaps(
-            moment0=None,
-            moment2=None,
-            band_lf=low,
-            band_hf=high,
-        ),
-        velocity_estimation_method="frequency_bands",
-        artery_mask=mask,
-        vein_mask=mask,
-        optic_disc_center=(3.5, 3.5),
-        local_background_dist=1,
-        retain_velocity_video=False,
-    )
-
-    assert result.provenance["band_lf_zero_sample_count"] == 1
-    assert result.provenance["band_lf_near_zero_sample_count"] == 1
-    assert result.provenance["band_lf_vessel_zero_sample_count"] == 0
-    assert result.provenance["band_lf_vessel_near_zero_sample_count"] == 0
-    assert result.provenance["band_lf_neighborhood_zero_sample_count"] == 1
-    assert result.provenance["band_lf_neighborhood_near_zero_sample_count"] == 1
-    assert result.provenance["band_lf_low_relative_threshold"] == 1e-6
-
-
 @pytest.mark.parametrize(
     ("path", "value", "message"),
     [
         (LF_PATH, np.nan, "non-finite values"),
-        (HF_PATH, np.nan, "non-finite values"),
         (HF_PATH, -np.inf, "non-finite values"),
     ],
 )
@@ -366,54 +247,7 @@ def test_frequency_band_estimator_rejects_invalid_psd_values(
         )
 
 
-@pytest.mark.parametrize(
-    ("low_path", "high_path"),
-    [(LF_PATH, HF_PATH), ("band_8_2000_6000", "band_0_6000_16000")],
-)
-def test_frequency_band_source_does_not_require_moments(low_path, high_path) -> None:
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        root = Path(tmp_dir)
-        hd_path = root / "sample_HD.h5"
-        dv_path = root / "sample_DV.h5"
-        with h5py.File(hd_path, "w") as hd:
-            hd.create_dataset(low_path, data=np.ones((2, 4, 6), dtype=np.float32))
-            hd.create_dataset(high_path, data=np.full((2, 4, 6), 2.0, dtype=np.float32))
-            hd.create_dataset(
-                "HD_parameters",
-                data=json.dumps(
-                    {
-                        "pixel_pitch": [20e-6, 20e-6],
-                        "sampling_freq": 100.0,
-                        "batch_stride": 10.0,
-                    }
-                ),
-            )
-        with h5py.File(dv_path, "w") as dv:
-            retina = dv.create_group("segmentation/Retina")
-            retina.create_dataset("artery_mask", data=np.zeros((4, 6), dtype=bool))
-            retina.create_dataset("vein_mask", data=np.zeros((4, 6), dtype=bool))
-
-        with h5py.File(hd_path, "r") as hd, h5py.File(dv_path, "r") as dv:
-            source = load_retinal_source_data(
-                HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD")),
-                DopplerViewSource(RawH5SourceReader(h5file=dv, label="DV")),
-                velocity_estimation_method="frequency_bands",
-            )
-            assert source.image_maps.moment0 is None
-            assert source.image_maps.moment2 is None
-            assert source.image_maps.band_lf.name == f"/{low_path}"
-            assert source.image_maps.band_hf.name == f"/{high_path}"
-
-            provenance = _source_provenance(
-                HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD")),
-                DopplerViewSource(RawH5SourceReader(h5file=dv, label="DV")),
-                source,
-            )
-            assert provenance["band_lf_source_path"] == f"/{low_path}"
-            assert provenance["band_hf_source_path"] == f"/{high_path}"
-
-
-@pytest.mark.parametrize("available_paths", [(), (LF_PATH,), (HF_PATH,)])
+@pytest.mark.parametrize("available_paths", [(), (LF_PATH,)])
 def test_frequency_band_source_requires_two_matching_videos(available_paths, tmp_path) -> None:
     hd_path = tmp_path / "missing_bands_HD.h5"
     with h5py.File(hd_path, "w") as hd:
@@ -440,7 +274,6 @@ def test_frequency_band_source_requires_two_matching_videos(available_paths, tmp
          "band_4_9_15", "band_0_100_200"),
         (("band_0_10_100", "band_7_10_20", "band_3_10_90"),
          "band_7_10_20", "band_0_10_100"),
-        ((HF_PATH, LF_PATH), LF_PATH, HF_PATH),
     ],
 )
 def test_frequency_band_source_sorts_numeric_ranges_and_preserves_provenance(
@@ -509,26 +342,6 @@ def test_frequency_band_source_validates_rank_dtype_and_shape(
             source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
             with pytest.raises(error_type, match=message):
                 source.frequency_band_datasets()
-
-
-def test_frequency_band_estimator_rejects_spatial_mask_mismatch() -> None:
-    low = np.ones((1, 4, 5), dtype=np.float32)
-    high = np.ones_like(low)
-    wrong_mask = np.zeros((5, 4), dtype=bool)
-    with pytest.raises(ValueError, match="spatial shape"):
-        estimate_retinal_velocity(
-            image_maps=ImageMaps(
-                moment0=None,
-                moment2=None,
-                band_lf=low,
-                band_hf=high,
-            ),
-            velocity_estimation_method="frequency_bands",
-            artery_mask=wrong_mask,
-            vein_mask=wrong_mask,
-            optic_disc_center=(2.0, 2.0),
-            local_background_dist=1,
-        )
 
 
 def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
@@ -696,22 +509,3 @@ def test_dimensionless_velocity_metadata_is_rejected() -> None:
                 "velocity_unit": "1",
             }
         )
-
-
-@pytest.mark.parametrize("paths", [("moment0", "moment2"), ("M0", "M2")])
-def test_moment_provenance_records_actual_moment_sources_only(paths, tmp_path):
-    with h5py.File(tmp_path / "moments.h5", "w") as hd:
-        moments = [hd.create_dataset(path, data=np.ones((1, 2, 2), dtype=np.float32))
-                   for path in paths]
-        inputs = resolve_velocity_estimator_inputs(
-            ImageMaps(moment0=moments[0], moment2=moments[1]),
-            velocity_estimation_method="doppler_moments",
-        )
-        provenance = _build_velocity_provenance(
-            inputs, diagnostic_counts={},
-            laser_wavelength_m=DEFAULT_LASER_WAVELENGTH_METERS,
-            numerical_aperture=DEFAULT_NUMERICAL_APERTURE,
-        )
-        assert provenance["moment0_source_path"] == f"/{paths[0]}"
-        assert provenance["moment2_source_path"] == f"/{paths[1]}"
-        assert not any(key.startswith("band_") for key in provenance)

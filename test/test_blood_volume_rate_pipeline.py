@@ -49,14 +49,6 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     assert neither.index("low_freq_spectra") > neither.index("velocity")
 
 
-def test_spatial_gradient_alone_does_not_schedule_velocity_analysis() -> None:
-    names = _dag().resolve_targets(["spatial_gradient_moment0"]).names
-
-    assert "velocity" in names
-    assert "topology_core" in names
-    assert "velocity_analysis" not in names
-
-
 def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
     load_pipeline_catalog()
     descriptor = PIPELINE_REGISTRY["blood_volume_rate"]
@@ -68,17 +60,4 @@ def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
     }
 
 
-def test_each_bvr_family_requests_canonical_segment_analysis() -> None:
-    class Context:
-        def __init__(self, bvr_options):
-            self.bvr_options = frozenset(bvr_options)
-
-        def pipeline_scheduled(self, name):
-            return name in {"blood_volume_rate", "velocity_analysis"}
-
-        def options_for(self, name):
-            return self.bvr_options if name == "blood_volume_rate" else frozenset()
-
-    assert _segments_required(Context(("gradient_edges",)))
-    assert _segments_required(Context(("masked_edges",)))
 

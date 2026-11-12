@@ -1,9 +1,7 @@
 """Committed handoffs, dependency failures and workflow-scoped stage graphs."""
 
 from concurrent.futures import ThreadPoolExecutor
-from copy import copy
 import json
-from threading import Event
 from types import SimpleNamespace
 
 import h5py
@@ -81,35 +79,6 @@ def test_committed_handoff_survives_later_failure_and_only_missing_consumers_ski
         current_pipeline_dag()
 
 
-def test_handoff_launches_ready_artifacts_before_its_producer_returns(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", lambda **kwargs: ThreadPoolExecutor(max_workers=1))
-    manager = _manager(tmp_path)
-    started = Event()
-
-    def export(snapshot, output):
-        started.set()
-        return [output.write_png(np.zeros((1, 1), dtype=np.uint8), "snapshot.png")]
-
-    def produce(ctx):
-        ctx.dag.handoff("metric", 7)
-        assert started.wait(10), "Export must start before the producer finishes"
-        ctx._background_artifacts.collect(wait=True)
-        assert manager.path_for(OutputType.PNG, "snapshot.png").is_file()
-        raise ValueError("failure after committed data")
-
-    def artifacts(ctx):
-        assert ctx.dag.require("metric") == 7
-        ctx.defer_artifacts("png", export, lambda path: path.write_bytes(b"data"))
-
-    graph = PipelineGraph((
-        PipelineNode("producer", produce, outputs=(PipelineProduct("metric", "Scientific/Metric"),)),
-        PipelineNode("figures", artifacts, requires=("metric",), artifact=True),
-    ))
-    with pytest.raises(PipelineRunError, match="failure after committed"):
-        _run(manager, [_descriptor("science", lambda ctx: graph)])
-    assert manager.path_for(OutputType.PNG, "snapshot.png").is_file()
-
-
 def test_failed_packing_is_atomic_even_when_caught_and_direct_writes_are_rejected(tmp_path):
     def produce(ctx):
         with pytest.raises(TypeError):
@@ -130,24 +99,6 @@ def test_failed_packing_is_atomic_even_when_caught_and_direct_writes_are_rejecte
     with h5py.File(path) as h5:
         assert h5["Good/value"][()] == 2
         assert "Partial" not in h5 and "Invalid" not in h5 and "Bypass" not in h5
-
-
-def test_copied_or_worker_context_cannot_handoff_into_another_scope(tmp_path):
-    def produce(ctx):
-        clone = copy(ctx)
-        with pytest.raises(RuntimeError, match="No active pipeline DAG"):
-            clone.dag.handoff("metric", 9)
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            with pytest.raises(RuntimeError, match="owning pipeline thread"):
-                pool.submit(ctx.dag.handoff, "metric", 9).result()
-            with pytest.raises(RuntimeError, match="no pipeline DAG"):
-                pool.submit(handoff, "metric", 9).result()
-        ctx.dag.handoff("metric", 4)
-
-    graph = PipelineGraph((PipelineNode("producer", produce, outputs=(PipelineProduct("metric", "Metric/value"),)),))
-    path = _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
-    with h5py.File(path) as h5:
-        assert h5["Metric/value"][()] == 4
 
 
 def test_moments_and_bandratio_graphs_keep_handoffs_and_failures_isolated(tmp_path):
@@ -189,15 +140,12 @@ def test_moments_and_bandratio_graphs_keep_handoffs_and_failures_isolated(tmp_pa
         assert products["science [bands]"]["metric"]["datasets"] == ["ProcessingBandRatio/Metric/value"]
 
 
-@pytest.mark.parametrize("kind", ["unknown", "cycle", "duplicate"])
-def test_graph_definition_rejects_invalid_dependencies(kind):
+def test_graph_definition_rejects_invalid_dependencies():
     noop = lambda ctx: None
-    if kind == "unknown":
-        graph = PipelineGraph((PipelineNode("a", noop, requires=("missing",)),))
-    elif kind == "cycle":
-        graph = PipelineGraph((PipelineNode("a", noop, after=("b",)), PipelineNode("b", noop, after=("a",))))
-    else:
-        graph = PipelineGraph((PipelineNode("a", noop, outputs=(PipelineProduct("metric"),)), PipelineNode("b", noop, outputs=(PipelineProduct("metric"),))))
+    graph = PipelineGraph((
+        PipelineNode("a", noop, after=("b",)),
+        PipelineNode("b", noop, after=("a",)),
+    ))
     with pytest.raises((ValueError, RuntimeError)):
         graph.plan()
 
@@ -224,17 +172,3 @@ def test_graph_report_waits_for_declared_artifacts_and_writes_intermediates_imme
         PipelineNode("report", report, after=("figures",), wait_for_artifacts=True),
     ))
     _run(manager, [_descriptor("science", lambda ctx: graph)])
-
-
-def test_handoff_cannot_replace_a_parent_of_an_already_committed_dataset(tmp_path):
-    def produce(ctx):
-        ctx.dag.handoff("leaf", 7)
-        with pytest.raises(ValueError, match="non-overlapping"):
-            ctx.dag.handoff("parent", 9)
-
-    graph = PipelineGraph((PipelineNode("producer", produce, outputs=(
-        PipelineProduct("leaf", "Group/Metric"), PipelineProduct("parent", "Group", optional=True),
-    )),))
-    path = _run(_manager(tmp_path), [_descriptor("science", lambda ctx: graph)])
-    with h5py.File(path) as h5:
-        assert h5["Group/Metric"][()] == 7

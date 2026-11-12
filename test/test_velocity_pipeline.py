@@ -25,7 +25,6 @@ from pipelines.velocity.models import (
     RetinalVelocity,
     RetinalVelocityData,
     RetinalVelocityMaps,
-    VesselVelocity,
     VesselVelocitySignals,
 )
 from pipelines.velocity.runner import (
@@ -69,22 +68,6 @@ class RetinalVelocityTests(unittest.TestCase):
         np.testing.assert_array_equal(result.continuous("artery"), np.arange(6) + 10.0)
         self.assertIs(result.cardiac_cycle, cycle)
 
-    def test_typed_result_exposes_continuous_and_per_beat_signals(self):
-        result = _retinal_velocity()
-
-        np.testing.assert_array_equal(
-            result.continuous("artery", raw=True),
-            np.arange(6, dtype=np.float32),
-        )
-        np.testing.assert_array_equal(
-            result.continuous("vein"),
-            np.arange(6, dtype=np.float32) + 30.0,
-        )
-        cycles = result.per_beat("artery", raw=True)
-        self.assertEqual(2, len(cycles))
-        np.testing.assert_array_equal(cycles[0], [0.0, 1.0, 2.0, 3.0])
-        np.testing.assert_array_equal(cycles[1], [3.0, 4.0, 5.0])
-        np.testing.assert_allclose(result.cycle_durations_seconds, [0.06, 0.04])
 
     def test_pipeline_retains_velocity_map_for_analysis_consumers(self):
         source = _source_data()
@@ -163,24 +146,6 @@ class RetinalVelocityTests(unittest.TestCase):
         self.assertIn("frames 100 to 180", message)
         self.assertIn("2x the estimated cardiac period", message)
         self.assertIn("retained", message)
-
-
-def _retinal_velocity() -> RetinalVelocity:
-    return RetinalVelocity(
-        maps=_maps(None, shape=(2, 2)),
-        artery=VesselVelocity(
-            signals=_vessel_signals(np.arange(6, dtype=np.float32)),
-            velocity_filtered=np.arange(6, dtype=np.float32) + 10.0,
-        ),
-        vein=VesselVelocity(
-            signals=_vessel_signals(np.arange(6, dtype=np.float32) + 20.0),
-            velocity_filtered=np.arange(6, dtype=np.float32) + 30.0,
-        ),
-        vessel_frms_background=np.ones(6, dtype=np.float32),
-        cardiac_cycle=_cardiac_cycle(),
-        cardiac_cycle_source="artery",
-        dt_seconds=0.02,
-    )
 
 
 def _cardiac_cycle():

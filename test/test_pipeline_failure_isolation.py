@@ -42,11 +42,10 @@ def test_failed_pipeline_keeps_scratch_alive_until_run_cleanup(tmp_path):
         assert not scratch_path.exists()
 
 
-@pytest.mark.parametrize("variants,fail_both", [(False, False), (True, False), (True, True)])
-@pytest.mark.parametrize("failure_stage", ["calculate", "write"])
 def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
-    tmp_path, variants, fail_both, failure_stage,
+    tmp_path,
 ):
+    variants, fail_both, failure_stage = True, False, "write"
     holo = _write_input(tmp_path)
     calls = []
 

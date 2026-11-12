@@ -30,9 +30,14 @@ from pipeline_engine.dag import PipelineDAG  # noqa: E402
 from pipelines import load_pipeline_catalog  # noqa: E402
 from pipelines.pdf_report.runner import run_pdf_report  # noqa: E402
 from pipelines.pdf_report.data import (  # noqa: E402
-    ReportData, SpectralReportData, VolumeRateReportData, extract_report_data,
+    ReportData, VolumeRateReportData, extract_report_data,
 )
-from pipelines.pdf_report.pages import build_report_pages  # noqa: E402
+from pipelines.pdf_report.pages import build_velocity_bvr_pages  # noqa: E402
+from pipelines.pdf_report.spectra import (  # noqa: E402
+    SpectraGapsReportData,
+    build_spectra_gaps_pages,
+    extract_spectra_gaps_report_data,
+)
 from pipelines.pdf_report.width_data import PhaseSummary, WidthReportData  # noqa: E402
 from pipelines.pdf_report.width_pages import build_width_page  # noqa: E402
 
@@ -95,14 +100,18 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             ctx.log_warning = warnings.append
 
             with patch("pipelines.pdf_report.runner.extract_report_data", return_value=ReportData()) as extract, \
-                 patch("pipelines.pdf_report.runner.build_report_pages", return_value=[]) as build, \
+                 patch("pipelines.pdf_report.runner.extract_spectra_gaps_report_data", return_value=None), \
+                 patch("pipelines.pdf_report.runner.build_velocity_bvr_pages", return_value=[]) as build, \
                  patch("pipelines.pdf_report.runner.write_pdf_report") as write:
                 result = run_pdf_report(ctx)
 
             extract.assert_called_once_with(ctx.output.h5)
             self.assertEqual(manager.layout.ef_dir / "png", build.call_args.args[2])
             pdf_path, pages = write.call_args.args
-            self.assertEqual(manager.layout.ef_dir / "pdf" / "scan_report.pdf", pdf_path)
+            self.assertEqual(
+                manager.layout.ef_dir / "pdf" / "scan_velocityBvrReport.pdf",
+                pdf_path,
+            )
             self.assertEqual([], pages)
             self.assertNotIn("_HD_output_EF", str(pdf_path))
             self.assertEqual(2, len(warnings))
@@ -142,12 +151,39 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.asarray([0.9, 0.9]),
                 )
 
-            parameters = _read_report(path, include_optional=False).parameters
+            parameters = _read_report(path, include_bvr=False).parameters
 
         self.assertEqual(4.0, parameters["Average_Arterial_Velocity"]["value"])
         self.assertEqual(4.0, parameters["Min_Arterial_Velocity"]["value"])
         self.assertAlmostEqual(96.795, parameters["heart_beat"]["value"])
         self.assertAlmostEqual(0.3, parameters["ARI"]["value"])
+
+    def test_bandratio_writes_only_the_shared_spectra_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manager = OutputManager(
+                HoloRunLayout.from_holo(root / "scan.holo")
+            ).for_artifact_namespace("bandratio")
+            ctx = _fake_context(
+                manager, root / "scan_EF.h5", root / "scan_HD_output.h5",
+            )
+            ctx.execution_variant = SimpleNamespace(name="frequency_bands")
+            spectra = SpectraGapsReportData(sei=0.4)
+            with patch("pipelines.pdf_report.runner.extract_report_data") as extract, \
+                 patch("pipelines.pdf_report.runner.extract_spectra_gaps_report_data", return_value=spectra), \
+                 patch("pipelines.pdf_report.runner.build_spectra_gaps_pages", return_value=[]) as build, \
+                 patch("pipelines.pdf_report.runner.write_pdf_report") as write:
+                run_pdf_report(ctx)
+
+            extract.assert_not_called()
+            build.assert_called_once_with(spectra, "scan")
+            path, pages = write.call_args.args
+            self.assertEqual(
+                manager.layout.ef_dir / "pdf" / "scan_spectraGapsReport.pdf",
+                path,
+            )
+            self.assertEqual([], pages)
+            self.assertNotIn("bandratio", path.parts)
 
     def test_missing_filtered_velocity_does_not_fall_back_to_unfiltered(self) -> None:
         schema = EyeFlowOutputPaths.active()
@@ -166,7 +202,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     f"{schema.waveform_shape_metrics_root}/artery/global/raw/RI",
                     data=np.array([0.5, 0.5]),
                 )
-            parameters = _read_report(path, include_optional=False).parameters
+            parameters = _read_report(path, include_bvr=False).parameters
         self.assertNotIn("Average_Arterial_Velocity", parameters)
         self.assertNotIn("heart_beat", parameters)
         self.assertNotIn("ARI", parameters)
@@ -215,12 +251,21 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             self.assertEqual(
                 7.0, bands.volume_rates["masked_edges"]["artery"].overall_value,
             )
-            self.assertEqual(0.4, moments.spectral.sei)
-            self.assertEqual(0.4, bands.spectral.sei)
+            with h5py.File(path, "r") as output_h5:
+                spectra = extract_spectra_gaps_report_data(output_h5)
+            self.assertEqual(0.4, spectra.sei)
 
             with patch("input_output.reports.pdf_report.PdfPages") as pages:
                 pages.return_value.__enter__.return_value = pages.return_value
-                write_pdf_report(root / "pdf" / "scan_report.pdf", build_report_pages(moments, "scan", None, {}))
+                write_pdf_report(
+                    root / "pdf" / "scan_velocityBvrReport.pdf",
+                    build_velocity_bvr_pages(moments, "scan", None, {}),
+                )
+                self.assertEqual(2, pages.return_value.savefig.call_count)
+                write_pdf_report(
+                    root / "pdf" / "scan_spectraGapsReport.pdf",
+                    build_spectra_gaps_pages(spectra, "scan"),
+                )
                 self.assertEqual(3, pages.return_value.savefig.call_count)
 
     def test_report_without_optional_products_has_one_page(self) -> None:
@@ -234,7 +279,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.full((2, 4), 2.0),
                 )
             report = _read_report(path)
-            report_pages = build_report_pages(report, "scan", None, {})
+            report_pages = build_velocity_bvr_pages(report, "scan", None, {})
             page_labels = " ".join(
                 [axis.get_title() for axis in report_pages[0].axes]
                 + [text.get_text() for axis in report_pages[0].axes for text in axis.texts]
@@ -244,7 +289,9 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             self.assertIn("Vein systole indices unavailable", page_labels)
             with patch("input_output.reports.pdf_report.PdfPages") as pages:
                 pages.return_value.__enter__.return_value = pages.return_value
-                write_pdf_report(root / "pdf" / "scan_report.pdf", report_pages)
+                write_pdf_report(
+                    root / "pdf" / "scan_velocityBvrReport.pdf", report_pages,
+                )
                 self.assertEqual(1, pages.return_value.savefig.call_count)
                 self.assertNotIn("vein", report.velocity_per_beat)
 
@@ -258,7 +305,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
         with patch(
             "pipelines.pdf_report.pages.load_first_image", return_value=image
         ) as load:
-            fig = build_report_pages(ReportData(), "scan", None, paths)[0]
+            fig = build_velocity_bvr_pages(ReportData(), "scan", None, paths)[0]
         try:
             self.assertEqual(4, load.call_count)
             loaded = [call.args[0][0] for call in load.call_args_list]
@@ -280,7 +327,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             velocity_per_beat={"artery": values, "vein": values},
             velocity_units={"artery": "mm/s", "vein": "mm/s"},
         )
-        fig = build_report_pages(report, "scan", None, {})[0]
+        fig = build_velocity_bvr_pages(report, "scan", None, {})[0]
         try:
             plot = next(
                 ax for ax in fig.axes
@@ -289,7 +336,11 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             mean = next(line for line in plot.lines if line.get_label() == "Mean beat")
             np.testing.assert_allclose(mean.get_ydata(), [1.5, 3.0, 6.0, 6.0])
             self.assertEqual("black", mean.get_color())
-            self.assertTrue(plot.collections)
+            envelope = next(
+                collection for collection in plot.collections
+                if collection.get_label() == "Beat min/max envelope"
+            )
+            self.assertAlmostEqual(0.18, envelope.get_alpha())
             self.assertFalse(any("Mean per-beat RI" in text.get_text() for text in plot.texts))
             vein_plot = next(
                 ax for ax in fig.axes
@@ -343,7 +394,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             "heart_beat": {"value": 72.5, "unit": "bpm"},
             "not_requested": {"value": 99.0, "unit": ""},
         }
-        fig = build_report_pages(ReportData(parameters=parameters), "scan", None, {})[0]
+        fig = build_velocity_bvr_pages(ReportData(parameters=parameters), "scan", None, {})[0]
         try:
             summary = next(
                 ax for ax in fig.axes
@@ -352,8 +403,9 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             texts = {text.get_text(): text for text in summary.texts}
             self.assertEqual("black", texts["Artery"].get_color())
             self.assertEqual("black", texts["Vein"].get_color())
-            self.assertLess(texts["1.00 mm/s"].get_position()[0], 0.5)
-            self.assertGreater(texts["6.00 mm/s"].get_position()[0], 0.5)
+            velocity_unit = r"$\mathrm{mm\,s^{-1}}$"
+            self.assertLess(texts[f"1.00 {velocity_unit}"].get_position()[0], 0.5)
+            self.assertGreater(texts[f"6.00 {velocity_unit}"].get_position()[0], 0.5)
             self.assertIn("Heart rate  |  72.5 bpm", texts)
             self.assertIsNone(texts["Heart rate  |  72.5 bpm"].get_bbox_patch())
             self.assertNotIn("99.00", texts)
@@ -361,7 +413,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
-    def test_bvr_page_shows_both_methods_before_spectral_results(self) -> None:
+    def test_bvr_page_shows_both_methods(self) -> None:
         artery = VolumeRateReportData(
             beat_curves=np.array([[1.0, 1.2], [2.0, 2.2]]),
             phase_curve=np.array([1.1, 2.1]), overall_value=1.6,
@@ -373,28 +425,24 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             unit="mm^3/s",
         )
         report = ReportData(
-            spectral=SpectralReportData(),
             volume_rates={
                 "masked_edges": {"artery": artery, "vein": vein},
                 "gradient_edges": {"artery": artery, "vein": vein},
             },
         )
-        pages = build_report_pages(report, "scan", None, {})
+        pages = build_velocity_bvr_pages(report, "scan", None, {})
         try:
-            self.assertEqual(3, len(pages))
+            self.assertEqual(2, len(pages))
             bvr_labels = {text.get_text(): text for text in pages[1].texts}
             self.assertIn("Blood-Volume Rate", bvr_labels)
             self.assertGreater(
                 bvr_labels["Spatial-Gradient Edge (Static)"].get_position()[1],
                 bvr_labels["Mask-Derived Geometry"].get_position()[1],
             )
-            self.assertIn(
-                "Low-Frequency Spectra",
-                [text.get_text() for text in pages[2].texts],
-            )
             flow_axes = [ax for ax in pages[1].axes if ax.get_ylabel().startswith("BVR")]
             self.assertEqual(2, len(flow_axes))
             for flow_ax in flow_axes:
+                self.assertIn(r"$\mathrm{mm^3\,s^{-1}}$", flow_ax.get_ylabel())
                 median_lines = [
                     line for line in flow_ax.lines if line.get_label().endswith("median")
                 ]
@@ -433,7 +481,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
-    def test_gradient_only_volume_rate_is_not_called_total_flow(self) -> None:
+    def test_gradient_volume_rate_sums_branches_then_medians_rings(self) -> None:
         schema = EyeFlowOutputPaths.active()
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "scan_EF.h5"
@@ -444,7 +492,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 )
             report = _read_report(path)
         artery = report.volume_rates["gradient_edges"]["artery"]
-        self.assertEqual(6.0, artery.overall_value)
+        self.assertEqual(18.0, artery.overall_value)
         self.assertEqual((4, 2), artery.beat_curves.shape)
 
     def test_volume_headline_reduces_the_displayed_phase_curve(self) -> None:
@@ -472,8 +520,14 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 output_h5.create_dataset(
                     schema.blood_volume_rate.artery.static_edges,
                     data=np.array([
-                        [[[1.0, 3.0]], [[3.0, np.nan]]],
-                        [[[5.0, np.inf]], [[7.0, 9.0]]],
+                        [
+                            [[1.0, 10.0], [2.0, 20.0]],
+                            [[3.0, np.nan], [4.0, 40.0]],
+                        ],
+                        [
+                            [[5.0, 50.0], [6.0, 60.0]],
+                            [[7.0, 70.0], [8.0, 80.0]],
+                        ],
                     ]),
                 )
                 output_h5.create_dataset(
@@ -485,10 +539,10 @@ class PdfReportRunnerPathTests(unittest.TestCase):
         self.assertEqual(["gradient_edges", "masked_edges"], list(methods))
         np.testing.assert_allclose(
             methods["gradient_edges"]["artery"].beat_curves,
-            [[2.0, 3.0], [5.0, 8.0]],
+            [[16.5, 23.5], [60.5, 82.5]],
         )
         np.testing.assert_allclose(
-            methods["gradient_edges"]["artery"].phase_curve, [2.5, 6.5],
+            methods["gradient_edges"]["artery"].phase_curve, [20.0, 71.5],
         )
         np.testing.assert_allclose(
             methods["masked_edges"]["artery"].phase_curve, [11.0, 15.0],
@@ -518,17 +572,18 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 )
             report = _read_report(path)
             pdf_path = write_pdf_report(
-                root / "pdf" / "scan_report.pdf", build_report_pages(report, "scan", None, {}),
+                root / "pdf" / "scan_velocityBvrReport.pdf",
+                build_velocity_bvr_pages(report, "scan", None, {}),
             )
             content = pdf_path.read_bytes()
             self.assertTrue(content.startswith(b"%PDF-"))
-            self.assertEqual(3, len(re.findall(rb"/Type /Page(?!s)", content)))
+            self.assertEqual(2, len(re.findall(rb"/Type /Page(?!s)", content)))
 
 
-def _read_report(path: Path, *, processing_root="ProcessingMoments", include_optional=True):
+def _read_report(path: Path, *, processing_root="ProcessingMoments", include_bvr=True):
     with h5py.File(path, "r") as h5file:
         output = PipelineH5Output(h5file, processing_root=processing_root)
-        return extract_report_data(output, include_optional=include_optional)
+        return extract_report_data(output, include_bvr=include_bvr)
 
 
 def _fake_context(manager: OutputManager, output_h5_path: Path, hd_h5_path: Path):

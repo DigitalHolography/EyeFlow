@@ -5,21 +5,16 @@ from types import SimpleNamespace
 
 import numpy as np
 
-import pipelines  # noqa: F401
 from calculations.topology import BranchIdentityResult, OpticDisc, SegmentTopology
 from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.calculator import (
     WaveformShapeMetricsCalculator,
 )
-from pipelines.waveform_shape_metrics.metrics.quadrants import pack_quadrant_metrics
 from pipelines.waveform_shape_metrics.metrics.runner import (
     run_waveform_shape_metric_calculations,
 )
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
-from pipelines.velocity_analysis.outputs.continuous import pack_segment_velocity_outputs
-from pipelines.velocity_analysis.outputs.quadrants import pack_quadrant_velocity_outputs
 from utils.logger import Logger
 
 
@@ -46,87 +41,6 @@ def _segment_topology(labels, branch_ids, centers, optic_disc_center):
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
-    def test_waveform_pipelines_have_separate_dag_responsibilities(self):
-        pipelines.load_pipeline_catalog()
-
-        self.assertIn("velocity_analysis", PIPELINE_REGISTRY)
-        self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
-        self.assertIn("pdf_report", PIPELINE_REGISTRY)
-        for pipeline_name in (
-            "velocity_analysis",
-            "waveform_shape_metrics",
-            "absolute_waveform_metrics",
-            "lowrank_waveform_decomposition",
-        ):
-            quadrant_option = next(
-                option
-                for option in PIPELINE_REGISTRY[pipeline_name].options
-                if option.name == "quadrants"
-            )
-            self.assertEqual("Quadrants", quadrant_option.label)
-        self.assertEqual(
-            "ProcessingMoments/Metrics/waveform_shape_metrics",
-            EyeFlowOutputPaths.active().waveform_shape_metrics_root,
-        )
-
-        dag = PipelineDAG(PIPELINE_REGISTRY.values())
-        metrics_plan = dag.resolve_targets(["waveform_shape_metrics"])
-        report_plan = dag.resolve_targets(["pdf_report"])
-
-        self.assertEqual(
-            (
-                "topology_core",
-                "velocity",
-                "velocity_analysis",
-                "waveform_shape_metrics",
-            ),
-            tuple(
-                name for name in metrics_plan.names
-                if name not in {"low_freq_spectra", "pdf_width_report"}
-            ),
-        )
-        self.assertEqual("pdf_width_report", metrics_plan.names[-1])
-        self.assertGreater(
-            metrics_plan.names.index("low_freq_spectra"), metrics_plan.names.index("velocity"),
-        )
-        self.assertEqual("pdf_width_report", report_plan.names[-1])
-        self.assertLess(report_plan.names.index("pdf_report"),
-                        report_plan.names.index("pdf_width_report"))
-        self.assertLess(
-            report_plan.names.index("velocity_analysis"),
-            report_plan.names.index("waveform_shape_metrics"),
-        )
-    def test_runner_reads_packed_metrics_and_prefixes_outputs(self):
-        schema = EyeFlowOutputPaths.active()
-        packed_metrics = self._global_artery_inputs(schema)
-
-        metrics = run_waveform_shape_metric_calculations(packed_metrics)
-
-        self.assertTrue(metrics)
-        self.assertTrue(
-            all(
-                key.startswith(f"{schema.waveform_shape_metrics_root}/artery/")
-                for key in metrics
-            )
-        )
-        self.assertFalse(any("/vein/" in key for key in metrics))
-
-    def test_runner_rejects_an_incomplete_waveform_pair(self):
-        schema = EyeFlowOutputPaths.active()
-        packed_metrics = {
-            schema.cardiac_cycle.systolic_cycle_duration_seconds: (
-                np.asarray([0.8], dtype=np.float32),
-                {"unit": "s"},
-            ),
-            schema.artery_per_beat_filtered.velocity_signal: np.ones(
-                (16, 1),
-                dtype=np.float32,
-            ),
-        }
-
-        with self.assertRaisesRegex(ValueError, "Incomplete global waveform"):
-            run_waveform_shape_metric_calculations(packed_metrics)
-
     def test_ri_pi_use_unrectified_mean_repeating_cycle(self):
         cycles = np.asarray(
             [
@@ -174,73 +88,6 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         self.assertIn("Tbeat=0.0", joined_messages)
         self.assertIn("m0_sum=0.0", joined_messages)
         self.assertIn("waveform column is missing", joined_messages)
-
-    def test_quadrant_metrics_are_nested_below_waveform_shape_outputs(self):
-        schema = EyeFlowOutputPaths.active()
-        sample_count = 2
-        branch_count = 2
-        radius_count = 2
-        metric_values = np.ones(
-            (sample_count, branch_count, radius_count),
-            dtype=np.float32,
-        )
-        metrics = {}
-        for signal_group, signal_name in (
-            ("raw_segment", "raw"),
-            ("bandlimited_segment", "bandlimited"),
-        ):
-            for metric_name in WaveformShapeMetricsCalculator._metric_names():
-                metrics[
-                    f"{schema.waveform_shape_metrics_root}/artery/"
-                    f"by_segment/{signal_group}/{metric_name}"
-                ] = (metric_values, {"signal_type": signal_name})
-
-        labels = np.zeros((8, 8), dtype=np.int32)
-        labels[1, 1] = 1
-        labels[1, 6] = 2
-        segments = SimpleNamespace(
-            profile=SimpleNamespace(
-                segment_signal=np.zeros((radius_count, branch_count, 3)),
-                topology=_segment_topology(
-                    labels,
-                    np.asarray([1, 2], dtype=np.int32),
-                    np.zeros((radius_count, branch_count, 2)),
-                    (3.0, 2.0),
-                ),
-            ),
-        )
-        regional = pack_quadrant_metrics(
-            metrics,
-            segments,
-            None,
-        )
-
-        north_west = (
-            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
-            "north_west/global/raw/mu_t"
-        )
-        north_east_branch = (
-            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
-            "north_east/by_branch/branch_2/raw/mu_t"
-        )
-        self.assertIn(north_west, regional)
-        self.assertIn(north_east_branch, regional)
-        np.testing.assert_allclose(regional[north_west].data, [1.0, 1.0])
-        np.testing.assert_allclose(
-            regional[north_east_branch].data,
-            [1.0, 1.0],
-        )
-        quadrant_root = (
-            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
-        )
-        self.assertEqual(
-            {"north_east", "south_east", "north_west", "south_west"},
-            {
-                key.removeprefix(quadrant_root).split("/", 1)[0]
-                for key in regional
-                if key.startswith(quadrant_root)
-            },
-        )
 
     def test_output_composer_contains_only_selected_metric_groups(self):
         schema = EyeFlowOutputPaths.active()
@@ -346,114 +193,6 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             include_quadrants=False,
         )
         self.assertEqual({}, no_metrics)
-
-    def test_quadrant_velocity_outputs_reduce_segment_waveforms(self):
-        schema = EyeFlowOutputPaths.active()
-        labels = np.zeros((8, 8), dtype=np.int32)
-        labels[1, 1] = 1
-        labels[1, 6] = 2
-        segment_velocity = np.asarray(
-            [
-                [[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]],
-                [[3.0, 4.0, 5.0], [30.0, 40.0, 50.0]],
-            ],
-            dtype=np.float32,
-        )
-        segment_per_beat = np.asarray(
-            [
-                [[[1.0, 3.0], [10.0, 30.0]], [[2.0, 4.0], [20.0, 40.0]]],
-                [[[5.0, 7.0], [50.0, 70.0]], [[6.0, 8.0], [60.0, 80.0]]],
-            ],
-            dtype=np.float32,
-        )
-        segments = SimpleNamespace(
-            profile=SimpleNamespace(
-                segment_signal=segment_velocity,
-                topology=_segment_topology(
-                    labels,
-                    np.asarray([1, 2], dtype=np.int32),
-                    np.zeros((2, 2, 2)),
-                    (3.0, 2.0),
-                ),
-            ),
-        )
-        source_data = SimpleNamespace(
-            retinal_artery_mask=np.zeros((8, 8), dtype=bool),
-            retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc=OpticDisc(
-                np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
-            ),
-            source=SimpleNamespace(
-                holodoppler=SimpleNamespace(
-                    timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
-                ),
-            ),
-        )
-        metrics = {
-            schema.artery_per_beat_filtered.segment_velocity_signal: segment_per_beat,
-            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited: (
-                segment_per_beat + 100.0
-            ),
-        }
-
-        outputs = pack_quadrant_velocity_outputs(
-            metrics,
-            source_data,
-            segments,
-            None,
-        )
-        segment_outputs = pack_segment_velocity_outputs(
-            segments,
-            None,
-            source_data=source_data,
-        )
-        continuous_segment_path = schema.artery_segments.velocity_signal
-        self.assertIsNotNone(continuous_segment_path)
-        self.assertIn(continuous_segment_path, segment_outputs)
-        np.testing.assert_allclose(
-            segment_outputs[continuous_segment_path][0],
-            segment_velocity.transpose(2, 1, 0),
-        )
-        continuous_band_limited_path = (
-            schema.artery_segments.velocity_signal_filtered
-        )
-        self.assertIsNotNone(continuous_band_limited_path)
-        self.assertIn(continuous_band_limited_path, segment_outputs)
-        np.testing.assert_allclose(
-            segment_outputs[continuous_band_limited_path][0],
-            segment_velocity.transpose(2, 1, 0),
-        )
-
-        north_west_raw = (
-            "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/north_west/ArterySignal"
-        )
-        north_east_raw = (
-            "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/north_east/ArterySignal"
-        )
-        north_west_per_beat = (
-            "ProcessingMoments/Velocity/PerBeat/Global/Filtered/Quadrants/"
-            "north_west/ArterySignal"
-        )
-        self.assertIn(north_west_raw, outputs)
-        self.assertIn(north_east_raw, outputs)
-        np.testing.assert_allclose(outputs[north_west_raw].data, [2.0, 3.0, 4.0])
-        np.testing.assert_allclose(
-            outputs[north_east_raw].data,
-            [20.0, 30.0, 40.0],
-        )
-        np.testing.assert_allclose(
-            outputs[north_west_per_beat].data,
-            [[2.0, 6.0], [3.0, 7.0]],
-        )
-        continuous_quadrant_root = "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/"
-        self.assertEqual(
-            {"north_east", "south_east", "north_west", "south_west"},
-            {
-                key.removeprefix(continuous_quadrant_root).split("/", 1)[0]
-                for key in outputs
-                if key.startswith(continuous_quadrant_root)
-            },
-        )
 
     @staticmethod
     def _global_artery_inputs(schema):

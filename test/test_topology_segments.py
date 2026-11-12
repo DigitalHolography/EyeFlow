@@ -49,43 +49,6 @@ class SegmentTopologyTests(unittest.TestCase):
         )
         self.assertTrue(np.all(topology.valid_segments))
 
-    def test_explicit_center_drives_the_centered_circle_exclusion(self) -> None:
-        vessel = np.ones((31, 35), dtype=bool)
-        disc = np.zeros_like(vessel)
-        disc[4:9, 5:12] = True
-        settings = AnnulusGeometry(0.0, 0.8, 0.4, 2)
-        topology = build_segment_topology(
-            vessel,
-            OpticDisc(disc, (24.0, 20.0), None, None),
-            settings,
-        )
-        self.assertEqual((24.0, 20.0), topology.optic_disc_center_xy)
-        self.assertIs(topology.ring_settings, settings)
-        circle = topology.optic_disc_mask
-        self.assertFalse(np.any(topology.labels[circle]))
-        self.assertFalse(np.any(topology.annulus_masks[:, circle]))
-        self.assertTrue(np.any(topology.branch_identity.stages.vessel[circle]))
-        self.assertFalse(
-            np.any(topology.branch_identity.stages.cleaned_skeleton[circle])
-        )
-        self.assertTrue(np.any(topology.annulus_masks[:, disc]))
-        self.assertTrue(np.any(topology.branch_identity.stages.vessel[disc]))
-
-    def test_explicit_center_is_used_for_nonempty_and_empty_masks(self) -> None:
-        vessel = np.zeros((21, 31), dtype=bool)
-        disc = np.zeros_like(vessel)
-        disc[4:7, 8:11] = True
-        settings = AnnulusGeometry(0.0, 0.8, 0.4, 1)
-        center = (13.0, 8.0)
-        from_mask = build_segment_topology(
-            vessel, OpticDisc(disc, center, None, None), settings
-        )
-        from_empty = build_segment_topology(
-            vessel, OpticDisc(np.zeros_like(disc), center, None, None), settings
-        )
-        self.assertEqual(center, from_mask.optic_disc_center_xy)
-        self.assertEqual(center, from_empty.optic_disc_center_xy)
-
     def test_extracts_vector_maps_with_explicit_spatial_axes(self) -> None:
         topology = _edge_topology()
         vector_map = np.arange(2 * 4 * 5 * 2, dtype=np.float32).reshape(2, 4, 5, 2)

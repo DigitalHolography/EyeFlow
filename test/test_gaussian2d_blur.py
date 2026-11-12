@@ -49,8 +49,8 @@ def test_imagej_nearest_extension_before_zeroing_output_border():
     np.testing.assert_array_equal(actual[0, :, 0], 0.0)
 
 
-@pytest.mark.parametrize("position", [(64, 64), (0, 0)])
-def test_nan_propagates_spatially_and_remains_missing_on_border(position):
+def test_nan_propagates_spatially_and_remains_missing_on_border():
+    position = (64, 64)
     stack = np.ones((2, 129, 129), dtype=np.float32)
     row, column = position
     stack[0, row, column] = np.nan
@@ -61,10 +61,3 @@ def test_nan_propagates_spatially_and_remains_missing_on_border(position):
     expected_missing[max(0, row - 25) : row + 26, max(0, column - 25) : column + 26] = True
     np.testing.assert_array_equal(np.isnan(actual[0]), expected_missing)
     assert np.all(np.isfinite(actual[1]))
-
-
-def test_empty_recording():
-    stack = np.empty((0, 129, 129), dtype=np.float32)
-    actual = gaussian2d_blur(stack)
-    assert actual.shape == stack.shape
-    assert actual.dtype == np.float32

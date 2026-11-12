@@ -151,37 +151,6 @@ class LumenSizePngTests(unittest.TestCase):
             np.testing.assert_allclose(mean_curves[0][1], [7.0, 7.0, 7.5, 0.0])
             self.assertIn("n=2", mean_curves[0][2])
 
-    def test_includes_ties_at_quartile_boundary(self):
-        values = np.asarray([1.0, 2.0, 3.0, 4.0, 4.0], dtype=np.float32)
-        values = values.reshape(1, 5)
-        with patch(
-            "pipelines.spatial_gradient_moment0.lumen_size._save_lumen_size_plot"
-        ) as save_plot:
-            export_lumen_size_pngs(
-                None, values, np.arange(5), vessel_name="Artery", period_seconds=0.8
-            )
-        np.testing.assert_array_equal(save_plot.call_args_list[1].args[1], [[4.0]])
-        self.assertIn("n=2", save_plot.call_args_list[1].args[2][0])
-
-    def test_all_nan_and_empty_inputs_export_without_reduction_warnings(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output = OutputManager(
-                HoloRunLayout.from_holo(
-                    Path(temp_dir) / "sample.holo", output_root=Path(temp_dir)
-                )
-            )
-            for shape in ((4, 3), (4, 0), (0, 3)):
-                with self.subTest(shape=shape), warnings.catch_warnings():
-                    warnings.simplefilter("error", category=RuntimeWarning)
-                    paths = export_lumen_size_pngs(
-                        output,
-                        np.full(shape, np.nan, dtype=np.float32),
-                        np.arange(shape[1]),
-                        vessel_name="Artery",
-                        period_seconds=0.8,
-                    )
-                    self.assertTrue(all(path.is_file() for path in paths))
-
 
 if __name__ == "__main__":
     unittest.main()

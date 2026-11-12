@@ -7,7 +7,7 @@ from .runner import run_pdf_report
 
 @pipeline(
     name="pdf_report",
-    description="Generate A4 PDF report from EyeFlow analysis outputs.",
+    description="Generate moments velocity/BVR and shared spectra/gaps PDF reports.",
     requires=["numpy", "matplotlib", "PIL"],
     dag_requires=["velocity_analysis", "waveform_shape_metrics"],
     input_slot="both",

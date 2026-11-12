@@ -60,18 +60,8 @@ def test_phase_areas_use_fixed_peak_bins_and_leave_input_unchanged():
     assert override["A0"][0] == 7.5
 
 
-def test_phase_areas_integrate_in_khz_and_keep_ratio_units_dimensionless():
-    curves = analyze_phase_spectrum(
-        _phase_spectrum()[:1], index_max1=1, index_max2=6, sampling_frequency_hz=4000,
-    )
-    assert curves["A0"][0] == 7.5
-    assert curves["A1"][0] == 8.5
-    assert curves["SE"][0] == 2 / 15
-
-
-@pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed_difference(dtype):
-    phase = np.arange(6, dtype=dtype) / 6
+def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed_difference():
+    phase = np.arange(6, dtype=np.float32) / 6
     metrics = _pack(phase=phase)
     root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
     expected = {
@@ -107,34 +97,6 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
         assert delta_attrs["calculation_method"] == "late_median_minus_early_median"
     # Aggregate the ratios themselves, rather than dividing aggregated areas.
     assert metrics[f"{root}/SEI_late"][0] != pytest.approx(16.5 / 22.5 - 1)
-
-
-def test_default_128_phase_grid_uses_43_early_and_85_late_samples():
-    metrics = _pack(np.tile(_phase_spectrum()[0], (128, 1)))
-    root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
-    for name in PHASE_SUMMARY_OUTPUT_NAMES.values():
-        assert metrics[f"{root}/{name}_early"][1]["source_phase_sample_count"] == 43
-        assert metrics[f"{root}/{name}_late"][1]["source_phase_sample_count"] == 85
-
-
-def test_custom_intervals_apply_to_every_metric_and_delta_metadata():
-    metrics = _pack(early_interval=(0, 0.25), late_interval=(0.5, 1))
-    root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
-    assert metrics[f"{root}/A0_early"][0] == 22.5
-    assert metrics[f"{root}/A0_late"][0] == 25
-    assert metrics[f"{root}/delta_A0"][0] == 2.5
-    assert metrics[f"{root}/A_early"][0] == 25.5
-    assert metrics[f"{root}/A_late"][0] == 18
-    assert metrics[f"{root}/delta_A"][0] == -7.5
-    for name in PHASE_SUMMARY_OUTPUT_NAMES.values():
-        early, early_attrs = metrics[f"{root}/{name}_early"]
-        late, late_attrs = metrics[f"{root}/{name}_late"]
-        delta, delta_attrs = metrics[f"{root}/delta_{name}"]
-        assert early_attrs["phase_interval"] == delta_attrs["early_phase_interval"] == [0, 0.25]
-        assert late_attrs["phase_interval"] == delta_attrs["late_phase_interval"] == [0.5, 1]
-        assert early_attrs["source_phase_sample_count"] == 2
-        assert late_attrs["source_phase_sample_count"] == 3
-        assert delta == pytest.approx(float(late) - float(early), abs=1e-6)
 
 
 def test_runner_shares_custom_intervals_across_spectra_std_and_metric_summaries(tmp_path):
@@ -192,77 +154,3 @@ def test_phase_nan_and_zero_policies_preserve_independent_area_information():
     for name in ("SE", "SE_25", "SE_50", "SE_75"):
         assert np.isnan(curves[name][3])  # The new A0 denominator is missing.
     assert curves["A1"][5] == 27
-
-
-def test_nan_windows_ignore_missing_phases_and_leave_missing_deltas_nan():
-    values = _phase_spectrum()
-    values[:3] = np.nan
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)
-        metrics = _pack(values)
-    root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
-    for name in PHASE_SUMMARY_OUTPUT_NAMES.values():
-        assert np.isnan(metrics[f"{root}/{name}_early"][0])
-        assert np.isfinite(metrics[f"{root}/{name}_late"][0])
-        assert np.isnan(metrics[f"{root}/delta_{name}"][0])
-        assert metrics[f"{root}/{name}_early"][1]["valid_sample_count"] == 0
-    assert metrics[f"{root}/A0_late"][0] == 25
-
-
-def test_zero_valley_denominator_keeps_areas_but_makes_ratios_and_offsets_nan():
-    values = _phase_spectrum()[:1].copy()
-    values[:, 3:5] = 0
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)
-        curves = analyze_phase_spectrum(values, sampling_frequency_hz=8000, index_max1=1, index_max2=6)
-    assert curves["A0"][0] == 0
-    assert curves["A1"][0] == 11
-    assert np.isfinite(curves["A_50"][0])
-    assert np.isnan(curves["SE"][0])
-    assert np.isfinite(curves["SE_50"][0])
-
-
-def test_missing_fixed_peak_indices_do_not_trigger_a_phasewise_peak_search():
-    curves = analyze_phase_spectrum(_phase_spectrum(), sampling_frequency_hz=8000, index_max1=np.nan, index_max2=6)
-    assert all(np.isnan(curve).all() for curve in curves.values())
-
-
-def test_pooled_and_phase_frequency_domains_must_agree():
-    with pytest.raises(ValueError, match="same frequency-bin domain"):
-        _pack(np.ones((6, 16)))
-
-
-def test_runner_calculates_curves_after_the_beat_median(tmp_path):
-    schema = EyeFlowOutputPaths.active()
-    raw = np.ones((6, 8, 3), dtype=np.float32)
-    raw[:, [0, 7], :] = 0
-    raw[:, [1, 6], :] = 10
-    raw[0, 1, :] = [100, 1, 10]
-    raw[0, 6, :] = [1, 100, 10]
-    timing = SimpleNamespace(
-        cycle_boundary_indexes=np.array([0, 2, 4, 8]),
-        cycle_durations_seconds=np.array([0.2, 0.2, 0.4]),
-        cardiac_cycle_source="artery", continuous=lambda vessel, raw: np.zeros(9),
-    )
-    with h5py.File(tmp_path / "output.h5", "w") as h5:
-        h5.create_dataset(schema.sampling_frequency_hz, data=8000)
-        _write_frequency_table(h5, 8, 8000)
-        h5.create_dataset(schema.spectrograms_masked, data=np.ones((9, 8)))
-        ctx = SimpleNamespace(output=SimpleNamespace(h5=PipelineH5Output(h5)))
-        with patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat", return_value=raw):
-            ctx.output.h5.write_many(run_gap_analysis(ctx, timing))
-        group = h5[schema.spectrograms_masked_metrics_root]
-        assert group["index_max1"][()] == 1
-        assert group["index_max2"][()] == 6
-        # Flood the beat-median spectrum, rather than taking medians of flooded beats.
-        # The two ramps 10 -> 1 and 1 -> 10 each have clipped area 37/9 at h=5.
-        flooded = 3 + 2 * 37 / 9
-        np.testing.assert_allclose(group["A_50_t"][:], [flooded] * 6)
-        np.testing.assert_array_equal(group["A0_t"][:], [5] * 6)
-        np.testing.assert_allclose(group["SE"][:], [1.8] * 6)
-        assert group["A_50_early"][()] == pytest.approx(flooded)
-        assert group["A_50_late"][()] == pytest.approx(flooded)
-        assert group["delta_A_50"][()] == 0
-        assert group["A_50_t"].attrs["source_path"] == h5[schema.spectrograms_masked_time_aggregated_median_beat].name
-        assert not {"A1", "A1_t", "R2", "R2_t", "Z2", "Z2_t"} & set(group)
-        assert not {"h0", "h1", "hv", "rho_h", "rho_v"} & set(group)

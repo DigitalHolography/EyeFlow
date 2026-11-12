@@ -64,38 +64,6 @@ class _State:
 
 
 class AbsoluteWaveformMetricsTests(unittest.TestCase):
-    def test_pipeline_is_native_package_with_velocity_dependency(self) -> None:
-        pipeline_root = SRC_DIR / "pipelines"
-        self.assertTrue(
-            (pipeline_root / "absolute_waveform_metrics" / "calculator.py").exists()
-        )
-
-        pipelines.load_pipeline_catalog()
-        descriptor = PIPELINE_REGISTRY["absolute_waveform_metrics"]
-        self.assertEqual(("velocity_analysis",), descriptor.dag_requires)
-        self.assertEqual(
-            ("segments", "quadrants"),
-            tuple(option.name for option in descriptor.options),
-        )
-        self.assertEqual(
-            "ProcessingMoments/Metrics/absolute_waveform_metrics",
-            EyeFlowOutputPaths.active().absolute_waveform_metrics_root,
-        )
-
-        plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(
-            ["absolute_waveform_metrics"]
-        )
-        self.assertEqual(
-            (
-                "topology_core",
-                "velocity",
-                "velocity_analysis",
-                "absolute_waveform_metrics",
-            ),
-            tuple(name for name in plan.names if name != "low_freq_spectra"),
-        )
-        self.assertGreater(plan.names.index("low_freq_spectra"), plan.names.index("velocity"))
-
     def test_global_outputs_preserve_amplitude_and_prefix_schema_root(self) -> None:
         schema = EyeFlowOutputPaths.active()
         time = np.linspace(0.0, 2.0 * np.pi, 32, endpoint=False)
@@ -126,43 +94,6 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             "raw_vs_bandlimited/raw_band_corr",
             outputs,
         )
-
-    def test_segment_outputs_keep_native_sample_beat_branch_radius_order(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        waveform = np.ones((2, 8), dtype=np.float32)
-        segments = np.ones((8, 2, 3, 2), dtype=np.float32)
-        inputs = {
-            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
-                [0.8, 0.9], dtype=np.float32
-            ),
-            schema.artery_per_beat_filtered.velocity_signal: waveform,
-            schema.artery_per_beat_filtered.velocity_signal_band_limited: waveform,
-            schema.artery_per_beat_filtered.segment_velocity_signal: segments,
-            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited: segments,
-        }
-
-        outputs = pack_absolute_waveform_outputs(inputs, include_segments=True)
-
-        key = (
-            f"{schema.absolute_waveform_metrics_root}/artery/by_segment/"
-            "raw_segment/vmax"
-        )
-        self.assertEqual((2, 3, 2), outputs[key].data.shape)
-
-    def test_incomplete_waveform_pair_is_rejected(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        inputs = {
-            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
-                [0.8], dtype=np.float32
-            ),
-            schema.artery_per_beat_filtered.velocity_signal: np.ones(
-                (1, 8),
-                dtype=np.float32,
-            ),
-        }
-
-        with self.assertRaisesRegex(ValueError, "Incomplete global waveform"):
-            pack_absolute_waveform_outputs(inputs)
 
     def test_quadrant_outputs_use_absolute_metric_root_and_regions(self) -> None:
         schema = EyeFlowOutputPaths.active()

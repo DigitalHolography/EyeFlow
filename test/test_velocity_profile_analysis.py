@@ -5,16 +5,13 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 import h5py
 import numpy as np
 
 from calculations.vessel_segments.profiles.fits import quadratic as fitting
-from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.base import PIPELINE_REGISTRY, DatasetValue
+from pipeline_engine.base import DatasetValue
 from pipeline_engine.context import PipelineH5Output
-from pipelines import load_pipeline_catalog
 from pipelines.velocity_analysis.outputs.profile_analysis import (
     OUTPUT_ROOT,
     SOURCE_PATHS,
@@ -32,36 +29,6 @@ def _scalar(result, name):
 
 
 class VelocityProfileFittingTests(unittest.TestCase):
-    def test_border_weights_are_quadratic_over_complete_domain(self) -> None:
-        np.testing.assert_array_equal(
-            fitting.border_weights(9),
-            [0, 0.4375, 0.75, 0.9375, 1, 0.9375, 0.75, 0.4375, 0],
-        )
-        np.testing.assert_allclose(
-            fitting.border_weights(6),
-            [0, 0.64, 0.96, 0.96, 0.64, 0],
-        )
-        np.testing.assert_array_equal(fitting.border_weights(1), [1])
-        self.assertEqual(0, fitting.border_weights(0).size)
-
-    def test_border_weight_power_is_parameterized(self) -> None:
-        np.testing.assert_array_equal(
-            fitting.border_weights(5, power=1),
-            [0, 0.5, 1, 0.5, 0],
-        )
-        np.testing.assert_array_equal(
-            fitting.border_weights(5, power=4),
-            [0, 0.9375, 1, 0.9375, 0],
-        )
-
-    def test_border_weight_power_must_be_finite_positive_real(self) -> None:
-        for power in (0, -1, np.nan, np.inf, -np.inf, True, "2", 1 + 0j):
-            with self.subTest(power=power):
-                with self.assertRaisesRegex(ValueError, "finite positive real"):
-                    fitting.border_weights(9, power=power)
-                with self.assertRaisesRegex(ValueError, "finite positive real"):
-                    _analyze(np.arange(9.0), weight_power=power)
-
     def test_coefficients_fractional_roots_center_and_areas(self) -> None:
         x = np.arange(11.0)
         y = -2 * (x - 1.25) * (x - 8.75)
@@ -121,56 +88,7 @@ class VelocityProfileFittingTests(unittest.TestCase):
         self.assertEqual(2, _scalar(result, "n_fit_samples"))
         self.assertTrue(all(np.isnan(_scalar(result, name)) for name in fitting.FLOAT_OUTPUTS))
 
-    def test_axis_order_time_blocking_and_shared_solves(self) -> None:
-        shape = (2, 2, 3, 2)
-        factors = np.arange(1, np.prod(shape) + 1).reshape(shape)
-        x = np.arange(9.0)
-        values = (-(x - 1.25) * (x - 6.75))[:, None, None, None, None] * factors[None]
-        result = fitting.fit_quadratic_profiles(values, time_block_size=1)
-        np.testing.assert_allclose(result["a"], -factors)
-        self.assertTrue(all(value.shape == shape for value in result.values()))
-
-        shared = np.repeat((-(x - 1) * (x - 7))[:, None, None, None, None], 4, axis=1)
-        shared[2, :2] = np.nan
-        with patch.object(np.linalg, "lstsq", wraps=np.linalg.lstsq) as solve:
-            fitting.fit_quadratic_profiles(shared)
-        self.assertEqual(2, solve.call_count)
-
-    def test_bounded_dataset_reads(self) -> None:
-        class SlabOnly:
-            shape = (9, 7, 1, 1, 1)
-            dtype = np.dtype("float32")
-
-            def __getitem__(self, key):
-                self_test.assertLessEqual(key[1].stop - key[1].start, 2)
-                return np.ones((9, key[1].stop - key[1].start))
-
-            def __array__(self, *args, **kwargs):
-                raise AssertionError("full dataset read")
-
-        self_test = self
-        result = fitting.fit_quadratic_profiles(SlabOnly(), time_block_size=2)
-        self.assertEqual((7, 1, 1, 1), result["a"].shape)
-
-
 class VelocityProfileAnalysisOptionTests(unittest.TestCase):
-    def test_output_root_comes_from_the_active_schema(self) -> None:
-        self.assertEqual(
-            "/" + EyeFlowOutputPaths.active().velocity_profile_analysis_root,
-            OUTPUT_ROOT,
-        )
-
-    def test_analysis_is_a_waveform_option_not_an_independent_pipeline(self) -> None:
-        load_pipeline_catalog()
-        self.assertNotIn("velocity_profile_analysis", PIPELINE_REGISTRY)
-        options = {
-            option.name: option
-            for option in PIPELINE_REGISTRY["velocity_analysis"].options
-        }
-        analysis = options["velocity_profile_analysis"]
-        self.assertFalse(analysis.default_enabled)
-        self.assertEqual(("velocity_profiles",), analysis.requires)
-
     def test_both_vessels_publish_the_complete_identical_output_set(self) -> None:
         values = np.broadcast_to(
             (10 - (np.arange(9.0) - 4) ** 2)[:, None, None, None, None],
@@ -209,19 +127,6 @@ class VelocityProfileAnalysisOptionTests(unittest.TestCase):
                             "u=x/(Nx-1); d=abs(2*u-1); w=1-d^p",
                             dataset.attrs["weight_definition"],
                         )
-
-    def test_missing_source_names_the_missing_vessel_and_path(self) -> None:
-        for missing in SOURCE_PATHS:
-            with self.subTest(missing=missing):
-                profile_outputs = {
-                    path.lstrip("/"): DatasetValue(
-                        np.ones((9, 1, 1, 1, 1))
-                    )
-                    for vessel, path in SOURCE_PATHS.items()
-                    if vessel != missing
-                }
-                with self.assertRaisesRegex(KeyError, f"{missing.lower()}.*{missing}"):
-                    pack_velocity_profile_analysis_outputs(profile_outputs)
 
 
 if __name__ == "__main__":

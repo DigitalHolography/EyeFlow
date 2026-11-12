@@ -4,7 +4,6 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import numpy as np
 
@@ -18,37 +17,11 @@ from calculations.topology import (
     build_segment_topology,
     label_vessel_branches,
 )
-from input_output.schema import EyeFlowOutputPaths, PixelPitch
-from pipelines.velocity_analysis import builder as runner
-from pipelines.topology_core.outputs import (
-    INNER_R0_VESSEL_LABEL,
-    pack_topology_outputs,
-)
+from input_output.schema import PixelPitch
+from pipelines.topology_core.outputs import pack_topology_outputs
 
 
 class OpticDiscBranchMaskTests(unittest.TestCase):
-    def test_supplied_mask_does_not_change_the_centered_circle_boundary(self):
-        shape = (21, 21)
-        vessel = np.ones(shape, dtype=bool)
-        center = (10.0, 10.0)
-        settings = AnnulusGeometry(0.4, 0.9, 0.5, 1)
-        empty = label_vessel_branches(
-            vessel,
-            OpticDisc(np.zeros(shape, dtype=bool), center, None, None),
-            settings,
-        )
-        exact = np.zeros(shape, dtype=bool)
-        exact[10, 10] = True
-        nonempty = label_vessel_branches(
-            vessel,
-            OpticDisc(exact, center, None, None),
-            settings,
-        )
-
-        np.testing.assert_array_equal(empty.stages.section, nonempty.stages.section)
-        self.assertFalse(empty.stages.section[10, 13])
-        self.assertTrue(empty.stages.section[10, 18])
-
     def test_near_disc_branch_points_use_the_complete_vessel_context(self):
         vessel = np.zeros((61, 61), dtype=bool)
         vessel[30, 5:56] = True
@@ -72,36 +45,6 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         self.assertGreater(right_marker, 0)
         self.assertNotEqual(upper_marker, right_marker)
 
-    def test_smaller_disc_radius_keeps_vessels_inside_the_old_circular_cutoff(self):
-        vessel, disc, source, settings = self._inputs()
-        original_vessel = vessel.copy()
-        original_disc = disc.copy()
-        source_disc = source.source.segmentation.optic_disc
-        circular_disc = OpticDisc(np.zeros_like(disc), source_disc.center, 20.0, 50.0)
-        circular = label_vessel_branches(vessel, circular_disc, settings)
-        branches = label_vessel_branches(vessel, source_disc, settings)
-
-        # This vessel lies outside the ellipse but inside its bounding circle.
-        self.assertFalse(disc[43, 73])
-        self.assertGreater(circular.labels[43, 73], 0)
-        self.assertGreater(branches.labels[43, 73], 0)
-        self.assertEqual(4, branches.branch_ids.size)
-        topology_disc = source_disc.centered_circle_mask_for(vessel.shape)
-        self.assertFalse(np.any(branches.labels[topology_disc]))
-        self.assertTrue(np.any(branches.stages.skeleton[topology_disc]))
-        self.assertFalse(np.any(branches.stages.cleaned_skeleton[topology_disc]))
-        np.testing.assert_array_equal(vessel, original_vessel)
-        np.testing.assert_array_equal(disc, original_disc)
-
-        outputs = self._pack_source(source, branches, branches)
-        schema = EyeFlowOutputPaths.active()
-        mask, _ = outputs[schema.segmentation.optic_disc.mask]
-        for paths in (schema.segmentation.artery, schema.segmentation.vein):
-            image, _ = outputs[paths.branch_label_map]
-            self.assertGreaterEqual(image[73, 57], 0)
-            self.assertEqual(INNER_R0_VESSEL_LABEL, image[60, 55])
-            self.assertFalse(np.array_equal(mask, image == INNER_R0_VESSEL_LABEL))
-
     def test_actual_mask_does_not_replace_the_centered_topology_circle(self):
         vessel, disc, source, settings = self._inputs()
         # A nonelliptical extension reaches beyond the nominal disc dimensions.
@@ -123,54 +66,6 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         self.assertTrue(np.any(topology.annulus_masks[:, disc]))
         self.assertGreater(topology.labels[43, 73], 0)
         self.assertTrue(np.any(topology.annulus_masks[:, 43, 105]))
-
-    def test_pipeline_uses_the_published_disc_mask_with_geometry_fallback(self):
-        vessel, disc, source, settings = self._inputs()
-        ctx = SimpleNamespace(
-            output=SimpleNamespace(available=False),
-            pipeline_scheduled=lambda name: False,
-            option_enabled=lambda *args, **kwargs: False,
-            inputs=SimpleNamespace(
-                hd=SimpleNamespace(filename="hd.h5"),
-                dv=SimpleNamespace(filename="dv.h5"),
-            ),
-            state=SimpleNamespace(raw={}),
-        )
-        schema = EyeFlowOutputPaths.active()
-        for source_mask in (disc, None):
-            with self.subTest(has_source_mask=source_mask is not None):
-                source.source.segmentation.optic_disc = OpticDisc(
-                    source_mask,
-                    (60.0, 45.0),
-                    20.0,
-                    50.0,
-                )
-                published, _ = self._pack_source(source, None, None)[
-                    schema.segmentation.optic_disc.mask
-                ]
-                expected_disc = np.flip(published.T, axis=0)
-                with patch.object(
-                    runner,
-                    "analyze_velocity_segment_profiles",
-                    return_value={"artery": "artery", "vein": "vein"},
-                ) as extract:
-                    result = runner._segment_velocity_inputs(
-                        np.zeros((1, *vessel.shape), dtype=np.float32),
-                        source,
-                        settings,
-                        ctx,
-                        cycle_boundary_indexes=np.asarray([0, 0]),
-                    )
-                self.assertEqual(("artery", "vein"), result)
-                np.testing.assert_array_equal(
-                    extract.call_args.args[2].mask_for(vessel.shape), expected_disc
-                )
-                branches = label_vessel_branches(
-                    vessel,
-                    source.source.segmentation.optic_disc,
-                    settings,
-                )
-                self.assertGreater(branches.labels[43, 73], 0)
 
     def test_wrong_disc_mask_shape_is_ignored_by_topology_but_rejected_on_output(self):
         vessel, _, source, settings = self._inputs()

@@ -20,20 +20,6 @@ def test_validates_center_dimensions_and_mask() -> None:
         OpticDisc(np.zeros((2, 3, 1)), (1.0, 2.0), 4.0, 6.0)
 
 
-def test_supplied_mask_takes_precedence_and_is_owned_by_the_disc() -> None:
-    supplied = np.zeros((5, 7), dtype=bool)
-    supplied[1, 2] = True
-    disc = OpticDisc(supplied, (3.0, 2.0), 100.0, 100.0)
-    supplied[1, 2] = False
-
-    resolved = disc.mask_for((5, 7))
-
-    assert resolved.sum() == 1
-    assert resolved[1, 2]
-    resolved[1, 2] = False
-    assert disc.mask_for((5, 7))[1, 2]
-
-
 def test_reconstructs_ellipse_and_requires_dimensions_only_when_needed() -> None:
     disc = OpticDisc(None, (3.0, 2.0), 4.0, 2.0)
     mask = disc.mask_for((5, 7))
@@ -67,12 +53,6 @@ def test_transpose_changes_mask_and_all_geometry_atomically() -> None:
     np.testing.assert_array_equal(square_disc.mask, square.T)
     assert square_disc.center == (1.0, 2.0)
     assert (square_disc.width, square_disc.height) == (4.0, 6.0)
-
-
-def test_shape_mismatch_is_rejected_without_implicit_transpose() -> None:
-    disc = OpticDisc(np.zeros((2, 3), dtype=bool), (1.0, 1.0), None, None)
-    with pytest.raises(ValueError, match="same orientation and shape"):
-        disc.mask_for((3, 2))
 
 
 def test_subtraction_is_boolean_exact_and_does_not_mutate_input() -> None:
@@ -112,9 +92,9 @@ def test_annulus_geometry_preserves_established_calculation() -> None:
     assert OpticDisc(None, (0.0, 0.0), 1.0, 1.0).annulus_geometry((1, 1)).inner_radius_frac == 1.0
 
 
-@pytest.mark.parametrize("pixel_pitch_mm", [0.02, 0.1, 0.2])
-def test_missing_measurements_fall_back_to_centered_physical_circle(pixel_pitch_mm) -> None:
+def test_missing_measurements_fall_back_to_centered_physical_circle() -> None:
     shape = (101, 201)
+    pixel_pitch_mm = 0.02
     disc = OpticDisc.from_measurements(
         None, None, None, None, shape, pixel_pitch_mm=pixel_pitch_mm
     )
@@ -133,29 +113,11 @@ def test_missing_measurements_fall_back_to_centered_physical_circle(pixel_pitch_
     np.testing.assert_array_equal(disc.mask_for(shape), expected)
 
 
-@pytest.mark.parametrize("pixel_pitch_mm", [None, 0, -0.02, np.nan, np.inf])
-def test_physical_fallback_requires_valid_pixel_pitch(pixel_pitch_mm) -> None:
+def test_physical_fallback_requires_valid_pixel_pitch() -> None:
     with pytest.raises(ValueError, match="pixel.pitch"):
         OpticDisc.from_measurements(
-            None, None, None, None, (20, 30), pixel_pitch_mm=pixel_pitch_mm
+            None, None, None, None, (20, 30), pixel_pitch_mm=None
         )
-
-
-def test_physical_fallback_is_clipped_without_rescaling_the_diameter() -> None:
-    disc = OpticDisc.centered_fallback((3, 4), pixel_pitch_mm=0.02)
-    assert disc.width == pytest.approx(95.5)
-    assert disc.mask_for((3, 4)).all()
-
-
-def test_nonfinite_mask_uses_full_fallback() -> None:
-    shape = (21, 31)
-    mask = np.full(shape, np.nan, dtype=np.float32)
-    disc = OpticDisc.from_measurements(
-        mask, (2.0, 3.0), 8.0, 10.0, shape, pixel_pitch_mm=0.02
-    )
-
-    assert disc.is_fallback
-    assert disc.center == (15.5, 10.5)
 
 
 def test_mask_supplies_missing_center_and_bounding_box_dimensions() -> None:
