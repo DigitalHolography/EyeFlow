@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def is_local_path(path: str | Path) -> bool:
-    """Reject network mounts without searching for alternative drives."""
+    """Require a recognized local volume without searching other drives."""
     path = Path(path).resolve()
     if os.name == "nt":
         import ctypes
@@ -20,15 +20,20 @@ def is_local_path(path: str | Path) -> bool:
 
     import psutil
 
-    mounts = sorted(
-        psutil.disk_partitions(all=True), key=lambda mount: len(mount.mountpoint), reverse=True
-    )
-    for mount in mounts:
-        if path.is_relative_to(Path(mount.mountpoint)):
-            return mount.fstype.lower() not in {
-                "nfs", "nfs4", "cifs", "smbfs", "sshfs", "fuse.sshfs",
-            }
-    return True
+    try:
+        mounts = sorted(
+            psutil.disk_partitions(all=True), key=lambda mount: len(mount.mountpoint), reverse=True
+        )
+        for mount in mounts:
+            if path.is_relative_to(Path(mount.mountpoint)):
+                return mount.fstype.lower() in {
+                    "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "tmpfs", "overlay",
+                    "apfs", "hfs", "hfs+", "hfsplus", "msdos", "vfat", "exfat",
+                    "ntfs", "ntfs3", "f2fs", "ufs", "ufs2", "jfs", "reiserfs",
+                }
+    except (OSError, ValueError, psutil.Error):
+        pass
+    return False
 
 
 def local_scratch_root() -> Path:

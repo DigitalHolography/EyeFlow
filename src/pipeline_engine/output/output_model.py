@@ -361,6 +361,11 @@ class OutputModel(OutputGroup):
         self._commit_listener = callback
         self._notify_committed()
 
+    def detach_commit_listener(self, callback):
+        """Release only the observer owned by the caller doing cleanup."""
+        if self._commit_listener == callback:
+            self._commit_listener = None
+
     def _notify_committed(self):
         callback = self._commit_listener
         if callback is None or self._commit_listener_error is not None or self._notifying_commit:
@@ -561,6 +566,8 @@ class OutputModel(OutputGroup):
 
         if self._checkpoints:
             raise RuntimeError("Cannot publish an active output transaction.")
+        if self._commit_listener is not None:
+            raise RuntimeError("Cannot publish while an output service is already bound.")
         ProductCheckpoint(self).commit(tuple(self._records))
         service = OutputService(self)
         try:

@@ -249,14 +249,15 @@ def test_commit_listener_late_binding_and_single_owner_do_not_repeat_dataset_del
         assert len(batches) == 1
 
 
-def test_commit_listener_failure_preserves_accepted_records_and_state(tmp_path):
+@pytest.mark.parametrize("failure", [OSError("writer is unavailable"), KeyboardInterrupt(), SystemExit(2)])
+def test_commit_listener_failure_preserves_accepted_records_and_state(tmp_path, failure):
     from input_output.output_manager import OutputManager
     from input_output.runs.layout import HoloRunLayout
     from pipeline_engine.execution.invocation import _pipeline_checkpoint
 
     with ProductStorage() as storage:
         model = OutputModel(storage, tmp_path / "output.h5")
-        failure, attempts = OSError("writer is unavailable"), []
+        attempts = []
 
         def failed(current):
             if "value" in current.committed_records():
@@ -274,3 +275,22 @@ def test_commit_listener_failure_preserves_accepted_records_and_state(tmp_path):
         with model.checkpoint(owner="producer"):
             model.create_dataset("later", data=8)
         assert attempts == [1] and model.records["later"].committed
+
+
+def test_standalone_publish_cannot_commit_records_owned_by_an_active_service(tmp_path):
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        batches, listener = _observe_committed_datasets(model)
+        model.create_dataset("unfinished", data=1)
+        with pytest.raises(RuntimeError, match="already bound"):
+            model.publish()
+        assert not model.records["unfinished"].committed and not batches
+        # Cleanup from an unrelated/failed service must preserve the live owner.
+        model.detach_commit_listener(lambda current: None)
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("accepted", data=7)
+        assert [set(batch) for batch in batches] == [{"accepted"}]
+        model.detach_commit_listener(listener)
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("later", data=8)
+        assert len(batches) == 1

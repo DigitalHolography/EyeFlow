@@ -132,6 +132,45 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
     )
 
 
+def test_previous_publication_overlaps_the_next_acquisitions_scientific_work(tmp_path, monkeypatch):
+    import shutil
+    from threading import Event
+
+    inputs = [_write_input(tmp_path / stem, stem) for stem in ('first', 'second')]
+    copying, next_science = Event(), Event()
+    copyfile = shutil.copyfile
+
+    def run(ctx):
+        stem = ctx.output.manager.layout.stem
+        if stem == 'second':
+            assert copying.wait(15), 'Previous output never reached publication'
+            assert not first_output.exists()
+        ctx.output.h5.write('Results/value', 1 if stem == 'first' else 2)
+        if stem == 'second':
+            next_science.set()
+
+    descriptor = PipelineDescriptor(
+        name='overlap', description='overlap', available=True,
+        pipeline_factory=lambda: SimpleNamespace(name='overlap', run=run),
+    )
+    spec = resolve_run_spec(input_paths=inputs, target_names=['overlap'], pipelines=[descriptor])
+    first_output = spec.requests[0].output_manager.path_for(OutputType.H5)
+
+    def copy(local, staging):
+        if staging.parent == first_output.parent:
+            copying.set()
+            assert next_science.wait(15), 'Next scientific execution waited for publication'
+        return copyfile(local, staging)
+
+    monkeypatch.setattr('input_output.writers.h5_publication.shutil.copyfile', copy)
+    result = execute_run(spec)
+    assert result.succeeded, result.failures
+    assert copying.is_set() and next_science.is_set() and len(result.outputs) == 2
+    for expected, path in enumerate(result.outputs, start=1):
+        with h5py.File(path) as output:
+            assert output['Results/value'][()] == expected
+
+
 class RunServiceTests(unittest.TestCase):
     def test_performance_summary_includes_pipeline_stage_and_publication(self) -> None:
         from pipeline_engine import StageGraph, StageSpec

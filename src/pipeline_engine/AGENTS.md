@@ -23,8 +23,8 @@ task crosses front-end or I/O boundaries.
 | `stage_graph/` | Immutable local definitions, dedicated planner, stage executor, logical products, artifact readiness, scope and journal |
 | `product_exchange/` | Qualified product identity, registry and authoritative coordinator acceptance |
 | `src/data_manager/` | Stable structured product handles and physical ownership over `ProductStorage` |
-| `data/input_service.py`, `data/storage.py`, `data/transfer.py` | Lazy source replay, immutable payloads and local-file transport |
-| `output/output_model.py`, `output/finalization.py` | Output tree/journals and retained payload ownership through publication |
+| `io/input/`, `data/storage.py`, `data/transfer.py` | Lazy source replay, immutable payloads and local-file transport |
+| `io/manager.py`, `io/output/`, `output/output_model.py` | Independent I/O lifetimes, progressive local serialization, output tree/journals and retained payload ownership through publication |
 | `resources.py`, `src/runtime_limits.py` | Batch admission/memory accounting and process/thread allowances |
 | `context.py` | Namespaced inputs/output, timing/setting helpers, shared state, options and result persistence |
 | `execution/errors.py` | User-facing pipeline exception formatting |

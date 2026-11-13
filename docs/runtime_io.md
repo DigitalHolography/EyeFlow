@@ -127,6 +127,20 @@ Writer mappings close after each operation. An acknowledgement releases writer
 admission, not the shared backing needed by later calculations, reports or exports.
 Worker product directories are nested inside the retained acquisition store.
 
+The actual output directory is verified as local before allocating IPC resources
+and again in the writer. This covers explicit storage directories and retained
+worker overrides as well as the default scratch selector. Windows requires a
+fixed local drive; POSIX requires a recognized local filesystem on the longest
+matching mount. Unknown or unavailable mount information fails closed. Configure
+`EYEFLOW_SCRATCH_DIR` to a recognized local volume when needed.
+
+Before each dataset, the writer checks free space for the complete next write
+plus overhead and a 16 MiB reserve. Dense arrays use their full stored dtype and
+explicit chunk-allocation estimate; native sparse HDF5 copies use physical backing
+size so large unallocated shapes remain supported. This is a preflight estimate,
+not a disk reservation against concurrent applications; allocation errors still
+abort serialization and prevent publication.
+
 Internal defaults bound outstanding work to 32 commands and 256 MiB of logical
 payload; one larger immutable dataset may proceed alone. The writer executes one
 command at a time with one compute slot and an I/O reservation up to 16 MiB plus
@@ -139,7 +153,11 @@ The writer never reserves a CPU for its whole lifetime. Final draining yields an
 enclosing local compute reservation. Startup, death, command errors and bounded
 operation timeouts become explicit output failures. Abort wakes finalizers, reaps
 the process and delivery thread, then removes incomplete local files and manifests.
-Cancellation during publication checks again before rename, preserving an existing
+Interrupts retained by an already accepted commit are raised at the next safe
+health boundary so Ctrl+C still stops the batch. Listener cleanup releases only
+its own binding, and standalone publication rejects an existing service before
+committing any unfinished records.
+Cancellation checks before copying and again before rename, preserving an existing
 destination. A running native destination copy can only finish or fail before its
 hidden temporary file is removed; it is never exposed as a complete public result.
 
@@ -193,6 +211,15 @@ input wait/overlap and process-tree resource counters remain separate. Reference
 preparation measures opening a mapping; native HDF5 reads, copying and compression
 remain included in HDF5 write time rather than being misreported as isolated disk
 or network throughput.
+
+Writer acknowledgements separately report operation CPU time, sampled peak RSS,
+and OS process read/write byte and operation counts. RSS uses a maximum across
+commands. These OS I/O counters include cached traffic and do not measure SSD
+device throughput. Publication reports file/copy bytes, copy duration, effective
+application transfer rate, replacement duration, failures and staging cleanup.
+Copy and replacement timing also survives failed attempts. SMB protocol latency
+and physical device throughput require external OS/NAS counters alongside these
+application measurements.
 
 Tests cover actual Windows spawn, early/non-exposed commits, nested rollback,
 bounded backlogs on one CPU, independent input HDF5 progress, duplicate/conflicting

@@ -14,6 +14,7 @@ or registration dependencies may cause skips.
 | Local stage planning/execution | `test_stage_graph_ownership.py`, `test_pipeline_graphs.py` |
 | Product exchange and worker lifecycle | `test_product_exchange.py`, `test_product_exchange_processes.py`, `product_exchange_fixtures.py` |
 | Replay, output and admission | `test_input_replay.py`, `test_output_model.py`, `test_process_admission.py`, `test_parallel_coordinator.py`, `test_resource_budget.py` |
+| Independent input/output services and publication | `test_input_service.py`, `test_input_concurrency.py`, `test_output_service.py`, `test_output_publication.py` |
 | Input selection and run layouts | `test_input_selection.py`, `test_stem_list_inputs.py`, `test_run_folder_inputs.py`, `test_windows_folder_dialog.py` |
 | Settings, logging and launch | `test_default_settings.py`, `test_settings_import.py`, `test_logger.py`, `test_launcher.py` |
 | HD/DV inputs and physical velocity | `test_velocity_pipeline.py`, `test_frequency_band_velocity.py`, `test_frequency_band_pipeline_integration.py`, `test_dual_velocity_workflows.py`, `test_dopplerview_compat.py`, `test_spectograms_input.py` |

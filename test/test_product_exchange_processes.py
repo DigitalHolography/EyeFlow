@@ -2,6 +2,7 @@
 
 import json
 import multiprocessing
+from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,7 +33,7 @@ def test_real_spawn_product_survives_producer_crash_and_final_publication(tmp_pa
     bindings = []
     if mode in TRANSPORT_FAULTS:
         monkeypatch.setattr("pipeline_engine.execution.process_executor.run_worker", fault_worker)
-    with mp.Manager() as manager:
+    with mp.Manager() as manager, ExitStack() as cleanup:
         sync = {name: manager.Event() for name in ("received", "crash", "b_started", "b_finished")}
         sync.update(pid=manager.Value("i", 0), backing=manager.Value(str, ""))
 
@@ -66,13 +67,16 @@ def test_real_spawn_product_survives_producer_crash_and_final_publication(tmp_pa
                 dag_requires=("initial",), pipeline_factory=lambda: SimpleNamespace(name="receipt_barrier", run=block_acceptance)))
         budget = ResourceBudget(cpu_threads=8, memory_bytes=2 * 1024**3)
         retained = []
+        def retain(pending):
+            retained.append(pending)
+            cleanup.callback(pending.close)
         failure = "Worker transport failed" if mode in TRANSPORT_FAULTS else "23"
         with budget.activate(), pytest.raises(PipelineRunError, match=failure):
             run_pipelines_to_output(output_manager=output, pipelines=descriptors,
                 pipeline_options={"exchange_producer": (mode,),
                                   "exchange_consumer": ("required_only",) if required_only else ()},
                 holodoppler_h5=None, doppler_vision_h5=None, copy_hd_passthrough=False,
-                on_finalization_ready=retained.append)
+                on_finalization_ready=retain)
         assert budget.cpu_used == 0
         assert budget.used["transient"] == 0
         pending = retained[0]

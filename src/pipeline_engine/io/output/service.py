@@ -13,6 +13,7 @@ from threading import Condition, Event, Thread
 from time import perf_counter
 
 from pipeline_engine.resources import suspend_compute
+from scratch_location import is_local_path
 from utils.logger import Logger
 
 from .protocol import OutputPolicy, OutputServiceError, WriteCommand, WriterConnection
@@ -34,6 +35,11 @@ class OutputService:
         context = context or multiprocessing.get_context("spawn")
         if context.get_start_method() != 'spawn':
             raise ValueError('The output writer requires a multiprocessing spawn context')
+        # Explicit ProductStorage directories and retained worker directories
+        # bypass the default scratch selector. Verify the actual writer volume
+        # before allocating IPC resources or starting the child.
+        if not is_local_path(model.storage.directory):
+            raise OSError(f"EyeFlow output scratch must be local: {model.storage.directory}")
         self.local_path = model.storage.path(".h5")
         self._output_name = Path(model.filename).name
         receiver, self.commands = context.Pipe(duplex=False)
@@ -56,9 +62,11 @@ class OutputService:
         self._started = started
         Logger.log_perf(f"START pipeline=run variant=shared stage=hdf5_serialization at={started:.6f} progressive=True output={self._output_name}")
         try:
+            # Claim the single materialization listener before spawning. Failed
+            # duplicate construction must leave the existing service attached.
+            model.bind_commit_listener(self.submit)
             self.process.start()
             self._thread.start()
-            model.bind_commit_listener(self.submit)
         except BaseException:
             self.close()
             raise
@@ -85,6 +93,10 @@ class OutputService:
     def check_health(self):
         error = self._error or self.model.commit_listener_error
         if error is not None:
+            if not isinstance(error, Exception):
+                # Acceptance retains interrupts until a safe coordinator boundary;
+                # they must still stop the batch rather than become run failures.
+                raise error
             raise OutputServiceError(f"Output serialization failed: {error}") from error
         if self._closed and not self._finished:
             raise OutputServiceError("Output serialization was aborted")
@@ -255,7 +267,10 @@ class OutputService:
                     if ack.error:
                         raise OutputServiceError(ack.error)
                     for name, value in ack.metrics.items():
-                        self.metrics.add(name, value)
+                        if name == "output_writer_sampled_rss_bytes":
+                            self.metrics.maximum(name, value)
+                        else:
+                            self.metrics.add(name, value)
                     for message in ack.messages:
                         Logger.log_perf(f"output={self._output_name} {message}")
                     self.metrics.add("output_commit_to_write_complete_seconds", perf_counter()-committed)
@@ -321,7 +336,7 @@ class OutputService:
         if self._closed:
             return
         self._closed = True
-        self.model.bind_commit_listener(None)
+        self.model.detach_commit_listener(self.submit)
         self._stop.set()
         with self._condition:
             self._condition.notify_all()

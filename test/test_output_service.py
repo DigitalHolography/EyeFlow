@@ -49,6 +49,51 @@ def locked_hdf5_writer(entered, release, *args):
         writer_main(*args)
 
 
+def test_explicit_network_scratch_is_rejected_before_ipc_allocation(tmp_path, monkeypatch):
+    context = mp.get_context('spawn')
+    with ProductStorage(directory=tmp_path/'scratch') as storage:
+        model = OutputModel(storage, tmp_path/'final.h5')
+        monkeypatch.setattr('pipeline_engine.io.output.service.is_local_path', lambda path: False)
+        def unexpected_ipc(*args, **kwargs):
+            raise AssertionError('Network output scratch must be rejected before allocating IPC')
+        monkeypatch.setattr(context, 'Pipe', unexpected_ipc)
+        with pytest.raises(OSError, match='output scratch must be local'):
+            OutputService(model, context=context)
+        assert not list(storage.directory.iterdir())
+        assert model._commit_listener is None
+
+
+def test_duplicate_service_does_not_spawn_or_detach_the_existing_writer(tmp_path, monkeypatch):
+    with output(tmp_path) as (model, service):
+        def unexpected_spawn(*args, **kwargs):
+            raise AssertionError('A duplicate writer must not be spawned')
+        monkeypatch.setattr(mp.process.BaseProcess, 'start', unexpected_spawn)
+        with pytest.raises(RuntimeError, match='listener is already bound'):
+            OutputService(model)
+        assert model._commit_listener == service.submit
+        with model.checkpoint():
+            model.create_dataset('accepted', data=7)
+        service.drain()
+        assert service.written_paths == {'accepted'}
+        with h5py.File(service.finish()) as physical:
+            assert physical['accepted'][()] == 7
+
+
+def test_manifest_interrupt_stops_the_batch_at_a_safe_health_boundary(tmp_path, monkeypatch):
+    with output(tmp_path) as (model, service):
+        interrupt = KeyboardInterrupt('stop output')
+        def interrupted(*args, **kwargs):
+            raise interrupt
+        monkeypatch.setattr(service, '_enqueue', interrupted)
+        with model.checkpoint():
+            model.create_dataset('accepted', data=7)
+        assert model.records['accepted'].committed
+        with pytest.raises(KeyboardInterrupt) as caught:
+            service.check_health()
+        assert caught.value is interrupt
+        assert not Path(model.filename).exists()
+
+
 def test_committed_data_is_in_incomplete_file_before_analysis_finishes(tmp_path):
     with output(tmp_path) as (model, service):
         values = np.array([1., -0., np.nan], dtype='f4')
