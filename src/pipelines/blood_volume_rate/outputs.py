@@ -25,6 +25,7 @@ from plotting.article import (
 )
 from input_output.schema import EyeFlowOutputPaths
 from plotting.formatting import add_legend
+from plotting.units import display_unit
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.h5_storage import profile_h5_options
 from input_output.schema.output_payload import payload_array as _metric_data
@@ -366,7 +367,7 @@ def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$")
-    ax.set_ylabel(r"$Q(t)$ (mm³/s)")
+    ax.set_ylabel(rf"$Q(t)$ ({display_unit('mm^3/s')})")
     apply_article_style(fig, COMPACT_ARTICLE_STYLE)
     return fig
 

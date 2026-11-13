@@ -15,6 +15,7 @@ from pipeline_engine.imports import (
     np,
     read_int_setting,
 )
+from pipelines.blood_volume_rate.selection import selected_blood_volume_rate_methods
 from pipelines.signal_settings import band_limited_harmonics
 from pipelines.topology_core.runner import prepared_topologies
 from pipelines.velocity.models import RetinalVelocity
@@ -100,7 +101,10 @@ def velocity_analysis(ctx) -> VelocityAnalysis:
 
 def _segments_required(ctx) -> bool:
     """Return whether the canonical segment analysis must run."""
-    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for("blood_volume_rate"):
+    if (
+        ctx.pipeline_scheduled("blood_volume_rate")
+        and selected_blood_volume_rate_methods(ctx)
+    ):
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
@@ -402,7 +406,7 @@ def _export_branch_identity_debug(
 def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None:
     if not ctx.output.available:
         return
-    with _logged_stage("pulse-analysis PNG export"):
+    with _logged_stage("pulse-analysis figure export"):
         from input_output.writers.png import REPORT_IMAGES_STATE
 
         report_images = {}

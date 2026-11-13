@@ -335,6 +335,18 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
         self.assertFalse(analysis_builder._segments_required(ctx))
 
         ctx = _context(
+            {"velocity_analysis": (), "blood_volume_rate": ()},
+            scheduled={
+                "velocity",
+                "velocity_analysis",
+                "blood_volume_rate",
+                "pdf_report",
+            },
+        )
+
+        self.assertTrue(analysis_builder._segments_required(ctx))
+
+        ctx = _context(
             {
                 "velocity_analysis": (),
                 "waveform_shape_metrics": ("segments",),

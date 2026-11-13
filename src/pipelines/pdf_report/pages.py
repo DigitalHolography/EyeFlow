@@ -1,4 +1,4 @@
-"""A4 page layout for one velocity workflow and its optional results."""
+"""A4 page layout for the two-page moments report."""
 
 from __future__ import annotations
 
@@ -10,35 +10,50 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from input_output.reports.pdf_report import load_first_image
+from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.png import ReportImagePaths
+from plotting.article import ARTICLE_ASPECT_RATIO, prepare_article_fill_layer
+from plotting.units import display_unit
 
 from .data import (
     ReportData,
     VolumeRateReportData,
 )
-from .palette import VESSEL_COLORS
 
 GRAPH_TITLE_STYLE = {
     "fontsize": 10,
     "fontfamily": "sans-serif",
     "fontweight": "normal",
 }
-
-VOLUME_RATE_METHODS = (
-    ("gradient_edges", "Spatial-Gradient Edge (Static)", "total"),
-    ("masked_edges", "Mask-Derived Geometry", "total"),
+VELOCITY_GRAPH_WIDTH = 0.39
+VELOCITY_GRAPH_HEIGHT = (
+    VELOCITY_GRAPH_WIDTH * 21 / (29.7 * ARTICLE_ASPECT_RATIO)
 )
+
+SECOND_PAGE_ARTIFACTS = {
+    "histogram": lambda vessel: Path(f"histogramVelocity{vessel}.png"),
+    "branch_identity": lambda vessel: (
+        Path("branch_identity")
+        / f"{vessel}_13_substack_boxes_on_labels_with_rings.png"
+    ),
+    "lumen_diameter": lambda vessel: (
+        Path("lumen_diameter") / f"{vessel}_lumen_diameter_distribution.png"
+    ),
+    "blood_volume_rate": lambda vessel: (
+        Path("blood_volume_rate") / f"{vessel}_blood_volume_rate.png"
+    ),
+}
 
 
 def build_velocity_bvr_pages(
     report: ReportData, folder_name: str, png_dir: Path | None,
     report_images: ReportImagePaths,
 ) -> list[Figure]:
-    """Build the moments-only velocity and BVR report pages."""
-    pages = [_velocity_page(report, folder_name, png_dir, report_images)]
-    if report.volume_rates:
-        pages.append(_volume_rate_page(report.volume_rates, folder_name))
-    return pages
+    """Build the two mandatory pages of the moments report."""
+    return [
+        _velocity_page(report, folder_name, png_dir, report_images),
+        _vessel_analysis_page(report, folder_name, png_dir),
+    ]
 
 
 def _velocity_page(report: ReportData, folder_name: str, png_dir: Path | None,
@@ -54,11 +69,15 @@ def _velocity_page(report: ReportData, folder_name: str, png_dir: Path | None,
             f"{vessel.title()} RMS-frequency map",
         )
         _add_report_image(
-            fig, (left, 0.47, 0.39, 0.18), png_dir, folder_name,
+            fig,
+            (left, 0.47, VELOCITY_GRAPH_WIDTH, VELOCITY_GRAPH_HEIGHT),
+            png_dir, folder_name,
             "systole", vessel, images, f"{vessel.title()} systole indices",
         )
-        velocity_ax = fig.add_axes((left, 0.27, 0.39, 0.17))
-        _plot_filtered_velocity(
+        velocity_ax = fig.add_axes(
+            (left, 0.27, VELOCITY_GRAPH_WIDTH, VELOCITY_GRAPH_HEIGHT)
+        )
+        plot_filtered_velocity(
             velocity_ax,
             report.velocity_per_beat.get(vessel),
             report.velocity_units.get(vessel, "mm/s"),
@@ -93,12 +112,12 @@ def _add_report_image(
     else:
         if kind == "systole":
             image = _without_embedded_title(image)
-        _show_report_image(ax, image)
+        _show_report_image(ax, image, fill_bounds=(kind == "systole"))
     if kind in {"vessel_map", "systole"}:
         ax.set_title(title, **GRAPH_TITLE_STYLE)
 
 
-def _plot_filtered_velocity(
+def plot_filtered_velocity(
     ax, values: np.ndarray | None, unit: str, title: str,
 ) -> None:
     """Plot the exact filtered per-beat samples used by report statistics."""
@@ -124,6 +143,7 @@ def _plot_filtered_velocity(
         np.nansum(samples, axis=0), counts,
         out=np.full(values.shape[1], np.nan), where=counts > 0,
     )
+    prepare_article_fill_layer(ax)
     _plot_beat_envelope(
         ax, phase, samples.T, color="0.55", label="Beat min/max envelope",
     )
@@ -142,7 +162,7 @@ def _plot_filtered_velocity(
     ax.set_xlabel("Cardiac phase", fontsize=8)
     ax.set_ylabel(f"Velocity ({_display_unit(unit)})", fontsize=8)
     ax.tick_params(labelsize=7)
-    ax.legend(loc="lower right", fontsize=6)
+    ax.set_box_aspect(1 / ARTICLE_ASPECT_RATIO)
 
 
 def _finite_parameter(parameter: dict | None) -> float | None:
@@ -155,67 +175,82 @@ def _finite_parameter(parameter: dict | None) -> float | None:
     return value if np.isfinite(value) else None
 
 
-def _volume_rate_page(
-    methods: dict[str, dict[str, VolumeRateReportData]], folder_name: str,
+def _vessel_analysis_page(
+    report: ReportData, folder_name: str, png_dir: Path | None,
 ) -> Figure:
     fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
     fig.patch.set_facecolor("white")
-    _add_page_header(fig, folder_name, "Blood-Volume Rate")
-    selected = [method for method in VOLUME_RATE_METHODS if method[0] in methods]
-    layouts = (
-        ((0.54, 0.27, 0.84), (0.13, 0.27, 0.43))
-        if len(selected) == 2 else ((0.49, 0.31, 0.83),)
-    )
-    for (key, subtitle, scope), (bottom, height, title_y) in zip(selected, layouts):
-        fig.text(0.08, title_y, subtitle, fontsize=13, fontweight="bold", va="top")
-        text_ax = fig.add_axes((0.08, bottom, 0.32, height))
-        plot_ax = fig.add_axes((0.48, bottom, 0.44, height))
-        text_ax.axis("off")
-        _draw_volume_method(text_ax, plot_ax, methods[key], scope)
+    _add_page_header(fig, folder_name, "Vessel Geometry and Blood-Volume Rate")
+    for column, vessel in enumerate(("artery", "vein")):
+        left = 0.055 + column * 0.48
+        fig.text(
+            left + 0.205, 0.905, vessel.title(), ha="center", va="center",
+            fontsize=13, fontweight="bold",
+        )
+        _add_artifact_image(
+            fig, (left, 0.68, 0.41, 0.18), png_dir, folder_name,
+            "histogram", vessel, "Velocity histogram",
+        )
+        _add_artifact_image(
+            fig, (left, 0.43, 0.195, 0.19), png_dir, folder_name,
+            "branch_identity", vessel, "Branch identity",
+        )
+        _add_artifact_image(
+            fig, (left + 0.215, 0.43, 0.195, 0.19), png_dir, folder_name,
+            "lumen_diameter", vessel, "Lumen diameter distribution",
+        )
+        _add_artifact_image(
+            fig, (left, 0.14, 0.255, 0.21), png_dir, folder_name,
+            "blood_volume_rate", vessel, "Mask-derived geometry",
+        )
+        value_ax = fig.add_axes((left + 0.275, 0.14, 0.135, 0.21))
+        value_ax.axis("off")
+        _draw_volume_values(value_ax, report.mask_volume_rates.get(vessel))
     return fig
 
 
-def _draw_volume_method(
-    text_ax, plot_ax, rates: dict[str, VolumeRateReportData], scope: str,
+def _add_artifact_image(
+    fig: Figure,
+    bounds: tuple[float, float, float, float],
+    png_dir: Path | None,
+    folder_name: str,
+    kind: str,
+    vessel: str,
+    title: str,
 ) -> None:
-    lines = []
-    unit = "mm^3/s"
-    for vessel in ("artery", "vein"):
-        data = rates.get(vessel)
-        if data is None:
-            continue
-        unit = data.unit
-        finite = data.phase_curve[np.isfinite(data.phase_curve)]
-        minimum = float(np.min(finite)) if finite.size else None
-        maximum = float(np.max(finite)) if finite.size else None
-        pulsatile_range = None if not finite.size else maximum - minimum
-        lines.extend((
-            vessel.title(),
-            f"  Median {scope} BVR: {_rate_value(data.overall_value, data.unit)}",
-            f"  Cycle minimum: {_rate_value(minimum, data.unit)}",
-            f"  Cycle maximum: {_rate_value(maximum, data.unit)}",
-            f"  Pulsatile range: {_rate_value(pulsatile_range, data.unit)}",
-            "",
-        ))
-        phase = np.arange(data.phase_curve.size) / data.phase_curve.size
-        _plot_beat_envelope(
-            plot_ax, phase, data.beat_curves,
-            color=VESSEL_COLORS[vessel],
+    ax = fig.add_axes(bounds)
+    ax.axis("off")
+    path = _artifact_path(png_dir, folder_name, kind, vessel)
+    image = load_first_image(() if path is None else (path,))
+    if image is None:
+        ax.text(
+            0.5, 0.5, f"{title} unavailable", ha="center", va="center",
+            transform=ax.transAxes, wrap=True,
         )
-        plot_ax.plot(
-            phase, data.phase_curve, label=f"{vessel.title()} median",
-            color=VESSEL_COLORS[vessel], linewidth=1.6,
-        )
-    text_ax.text(0, 0.98, "\n".join(lines), va="top", fontsize=8.5,
-                 linespacing=1.35, transform=text_ax.transAxes)
-    plot_ax.set_title(
-        f"Median {scope} BVR with beat min/max envelope", **GRAPH_TITLE_STYLE,
+    else:
+        _show_report_image(ax, image)
+    ax.set_title(title, **GRAPH_TITLE_STYLE)
+
+
+def _draw_volume_values(ax, data: VolumeRateReportData | None) -> None:
+    ax.text(0, 0.98, "Values", fontsize=9, fontweight="bold", va="top")
+    if data is None:
+        ax.text(0, 0.78, "Unavailable", fontsize=8, va="top")
+        return
+    finite = data.phase_curve[np.isfinite(data.phase_curve)]
+    minimum = float(np.min(finite)) if finite.size else None
+    maximum = float(np.max(finite)) if finite.size else None
+    pulsatile_range = None if not finite.size else maximum - minimum
+    lines = (
+        f"Median\n{_rate_value(data.overall_value, data.unit)}",
+        f"Minimum\n{_rate_value(minimum, data.unit)}",
+        f"Maximum\n{_rate_value(maximum, data.unit)}",
+        f"Range\n{_rate_value(pulsatile_range, data.unit)}",
     )
-    plot_ax.set_xlim(0, 1)
-    plot_ax.set_xlabel("Cardiac phase")
-    plot_ax.set_ylabel(f"BVR ({_display_unit(unit)})")
-    plot_ax.axhline(0, color="0.5", linestyle=":", linewidth=0.8)
-    plot_ax.legend(fontsize=8)
+    ax.text(
+        0, 0.82, "\n\n".join(lines), fontsize=7.5, va="top",
+        linespacing=1.25, transform=ax.transAxes,
+    )
 
 
 def _rate_value(value: float | None, unit: str) -> str:
@@ -256,10 +291,12 @@ def _add_page_header(fig: Figure, folder_name: str, section: str) -> None:
              ha="center", va="top")
 
 
-def _show_report_image(ax, image: np.ndarray) -> None:
-    """Draw an image without distorting its pixel aspect ratio."""
+def _show_report_image(
+    ax, image: np.ndarray, *, fill_bounds: bool = False,
+) -> None:
+    """Draw an image, optionally filling a matching-aspect report box."""
     height, width = np.asarray(image).shape[:2]
-    ax.imshow(image, aspect="equal")
+    ax.imshow(image, aspect="auto" if fill_bounds else "equal")
     ax.set_anchor("C")
     ax.set_adjustable("box")
     ax.margins(0)
@@ -331,12 +368,20 @@ def _parameter_value(
 
 
 def _display_unit(unit: str) -> str:
-    """Format report units with typographic powers and inverse time."""
-    normalized = str(unit).strip().replace("³", "^3")
-    return {
-        "mm/s": r"$\mathrm{mm\,s^{-1}}$",
-        "mm^3/s": r"$\mathrm{mm^3\,s^{-1}}$",
-    }.get(normalized, str(unit).strip())
+    """Format report units without changing their stored representation."""
+    return display_unit(unit)
+
+
+def _artifact_path(
+    png_dir: Path | None,
+    folder_name: str,
+    kind: str,
+    vessel: str,
+) -> Path | None:
+    if png_dir is None:
+        return None
+    suffix = SECOND_PAGE_ARTIFACTS[kind](vessel)
+    return Path(png_dir) / prefixed_artifact_path(suffix, folder_name)
 
 
 def _try_load_report_image(

@@ -9,7 +9,11 @@ from .runner import run_pdf_report
     name="pdf_report",
     description="Generate moments velocity/BVR and shared spectra/gaps PDF reports.",
     requires=["numpy", "matplotlib", "PIL"],
-    dag_requires=["velocity_analysis", "waveform_shape_metrics"],
+    dag_requires=[
+        "velocity_analysis",
+        "waveform_shape_metrics",
+        "blood_volume_rate",
+    ],
     input_slot="both",
     wait_for_artifacts=True,
 )

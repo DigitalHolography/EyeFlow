@@ -9,6 +9,7 @@ from input_output.reports import write_pdf_report
 from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.png import REPORT_IMAGES_STATE
 
+from .artifacts import export_moments_report_figures
 from .data import ReportData, extract_report_data
 from .pages import build_velocity_bvr_pages
 from .spectra import build_spectra_gaps_pages, extract_spectra_gaps_report_data
@@ -37,6 +38,7 @@ def run_pdf_report(ctx) -> None:
         if variant in (None, MOMENTS_VARIANT):
             report = extract_report_data(ctx.output.h5)
             _warn_missing_velocities(ctx, report)
+            export_moments_report_figures(ctx.output, report)
             pages = build_velocity_bvr_pages(
                 report, folder_name, output_manager.dir_for(OutputType.PNG),
                 ctx.state.get(REPORT_IMAGES_STATE, {}),

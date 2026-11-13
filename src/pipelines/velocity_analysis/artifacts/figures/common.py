@@ -17,6 +17,7 @@ from pipelines.velocity.semantics import (
     VelocitySemantics,
     resolve_velocity_semantics,
 )
+from plotting.units import display_unit
 
 from .signal_inputs import display_frequency, display_velocity
 
@@ -96,11 +97,11 @@ class PulseFigureContext:
 
     @property
     def velocity_axis_label(self) -> str:
-        return self.velocity_semantics.axis_label
+        return f"Velocity ({display_unit(self.velocity_semantics.unit)})"
 
     @property
     def velocity_colorbar_label(self) -> str:
-        return self.velocity_semantics.unit
+        return display_unit(self.velocity_semantics.unit)
 
     @property
     def rms_quantity_label(self) -> str:

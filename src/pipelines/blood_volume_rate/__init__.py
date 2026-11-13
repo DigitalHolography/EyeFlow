@@ -2,8 +2,6 @@
 
 from pipeline_engine.imports import PipelineOption, pipeline
 
-from .runner import run_blood_volume_rate
-
 
 @pipeline(
     name="blood_volume_rate",
@@ -31,6 +29,8 @@ from .runner import run_blood_volume_rate
     default_selected=True,
 )
 def run(ctx):
+    from .runner import run_blood_volume_rate
+
     return run_blood_volume_rate(ctx)
 
 

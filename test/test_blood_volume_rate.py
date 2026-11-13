@@ -214,7 +214,7 @@ def test_blood_volume_rate_figure_plots_median_and_one_sd_over_beats() -> None:
 
     assert ax.get_title() == ""
     assert ax.get_xlabel() == r"Cardiac Phase $t/T$"
-    assert ax.get_ylabel() == r"$Q(t)$ (mm³/s)"
+    assert ax.get_ylabel() == r"$Q(t)$ ($\mathrm{mm^3.s^{-1}}$)"
     assert ax.get_xlim() == (0.0, 1.0)
     assert len(ax.lines) == 2
     zero_line, median_line = ax.lines

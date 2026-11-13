@@ -1,4 +1,4 @@
-"""Export branch identity stages as PNG debug artifacts."""
+"""Export branch identity stages as debug artifacts."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.topology import AnnulusGeometry, BranchIdentityStages, annulus_mask
+from input_output.writers.png import FigureArtifactWriter
 
 
 def export_branch_identity_stage_pngs(
@@ -19,6 +20,7 @@ def export_branch_identity_stage_pngs(
     profile_window_bounds_xyxy: np.ndarray | None = None,
 ) -> list[str]:
     paths = []
+    writer = FigureArtifactWriter(output)
     stage_images = list(_stage_images(stages, optic_disc_center, ring_settings))
     if segment_centers_xy is not None and profile_window_bounds_xyxy is not None:
         stage_images.append(
@@ -34,11 +36,11 @@ def export_branch_identity_stage_pngs(
             )
         )
     for name, image in stage_images:
-        path = output.write_png(
-            image,
-            f"branch_identity/{prefix}_{name}.png",
-        )
-        paths.append(str(path))
+        suffix = f"branch_identity/{prefix}_{name}.png"
+        if name == "13_substack_boxes_on_labels_with_rings":
+            paths.extend(str(path) for path in writer.save_image_pair(image, suffix))
+        else:
+            paths.append(str(output.write_png(image, suffix)))
     return paths
 
 

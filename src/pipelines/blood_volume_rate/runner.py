@@ -19,10 +19,11 @@ from .outputs import (
     pack_gradient_edge_outputs,
     pack_mask_derived_outputs,
 )
+from .selection import selected_blood_volume_rate_methods
 
 
 def run_blood_volume_rate(ctx) -> dict[str, object]:
-    selected = ctx.options_for("blood_volume_rate")
+    selected = selected_blood_volume_rate_methods(ctx)
     if not selected:
         return {}
 

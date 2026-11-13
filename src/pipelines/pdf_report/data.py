@@ -25,7 +25,7 @@ class ReportData:
     parameters: dict[str, Any] = field(default_factory=dict)
     velocity_per_beat: dict[str, np.ndarray] = field(default_factory=dict)
     velocity_units: dict[str, str] = field(default_factory=dict)
-    volume_rates: dict[str, dict[str, VolumeRateReportData]] = field(default_factory=dict)
+    mask_volume_rates: dict[str, VolumeRateReportData] = field(default_factory=dict)
 
 
 def extract_report_data(h5file, *, include_bvr: bool = True) -> ReportData:
@@ -40,7 +40,9 @@ def extract_report_data(h5file, *, include_bvr: bool = True) -> ReportData:
         parameters=params,
         velocity_per_beat=velocities,
         velocity_units=units,
-        volume_rates=_extract_volume_rates(h5file, schema) if include_bvr else {},
+        mask_volume_rates=(
+            _extract_mask_volume_rates(h5file, schema) if include_bvr else {}
+        ),
     )
 
 
@@ -120,46 +122,20 @@ def _extract_attributes(h5file, params) -> None:
                 params[name] = {"value": value, "unit": ""}
 
 
-def _extract_volume_rates(
+def _extract_mask_volume_rates(
     h5file, schema,
-) -> dict[str, dict[str, VolumeRateReportData]]:
-    gradient_rates = {}
-    mask_rates = {}
+) -> dict[str, VolumeRateReportData]:
+    rates = {}
     for vessel, paths in (
         ("artery", schema.blood_volume_rate.artery),
         ("vein", schema.blood_volume_rate.vein),
     ):
-        static = _dataset(h5file, paths.static_edges)
-        if static is not None and static.ndim == 4 and all(static.shape):
-            beat_curves = _gradient_beat_curves(static)
-            gradient_rates[vessel] = _volume_rate_data(beat_curves, static)
-
         total = _dataset(h5file, paths.total_masked_edges)
         if total is not None and total.ndim == 2 and all(total.shape):
-            mask_rates[vessel] = _volume_rate_data(
+            rates[vessel] = _volume_rate_data(
                 np.asarray(total, dtype=float), total,
             )
-
-    result = {}
-    if gradient_rates:
-        result["gradient_edges"] = gradient_rates
-    if mask_rates:
-        result["masked_edges"] = mask_rates
-    return result
-
-
-def _gradient_beat_curves(dataset) -> np.ndarray:
-    """Sum branches per ring, then median rings, one phase slab at a time."""
-    curves = np.full(dataset.shape[:2], np.nan, dtype=float)
-    for phase in range(dataset.shape[0]):
-        values = np.asarray(dataset[phase], dtype=float)
-        finite = np.isfinite(values)
-        ring_totals = np.sum(np.where(finite, values, 0.0), axis=1)
-        ring_totals[~np.any(finite, axis=1)] = np.nan
-        curves[phase] = np.ma.median(
-            np.ma.masked_invalid(ring_totals), axis=1,
-        ).filled(np.nan)
-    return curves
+    return rates
 
 
 def _volume_rate_data(beat_curves: np.ndarray, dataset) -> VolumeRateReportData:

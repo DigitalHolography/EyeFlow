@@ -1,4 +1,4 @@
-"""Systole-index PNG exporters."""
+"""Systole-index figure exporters."""
 
 from __future__ import annotations
 
@@ -9,7 +9,11 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
-from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import (
+    ARTICLE_ASPECT_RATIO,
+    DIAGNOSTIC_ARTICLE_STYLE as STYLE,
+)
+from plotting.units import display_unit
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -30,7 +34,7 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
     artery = _display_velocity(_vector(ctx.velocity.continuous("artery")))
     vein = _display_velocity(_vector(ctx.velocity.continuous("vein")))
     maxima, minima = _cycle_extrema(artery, peaks)
-    paths = [
+    artifact_groups = [
         _systole_plot(
             writer,
             "find_systoles_indices_artery.png",
@@ -54,9 +58,12 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             "Vein systole indices",
         ),
     ]
-    writer.register_artifact("systole", "artery", paths[0])
-    writer.register_artifact("systole", "vein", paths[1])
-    return paths
+    for vessel, artifact_paths in zip(("artery", "vein"), artifact_groups):
+        writer.register_artifact(
+            "systole", vessel,
+            next(path for path in artifact_paths if path.suffix.lower() == ".png"),
+        )
+    return [path for artifact_paths in artifact_groups for path in artifact_paths]
 
 def _systole_plot(
     writer: FigureWriter,
@@ -66,10 +73,10 @@ def _systole_plot(
     peaks: np.ndarray,
     maxima: np.ndarray,
     minima: np.ndarray,
-    velocity_label: str = "Velocity (mm/s)",
+    velocity_label: str = f"Velocity ({display_unit('mm/s')})",
     title: str = "Systole indices",
-) -> Path:
-    fig, ax = _plt().subplots(figsize=(7.5, 4.0))
+) -> list[Path]:
+    fig, ax = _plt().subplots(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
     ax.plot(
         time[: filtered.size], filtered, color="black",
         linewidth=STYLE.secondary_line_width,
@@ -93,4 +100,4 @@ def _systole_plot(
     ax.set_title(
         title, fontsize=10, fontfamily="sans-serif", fontweight="normal"
     )
-    return writer.save_figure(fig, suffix)
+    return writer.save_figure_pair(fig, suffix)

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
+from pipelines.blood_volume_rate.selection import selected_blood_volume_rate_methods
 
 
 def _dag() -> PipelineDAG:
@@ -57,6 +60,15 @@ def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
     assert {option.name for option in descriptor.options if option.default_enabled} == {
         "masked_edges",
     }
+
+
+def test_pdf_report_forces_mask_geometry_without_forcing_gradient_edges() -> None:
+    ctx = SimpleNamespace(
+        options_for=lambda _pipeline: frozenset(),
+        pipeline_scheduled=lambda pipeline: pipeline == "pdf_report",
+    )
+
+    assert selected_blood_volume_rate_methods(ctx) == {"masked_edges"}
 
 
 

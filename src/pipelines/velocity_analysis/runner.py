@@ -131,7 +131,7 @@ def run_velocity_analysis(ctx) -> dict[str, object]:
             h5.write_many({**metrics, **pack_velocity_analysis_meta_outputs(analysis)})
             h5.flush()
         if _pulse_pngs_required(ctx):
-            with _optional_artifact_export("pulse-analysis PNG"):
+            with _optional_artifact_export("pulse-analysis figures"):
                 _export_pulse_pngs(ctx, analysis, analysis.per_beat_result)
         if maps_selected:
             with _optional_artifact_export("segment velocity-map AVI"):

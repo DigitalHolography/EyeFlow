@@ -54,6 +54,9 @@ def _figure():
 def _write_figures(output):
     paths = []
     paths.extend(save_article_figure_pair(output, _figure(), "article", dpi=120))
+    paths.extend(FigureArtifactWriter(output).save_figure_pair(
+        _figure(), "diagnostic_pair.png", dpi=90,
+    ))
     paths.append(FigureArtifactWriter(output).save_figure(_figure(), "diagnostic.png", dpi=90))
     paths.append(EpsArtifactWriter(output).save_figure(_figure(), "vector.eps", dpi=90))
     fig = _figure()
@@ -104,6 +107,40 @@ def test_shared_writers_capture_automatically_and_report_consumes_identical_file
         assert output["Numerical/value"][()] == 42
         assert output["Report/value"][()] == 1
         assert json.loads(output.attrs["artifact_status"]) == {"producer:figures": "succeeded"}
+
+
+def test_article_pair_preserves_existing_formats_and_fills_only_the_missing_one(tmp_path):
+    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    png_path, eps_path = save_article_figure_pair(
+        manager, _figure(), "paired", dpi=90,
+    )
+    original_png = png_path.read_bytes()
+    original_eps = eps_path.read_bytes()
+
+    eps_path.unlink()
+    save_article_figure_pair(manager, _figure(), "paired", dpi=90)
+    assert png_path.read_bytes() == original_png
+    assert eps_path.is_file()
+
+    regenerated_eps = eps_path.read_bytes()
+    save_article_figure_pair(manager, _figure(), "paired", dpi=90)
+    assert png_path.read_bytes() == original_png
+    assert eps_path.read_bytes() == regenerated_eps
+    assert original_eps
+
+
+def test_raster_pair_uses_matching_png_and_eps_namespaces(tmp_path):
+    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    paths = FigureArtifactWriter(manager).save_image_pair(
+        np.zeros((8, 12, 3), dtype=np.uint8),
+        "branch_identity/artery_labels.png",
+    )
+
+    assert [path.suffix for path in paths] == [".png", ".eps"]
+    assert paths[0].parent.name == paths[1].parent.name == "branch_identity"
+    assert "png" in paths[0].parts
+    assert "eps" in paths[1].parts
+    assert all(path.is_file() for path in paths)
 
 
 def test_next_file_starts_before_exports_finish_and_completion_logs_are_asynchronous(tmp_path, monkeypatch):

@@ -113,12 +113,12 @@ class PulsePngExporterTests(unittest.TestCase):
     def test_systole_plot_has_title_and_no_acceleration_axis(self) -> None:
         captured = {}
 
-        def save_figure(fig, suffix):
+        def save_figure_pair(fig, suffix):
             captured["figure"] = fig
-            return Path(suffix)
+            return [Path(suffix), Path(suffix).with_suffix(".eps")]
 
-        writer = SimpleNamespace(save_figure=save_figure)
-        path = _systole_plot(
+        writer = SimpleNamespace(save_figure_pair=save_figure_pair)
+        paths = _systole_plot(
             writer,
             "find_systoles_indices_artery.png",
             np.arange(4, dtype=float),
@@ -130,7 +130,13 @@ class PulsePngExporterTests(unittest.TestCase):
         )
         fig = captured["figure"]
         try:
-            self.assertEqual(Path("find_systoles_indices_artery.png"), path)
+            self.assertEqual(
+                [
+                    Path("find_systoles_indices_artery.png"),
+                    Path("find_systoles_indices_artery.eps"),
+                ],
+                paths,
+            )
             self.assertEqual(1, len(fig.axes))
             self.assertEqual("Artery systole indices", fig.axes[0].get_title())
             self.assertEqual("black", fig.axes[0].lines[0].get_color())
@@ -138,6 +144,8 @@ class PulsePngExporterTests(unittest.TestCase):
             self.assertEqual("normal", fig.axes[0].title.get_fontweight())
             self.assertEqual(["sans-serif"], fig.axes[0].title.get_fontfamily())
             self.assertNotIn("Acceleration", fig.axes[0].get_ylabel())
+            self.assertIn(r"$\mathrm{mm.s^{-1}}$", fig.axes[0].get_ylabel())
+            self.assertAlmostEqual(1.618, fig.get_figwidth() / fig.get_figheight(), places=3)
         finally:
             import matplotlib.pyplot as plt
 
