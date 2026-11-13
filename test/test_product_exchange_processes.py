@@ -124,7 +124,7 @@ def test_real_transport_acceptance_failures_keep_prior_commits_and_release_resou
     from pipeline_engine.execution.process_executor import ProcessExecutor, ActiveInvocation
     from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry, ProductStatus
     from pipeline_engine.product_exchange.acceptance import ProductAcceptance
-    from pipeline_engine.data.input_service import InputService
+    from pipeline_engine.io.input.service import InputService
     from pipeline_engine.data.storage import ProductStorage
     from pipeline_engine.execution.protocol import InvocationSettings
     from product_exchange_fixtures import transport_fixture

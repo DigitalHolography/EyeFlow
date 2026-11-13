@@ -1,5 +1,9 @@
 # Declarative HDF5 inputs, backend policy and continuous prefetch
 
+The input runtime lives in `pipeline_engine/io/input/`: `service.py` owns control
+and clients, `source_reader.py` owns blocking reads, `replay.py` owns local mapping
+authorization, and `location.py` classifies source storage.
+
 The runtime owns one `InputService` control thread and one `SourceReader` I/O
 thread. Only the control thread changes readiness, queues, priorities, consumer
 ownership and reservations. Only the reader opens native datasets, executes source

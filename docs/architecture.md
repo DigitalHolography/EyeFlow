@@ -129,8 +129,9 @@ pipeline_engine/
   __init__.py, context.py, resources.py   public API and shared runtime contracts
   planning/                             declarations and global dependency resolution
   execution/                            run service, invocations, scheduling and workers
-  data/                                 input replay, payload/scratch storage, transfer and counters
-  output/                               output transactions and finalization lifetime
+  data/                                 immutable payload/scratch storage, transfer and counters
+  io/                                   acquisition I/O lifecycle, independent input and output lanes
+  output/                               authoritative output transactions and records
   stage_graph/                          local graph definitions, planning and execution
   product_exchange/                     identities, readiness and coordinator acceptance
 ```
@@ -140,9 +141,12 @@ pipeline_engine/
 `product_exchange/acceptance.py` accepts incremental commits on the coordinator
 thread and `ProductExchangeRegistry` owns cross-pipeline readiness. Both execution
 modes use the same invocation/checkpoint and executable stage-graph code.
-Inputs replay from read-only local storage. `PendingOutput` retains result
-payloads until exports and final HDF5 publication finish, including when completion
-overlaps the next input. Reports read the accepted model before publication.
+`io/manager.py` owns the acquisition's input service and progressive output service.
+Inputs replay from read-only local storage. One spawned output writer materializes
+accepted datasets while calculations continue. The manager retains result payloads
+until exports and atomic HDF5 publication finish, including when completion overlaps
+the next input. Reports read the accepted model before publication. See the
+[runtime I/O contract](runtime_io.md) for commit boundaries and process ownership.
 
 The [execution design](parallel_pipeline_execution.md) defines ownership,
 failure recovery, resources and storage lifetime. The [stage graph API](pipeline_stage_graphs.md)

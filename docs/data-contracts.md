@@ -1115,12 +1115,12 @@ Writers no longer generate the redundant `nameID` attribute; HDF5 exposes the
 absolute dataset path as `dataset.name`. Existing explicitly supplied attributes
 remain supported for compatibility with older payloads.
 Numeric arrays of at least 4 KiB (after dtype normalization) use lossless gzip
-compression at level 9 with the shuffle filter by default. Smaller arrays stay
+compression at level 4 with the shuffle filter by default. Smaller arrays stay
 unfiltered to avoid chunk-index overhead exceeding compression savings. Explicit
 dataset storage options override these defaults, including compression for small
 arrays. Scalars and strings remain unfiltered; these writes preserve their
 existing shapes and dtypes.
-Per-beat velocity maps, profiles, and segment masks use gzip level 9. The
+Per-beat velocity maps, profiles, and segment masks use gzip level 4. The
 float32 map and profile writers leave chunks containing only the exact NaN fill
 value unallocated; reading the published datasets returns the same dense shapes
 and values. When the redundant bins represent at least 32 KiB of raw data,
@@ -1139,7 +1139,7 @@ JSON, pass `--copy-hd-passthrough` to the CLI, or pass
 `copy_hd_passthrough=True` to `resolve_run_spec` to retain them.
 The root output attribute records this choice, and the HD source-file path
 remains available when copies are omitted. When enabled, large numeric HD
-pass-through datasets are copied in chunks and recompressed with gzip level 9;
+pass-through datasets are copied in chunks and recompressed with gzip level 4;
 their values, shapes, dtypes, and attributes remain intact. Unsupported or
 small pass-through objects retain their source storage layout.
 

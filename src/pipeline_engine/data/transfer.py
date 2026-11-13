@@ -7,7 +7,7 @@ from time import perf_counter
 import numpy as np
 import cloudpickle
 
-from pipeline_engine.data.input_service import InputNode
+from pipeline_engine.io.input.service import InputNode
 
 
 def dump_result(value, storage):

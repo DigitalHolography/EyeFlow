@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 
 from test_input_service import inputs, _spawn_consumer
-from pipeline_engine.data.input_service import InputPolicy
-from pipeline_engine.data.input_io import SourceCompletion
+from pipeline_engine.io.input.service import InputPolicy
+from pipeline_engine.io.input.source_reader import SourceCompletion
 from pipeline_engine.resources import ResourceBudget
 
 

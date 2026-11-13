@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 import pytest
 
-from pipeline_engine.data.input_service import InputPolicy, InputService
+from pipeline_engine.io.input.service import InputPolicy, InputService
 from pipeline_engine.data.storage import ProductStorage
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.stage_graph import InputAccess, InputUse, StageGraph, StageSpec
@@ -30,7 +30,7 @@ def inputs(tmp_path, values=None, *, policy=None, budget=None, location="network
         source.create_group("spectrograms")
     with h5py.File(tmp_path / "source.h5", "r") as source:
         with ProductStorage(directory=tmp_path / "scratch", budget=budget) as storage:
-            with patch("pipeline_engine.data.input_service.storage_location", return_value=location):
+            with patch("pipeline_engine.io.input.service.storage_location", return_value=location):
                 service = InputService({"hd": source}, storage, mp.get_context("spawn"),
                                        policy=policy or InputPolicy(lookahead=False, input_backend="replay"))
             clients = []
@@ -892,7 +892,7 @@ def test_spatial_requests_replay_each_source_region_once_with_chunked_compressio
     values = np.arange(96 * 32 * 32, dtype="f4").reshape(96, 32, 32)
     with h5py.File(tmp_path / "tiled.h5", "w") as source, ProductStorage(directory=tmp_path / "scratch") as storage:
         source.create_dataset("moment0ff", data=values, chunks=chunks, compression="gzip")
-        with patch("pipeline_engine.data.input_service.storage_location", return_value="network"):
+        with patch("pipeline_engine.io.input.service.storage_location", return_value="network"):
             service = InputService({"hd": source}, storage, mp.get_context("spawn"), policy=InputPolicy(replay_frames=32))
         client = service.client()
         try:
@@ -958,7 +958,7 @@ def test_real_spectral_graph_allows_future_buffers_but_skips_absent_video(tmp_pa
                 source.create_dataset("spectrograms", shape=(32, 4, 64, 64), dtype="f4")
             else:
                 source.create_group("spectrograms")
-            with patch("pipeline_engine.data.input_service.storage_location", return_value="network"):
+            with patch("pipeline_engine.io.input.service.storage_location", return_value="network"):
                 service = InputService({"hd": source}, storage, mp.get_context("spawn"))
             client = service.client()
             original = service._read_stream

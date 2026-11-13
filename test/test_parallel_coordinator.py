@@ -15,7 +15,7 @@ from runtime_process_fixtures import PROCESS_DESCRIPTOR
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
 from pipeline_engine.planning.base import PipelineDescriptor
-from pipeline_engine.data.input_service import InputService, InputPolicy
+from pipeline_engine.io.input.service import InputService, InputPolicy
 from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
@@ -256,10 +256,10 @@ def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, m
         pipelines=[descriptor("producer", lambda ctx: {"value": 1})],
     )
 
-    def fail_publish(self):
+    def fail_publish(self, local):
         raise OSError("destination unavailable")
 
-    monkeypatch.setattr(OutputModel, "publish", fail_publish)
+    monkeypatch.setattr("input_output.writers.h5_publication.OutputPublisher.publish", fail_publish)
     result = execute_run(spec)
     assert not result.outputs
     assert len(result.failures) == 1

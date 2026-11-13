@@ -12,7 +12,7 @@ variant invocations have separate helpers; variant registration and status
 persistence are separate from dispatch. Small records group source views,
 preflight declarations and outcome dictionaries. The dictionaries remain shared
 with the scheduler; cleanup still belongs to the caller's `ExitStack` and final
-publication to `PendingOutput`.
+retained I/O and publication to `IOManager`.
 
 ## Readiness
 
@@ -62,10 +62,12 @@ acknowledged value, including rebindings to original input values.
 ## Resource and output lifetime
 
 Accepted products survive later failures; rejected acceptance rolls back its
-records, state and newly copied artifacts. `PendingOutput` retains backing until
+records, state and newly copied artifacts. `IOManager` retains backing until
 consumers, exports and publication finish. Worker cleanup closes its mappings
 without deleting shared backing. Publication uses a destination staging file and
-atomic replacement, preserving the prior output on failure.
+atomic replacement, preserving the prior output on failure. Output materialization
+starts at safe stage commits; finalization drains outstanding writes and reconciles
+metadata without rewriting scientific datasets. See [runtime I/O](runtime_io.md).
 
 Logical completion retains CPU/RAM reservations until actual process exit and
 nonblocking reaping. Each reservation releases once. Cancellation terminates

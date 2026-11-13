@@ -37,7 +37,7 @@ def run_worker(spec, events):
 
     from pipeline_engine.planning.base import PIPELINE_REGISTRY
     from pipeline_engine.context import PipelineInputs
-    from pipeline_engine.data.input_service import InputFile
+    from pipeline_engine.io.input.service import InputFile
     from pipeline_engine.output.output_model import OutputModel
     from pipeline_engine.execution.invocation import _run_pipeline_descriptor
     from pipeline_engine.data.scratch import RunArrayStorage

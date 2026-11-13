@@ -24,9 +24,7 @@ from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.readers.h5 import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine.data.scratch import RunArrayStorage
-from input_output.writers.h5 import (
-    open_h5, write_root_attributes,
-)
+from input_output.writers.h5 import write_root_attributes
 from input_output.writers.h5_initialization import initialize_output_h5, initialize_acquisition_metadata
 from input_output.writers.h5_output import PipelineH5Output
 from utils.logger import Logger
@@ -43,12 +41,12 @@ from pipeline_engine.execution.invocation import _run_pipeline_descriptor
 from pipeline_engine.data.storage import ProductStorage
 from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget, current_resources
-from pipeline_engine.data.input_service import InputService, InputPolicy
+from pipeline_engine.io.input.service import InputService, InputPolicy
 from pipeline_engine.execution.scheduler import CoordinatorScheduler
 from pipeline_engine.execution.process_executor import ProcessExecutor
 from pipeline_engine.execution.protocol import InvocationSettings
 from pipeline_engine.stage_graph.model import StageGraph
-from pipeline_engine.output.finalization import PendingOutput
+from pipeline_engine.io.manager import IOManager
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry
 from pipeline_engine.product_exchange.acceptance import ProductAcceptance
 
@@ -92,7 +90,7 @@ def run_pipelines_to_output(
     on_pipeline_success: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
     background_artifacts: BackgroundArtifacts | None = None,
-    on_finalization_ready: Callable[[PendingOutput], None] | None = None,
+    on_finalization_ready: Callable[[IOManager], None] | None = None,
 ) -> Path:
     """Run resolved pipelines and write outputs through an OutputManager."""
     setup_started = perf_counter()
@@ -116,15 +114,21 @@ def run_pipelines_to_output(
         work_h5 = OutputModel(storage, output_h5_path)
         wait_for_exports = background_artifacts is None
         background_artifacts = background_artifacts or BackgroundArtifacts()
-        pending = PendingOutput(work_h5, background_artifacts, owns_artifacts=wait_for_exports)
+        io = IOManager(work_h5, artifacts=background_artifacts, owns_artifacts=wait_for_exports, budget=budget)
+        def progress():
+            io.check_health()
+            if on_progress is not None:
+                on_progress()
         try:
             with ExitStack() as stack:
                 with Logger.perf_stage("run/run_array_storage"):
                     scratch = stack.enter_context(
                         RunArrayStorage(output_manager.layout.ef_dir, metrics=storage.metrics)
                     )
+                stack.callback(io.close_input)
                 Logger.log_perf(f"END stage=run/runtime_setup at={perf_counter():.6f} wall={perf_counter() - setup_started:.6f}s")
                 return _execute_input(
+                    io=io,
                     work_h5=work_h5,
                     output_h5_path=output_h5_path,
                     output_manager=output_manager,
@@ -143,20 +147,27 @@ def run_pipelines_to_output(
                     doppler_vision_h5=doppler_vision_h5,
                     on_pipeline_start=on_pipeline_start,
                     on_pipeline_success=on_pipeline_success,
-                    on_progress=on_progress,
+                    on_progress=progress,
                     background_artifacts=background_artifacts,
                     wait_for_exports=wait_for_exports,
                 )
+        except BaseException as exc:
+            if not isinstance(exc, Exception):
+                io.close()
+                raise
+            raise
         finally:
             # Workers and input mappings have closed before payload ownership
             # is either transferred to the batch or completed here.
-            if on_finalization_ready is None:
-                pending.finish()
+            if io.closed:
+                pass
+            elif on_finalization_ready is None:
+                io.finish()
             else:
                 try:
-                    on_finalization_ready(pending)
+                    on_finalization_ready(io)
                 except BaseException:
-                    pending.close()
+                    io.close()
                     raise
 
 
@@ -197,6 +208,7 @@ class _ExecutionStatus:
 
 def _execute_input(
     *,
+    io,
     work_h5,
     output_h5_path,
     output_manager: OutputManager,
@@ -222,9 +234,9 @@ def _execute_input(
     """Prepare sources and execution, run the plan, then finalize input status.
 
     The caller's ExitStack remains responsible for worker, client and source
-    cleanup. Final output publication remains with PendingOutput.
+    cleanup. Final output ownership remains with IOManager.
     """
-    hd_h5, dv_h5 = _open_input_h5_sources(stack, holodoppler_h5, doppler_vision_h5)
+    hd_h5, dv_h5 = io.open_sources(holodoppler_h5, doppler_vision_h5)
     _initialize_work_h5(
         work_h5=work_h5, pipelines=pipelines, target_names=target_names,
         pipeline_options=pipeline_options,
@@ -235,7 +247,7 @@ def _execute_input(
         hd_source_h5=hd_h5, dv_source_h5=dv_h5,
     )
     sources = _prepare_input_replay(
-        stack, work_h5, hd_h5, dv_h5, band_limited_harmonics,
+        io, work_h5, hd_h5, dv_h5, band_limited_harmonics,
         policy=InputPolicy(input_backend=input_backend, unknown_transport=input_unknown_transport),
     )
     with Logger.perf_stage("run/plan_graph_construction"):
@@ -282,28 +294,23 @@ def _execute_input(
     return output_h5_path
 
 
-def _prepare_input_replay(stack, work_h5, hd_h5, dv_h5, band_limited_harmonics, *, policy=None) -> _InputSources:
+def _prepare_input_replay(io, work_h5, hd_h5, dv_h5, band_limited_harmonics, *, policy=None) -> _InputSources:
     """Register replay cleanup and build the shared typed HD/DV source views."""
     started = perf_counter()
     Logger.log_perf(
         f"START pipeline=run variant=shared stage=input_replay_setup at={started:.6f}"
     )
-    service = InputService(
-        {"hd": hd_h5, "dv": dv_h5}, work_h5.storage, multiprocessing.get_context("spawn"),
-        policy=policy,
-    )
-    stack.callback(service.close)
-    client = service.client()
-    stack.callback(client.close)
+    service = io.start_input(policy)
     hd_config = load_h5_sidecar_config(hd_h5, source="hd")
     write_root_attributes(work_h5, {"band_limited_harmonics": band_limited_harmonics})
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
-    files = service.files(client)
+    files = io.files
     shared = PipelineInputs(
         hd=PipelineInputSource(RawH5SourceReader(h5file=files["hd"], label="HD"), hd_config),
         dv=PipelineInputSource(RawH5SourceReader(h5file=files["dv"], label="DV"), dv_config),
     )
-    initialize_acquisition_metadata(work_h5, shared.hd)
+    with work_h5.checkpoint():
+        initialize_acquisition_metadata(work_h5, shared.hd)
     Logger.log_perf(
         f"END pipeline=run variant=shared stage=input_replay_setup "
         f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s"
@@ -624,30 +631,6 @@ def _finish_input_execution(
             f"{name}: {error}" for name, error in background_artifacts.failures.items()
         ]
         raise PipelineRunError("; ".join(errors), output_h5_path)
-
-
-def _open_input_h5_sources(
-    stack: ExitStack,
-    holodoppler_h5: Path | None,
-    doppler_vision_h5: Path | None,
-):
-    started = perf_counter()
-    Logger.log_perf(
-        f"START pipeline=run variant=shared stage=input_hdf5_open at={started:.6f}"
-    )
-    hd_h5 = (
-        stack.enter_context(open_h5(holodoppler_h5, "r")) if holodoppler_h5 is not None else None
-    )
-    dv_h5 = (
-        stack.enter_context(open_h5(doppler_vision_h5, "r"))
-        if doppler_vision_h5 is not None
-        else None
-    )
-    Logger.log_perf(
-        f"END pipeline=run variant=shared stage=input_hdf5_open "
-        f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s"
-    )
-    return hd_h5, dv_h5
 
 
 def _initialize_work_h5(

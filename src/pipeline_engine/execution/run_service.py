@@ -40,7 +40,7 @@ from velocity_calibration import (
 from pipeline_engine.planning.base import PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
-from pipeline_engine.output.finalization import PendingOutput
+from pipeline_engine.io.manager import IOManager
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 @dataclass(frozen=True)
@@ -283,7 +283,7 @@ def _execute_batch(
         artifacts = BackgroundArtifacts(workers)
         file_started_at = perf_counter()
         numerical_error = None
-        finalizers: list[PendingOutput] = []
+        finalizers: list[IOManager] = []
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -350,7 +350,7 @@ def _discard_file_output(artifacts, outputs):
 
 
 def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=(), started_at=None):
-    """Serialize the retained output model only after sidecars are published."""
+    """Drain retained output and publish after final sidecar statuses are known."""
     import h5py
 
     metrics = finalizers[0].model.storage.metrics if finalizers else None

@@ -21,11 +21,11 @@ import numpy as np
 from input_output.readers.nodes import is_dataset
 
 from pipeline_engine.data.storage import ArrayReference, ValueReference
-from pipeline_engine.data.input_replay import ReplayMappings
-from pipeline_engine.data.input_io import SourceReader, SourceJob
+from pipeline_engine.io.input.replay import ReplayMappings
+from pipeline_engine.io.input.source_reader import SourceReader, SourceJob
 from pipeline_engine.stage_graph.model import InputAccess, StageGraph
 from utils.logger import Logger
-from pipeline_engine.data.input_location import storage_location
+from pipeline_engine.io.input.location import storage_location
 
 
 @dataclass

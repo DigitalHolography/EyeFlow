@@ -178,7 +178,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
             )
             with (
-                patch("pipeline_engine.execution.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch("pipeline_engine.io.manager.open_h5", wraps=real_open_h5) as open_input,
                 patch(
                     "input_output.writers.h5_initialization.open_h5",
                     side_effect=AssertionError("Initialization reopened an input"),

@@ -293,6 +293,9 @@ class OutputModel(OutputGroup):
         self._checkpoints = []
         self._versions = {"": 0}
         self._generation = 0
+        self._commit_listener = None
+        self._commit_listener_error = None
+        self._notifying_commit = False
 
     @contextmanager
     def build_arrays(self):
@@ -337,6 +340,41 @@ class OutputModel(OutputGroup):
     @property
     def records(self):
         return MappingProxyType(self._records)
+
+    @property
+    def commit_listener_error(self):
+        """First materialization failure, separate from scientific acceptance."""
+        return self._commit_listener_error
+
+    def bind_commit_listener(self, callback):
+        """Observe safe accepted deltas without adding a transaction authority.
+
+        The callback receives this model and owns its own committed_delta cursor.
+        It must only read the model. Notifications can repeat and can occur while
+        enclosing checkpoints still mask provisional records. Passing None detaches
+        the listener; only one materialization service may be bound at a time.
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("A commit listener must be callable.")
+        if self._commit_listener is not None and callback is not None and self._commit_listener != callback:
+            raise RuntimeError("An output commit listener is already bound.")
+        self._commit_listener = callback
+        self._notify_committed()
+
+    def _notify_committed(self):
+        callback = self._commit_listener
+        if callback is None or self._commit_listener_error is not None or self._notifying_commit:
+            return
+        self._notifying_commit = True
+        try:
+            callback(self)
+        except BaseException as exc:
+            # Acceptance is already irreversible. Raising through its surrounding
+            # pipeline checkpoint would roll back state/artifacts but not these
+            # datasets. The I/O owner reports this terminal error at a safe boundary.
+            self._commit_listener_error = exc
+        finally:
+            self._notifying_commit = False
 
     @contextmanager
     def writing_as(self, owner):
@@ -407,6 +445,7 @@ class OutputModel(OutputGroup):
                 checkpoint.commit(tuple(checkpoint.before))
         finally:
             self._checkpoints.remove(checkpoint)
+            self._notify_committed()
 
     def visititems(self, callback):
         for path in sorted(self.records):
@@ -517,12 +556,18 @@ class OutputModel(OutputGroup):
 
     def publish(self):
         """Publish through the shared I/O policy (also used by standalone callers)."""
-        from input_output.writers.h5_publication import publish_output_model
+        from input_output.writers.h5_publication import OutputPublisher
+        from pipeline_engine.io.output.service import OutputService
 
         if self._checkpoints:
             raise RuntimeError("Cannot publish an active output transaction.")
         ProductCheckpoint(self).commit(tuple(self._records))
-        publish_output_model(self)
+        service = OutputService(self)
+        try:
+            local = service.finish()
+            OutputPublisher(self.filename, self.storage.metrics).publish(local)
+        finally:
+            service.close()
 
 
 class ProductCheckpoint:
@@ -542,6 +587,7 @@ class ProductCheckpoint:
                 self.model._records[path] = replace(record, committed=True)
             self.before.pop(path, None)
             self.versions.pop(path, None)
+        self.model._notify_committed()
 
     def rollback(self):
         for path, old in self.before.items():
