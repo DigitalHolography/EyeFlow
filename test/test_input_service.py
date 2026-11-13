@@ -225,12 +225,12 @@ def test_two_buffers_overlap_without_overwriting_lease_and_early_exit(tmp_path):
     second_ready = Event()
     budget = ResourceBudget(memory_bytes=64 * 2**20)
     with inputs(tmp_path, budget=budget, policy=InputPolicy(input_backend="direct")) as (service, client, values):
-        original = service._read_direct
-        def measured(dataset, destination, selection):
-            original(dataset, destination, selection)
-            if selection.start == 8:
+        original = service._read_stream
+        def measured(identity, index, *completion):
+            original(identity, index, *completion)
+            if service._streams[identity]["buffers"][index]["start"] == 8:
                 second_ready.set()
-        service._read_direct = measured
+        service._read_stream = measured
         file = client()
         with file["moment0"].iter_blocks(frames=8, writable=True) as blocks:
             lease = next(blocks)

@@ -1,10 +1,115 @@
 # Declarative HDF5 inputs, backend policy and continuous prefetch
 
-The coordinator owns one `InputService`, its authoritative source-reading thread,
-and read-only HD/DV handles. Scientific scheduling, calculations, axes, product
+The runtime owns one `InputService` control thread and one `SourceReader` I/O
+thread. Only the control thread changes readiness, queues, priorities, consumer
+ownership and reservations. Only the reader opens native datasets, executes source
+operations and writes dispatched destinations. Scientific scheduling, calculations, axes, product
 acceptance and output publication are unchanged. `auto`, `direct`, and `replay`
 remain public comparison modes. End-to-end time and consumer blocking take
 precedence over minimizing RAM or scratch use.
+
+## Concurrency and replay authorization
+
+Previously, every replay slice made an RPC before checking its local mapping;
+the same service thread handled that RPC and blocking HDF5 reads/flushes. A cached
+slice could therefore wait for an unrelated source operation. The replacement has
+two independent paths: an authorized local mapping lookup, and responsive control
+traffic while the single reader is busy.
+
+```mermaid
+flowchart LR
+    W[Scientific worker / InputDataset] --> C[InputClient]
+    C -->|covered grant: no RPC| M[Read-only local replay mapping]
+    C -->|new coverage / controls| S[InputService control thread]
+    S -->|one bounded command| R[SourceReader I/O thread]
+    R --> H[Read-only HD / DV HDF5]
+    R --> D[Exclusive replay extent or SHM buffer]
+    R -->|token + success / failure| S
+    S -->|ready reference / lease| C
+```
+
+`ReplayMappings` is process-local. A successful `_RegionReference` response grants
+only its temporal extent, across all spatial axes; a full `ArrayReference` grants
+the complete dataset. Canonical identities unify aliases. A contained request
+reuses the grant with adjusted offsets. Stepped, reversed and advanced indexing
+use the existing full-array path, which can itself reuse a full grant. File
+existence never grants readiness. Empty selections need no source read or RPC.
+
+```mermaid
+sequenceDiagram
+    participant W as Scientific worker
+    participant C as InputClient / ReplayMappings
+    participant R as SourceReader
+    R->>R: Read unrelated future region
+    W->>C: Covered spatial / temporal selection
+    C->>C: Check authorized extent; apply NumPy selection
+    C-->>W: Read-only local view (no RPC)
+```
+
+The cache retains at most 32 mappings per client. Superseding full/large grants
+drop redundant retained mappings; an LRU evicts other retained entries. Eviction
+drops ownership rather than closing a live NumPy base. Weak entries remain
+reusable while consumer views keep them alive, so consumers can temporarily pin
+more than 32 mappings. There is no duplicated full-array RAM cache. Client closure
+ends the lifetime of all its views and closes mappings; callers must release views
+before closing the client. Spawn serialization sends no mappings, arrays, locks
+or native HDF5 handles. Each child rebuilds its own cache.
+
+```mermaid
+sequenceDiagram
+    participant W as Scientific worker
+    participant C as InputClient
+    participant S as InputService control
+    participant R as SourceReader
+    W->>C: Request uncovered extent
+    C->>S: Read RPC
+    alt Extent already ready
+        S-->>C: Authorized reference while reader remains busy
+    else Source data missing
+        S->>S: Register demand; promote/deduplicate queued work
+        S->>R: Command at next source-operation boundary
+        R->>R: Read bounded tile; flush replay
+        R-->>S: Matching completion token
+        S->>S: Publish only after all region tiles succeed
+        S-->>C: Authorized reference
+    end
+    C->>C: Map read-only; record grant; apply selection
+    C-->>W: Array / view
+```
+
+Reader command and completion queues each have capacity one, and there is only
+one in-flight command. Completion tokens are service-local and monotonic; stale
+tokens cannot publish readiness. The reader reports immutable completion records
+and releases borrowed destination views before publishing completion. It never
+mutates scheduler dictionaries. The coordinator uses metadata snapshots, avoiding
+h5py calls and its process-wide `phil` lock during ordinary control handling.
+Completion notifications wake the existing request queue; no busy polling or
+additional HDF5 readers are needed.
+
+Replay transitions are `not_requested -> queued -> loading -> ready`, or
+`loading -> failed`. Queued cancellation returns to `not_requested`. A cancelled
+running multi-tile region finishes its current bounded operation, then stops
+without publishing partial contents; a completely finished region may remain
+reusable. Only a successful read **and flush of every tile** allow publication.
+Completed extents are immutable, including when another region fails.
+
+Stream states remain FREE/FILLING/READY/IN_USE. Cancellation and owner reaping
+mark a pool closing immediately but defer freeing its shared memory and reservation
+until its active reader command returns. Direct-transfer slabs follow the same
+rule. Leases prevent reuse until release. Shutdown rejects new data requests and
+wakes blocked clients promptly, then joins the bounded active operation before
+retiring destinations and handles. Runtime teardown closes/reaps workers and
+clients before deleting replay files. A genuinely hung native HDF5 call cannot be
+forcibly interrupted safely by a Python thread.
+
+HDF5 reads and flushes remain serialized in one I/O lane. Replay-to-writable-stream
+copies also use that lane; they do not count as source reads. HDF5 fills contiguous
+replay/SHM destinations directly. Strided tiles require a bounded temporary.
+Read-only replay views require no payload copy; mutable working buffers require
+an ownership-preserving copy. IPC carries references, extents and lease identities,
+not large scientific arrays. Local `auto` inputs retain worker-local direct access.
+OS page faults, memory bandwidth and scientific calculation time remain independent
+costs even when a replay operation requires no RPC.
 
 ## Access declarations and representation
 
@@ -137,7 +242,8 @@ of that pipeline. Cancellation removes unowned pools and queued speculative repl
 while preserving urgent demand and completed reusable regions.
 
 The obsolete activation-only first-region scheduler and required-count-only
-backend decision were removed. There is one source thread and one job scheduler.
+backend decision were removed. There is one source reader and one control-owned
+job scheduler.
 
 ## Readiness, limits and APIs
 
@@ -180,9 +286,10 @@ with dataset.iter_blocks(max_bytes=64 * 1024**2, writable=True) as blocks:
             process_in_place(block)
 ```
 
-Block views must not escape their lease. Workers close/reap clients before the
-reader stops; unfinished replay files, owned buffers and reservations are cleaned
-up before source handles close. Forced worker termination uses the same reclamation.
+Block views must not escape their lease. Workers close/reap clients before service
+teardown. The reader finishes before owned buffers and reservations are freed;
+replay files are deleted after clients close. Forced worker termination uses the
+same deferred reclamation.
 Local `read_direct` fills supported caller destinations natively. Safe numeric dtype
 conversion occurs in HDF5; unsupported selectors, strided destinations and unsafe
 narrowing casts preserve the previous NumPy fallback and nonfinite/overflow policy.
@@ -237,3 +344,14 @@ Histories are bounded to 8,192 intervals; dropped samples invalidate the overlap
 result instead of fabricating one. Logical HDF5 bytes/time are neither actual NAS
 wire bytes nor isolated network-transfer duration. Ordinary executable logging does
 not acquire performance traces.
+
+Client aggregates now distinguish replay lookup, hit/miss and zero-RPC counts,
+mapping construction, selection and RPC round-trip duration. Mapping peak counters
+sum each client's peak retained/live count; they are not a simultaneous process
+handle count. Cache hits remain visible without manufacturing source reads or
+coordinator input-wait intervals. Queue latency and control handling are measured
+separately from pending-region wait, job queue delay, I/O operation time, completion
+handoff and flush. `input_io_operation_seconds` includes local replay-to-stream
+copies; `input_source_operation_seconds` excludes those copies, and
+`input_replay_stream_copy_seconds` reports them separately. Mapping/selection
+timers exclude later lazy page faults and scientific use of returned views.

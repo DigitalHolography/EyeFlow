@@ -21,6 +21,8 @@ import numpy as np
 from input_output.readers.nodes import is_dataset
 
 from pipeline_engine.data.storage import ArrayReference, ValueReference
+from pipeline_engine.data.input_replay import ReplayMappings
+from pipeline_engine.data.input_io import SourceReader, SourceJob
 from pipeline_engine.stage_graph.model import InputAccess, StageGraph
 from utils.logger import Logger
 from pipeline_engine.data.input_location import storage_location
@@ -35,6 +37,14 @@ class SourceEntry:
     chunks: tuple | None = None
     compression: str | None = None
     backend: str = "nas_direct"
+
+    @property
+    def size(self):
+        return prod(self.shape)
+
+    @property
+    def nbytes(self):
+        return self.size * self.dtype.itemsize
 
 
 def _tiles(shape, limit, itemsize, origin=None):
@@ -202,6 +212,8 @@ class InputClient:
         self.stopped = stopped
         self.cache = {}
         self._lock = RLock()
+        self._cache_lock = RLock()
+        self._metric_lock = RLock()
         self._streams = set()
         self.policy = policy
         self._local = None
@@ -210,18 +222,22 @@ class InputClient:
         self._local_io_dropped = False
         self._closed = False
         self._budget = None
+        self._replay_maps = ReplayMappings(self.metric)
 
     def __getstate__(self):
         if self._streams:
             raise RuntimeError("Cannot transfer an input client with active leases")
         # Spawn transports controls, never previously opened mappings/arrays.
-        return {**self.__dict__, "_lock": None, "cache": {}, "_streams": set(),
-                "_local": None, "_metrics": {}, "_budget": None,
+        return {**self.__dict__, "_lock": None, "_cache_lock": None, "_metric_lock": None, "cache": {}, "_streams": set(),
+                "_local": None, "_metrics": {}, "_budget": None, "_replay_maps": None,
                 "_local_io": deque(maxlen=8192), "_local_io_dropped": False}
 
     def __setstate__(self, state):
         self.__dict__.update(state)
         self._lock = RLock()
+        self._cache_lock = RLock()
+        self._metric_lock = RLock()
+        self._replay_maps = ReplayMappings(self.metric)
 
     def rpc(self, operation, *args):
         # A client has one response queue. Serialize threads as well as requests
@@ -239,7 +255,10 @@ class InputClient:
                     if self.stopped.is_set():
                         raise OSError("Input service stopped while waiting for a response") from None
             if operation in ("read", "stream_next", "direct_read"):
-                self.send("input_wait", started, perf_counter())
+                ended = perf_counter()
+                self.metric("input_rpc_roundtrip_seconds", ended - started)
+                self.metric("input_read_rpcs", 1)
+                self.send("input_wait", started, ended)
             if error:
                 raise OSError(error)
             return value
@@ -253,7 +272,8 @@ class InputClient:
                 pass
 
     def metric(self, name, value):
-        self._metrics[name] = self._metrics.get(name, 0) + value
+        with self._metric_lock:
+            self._metrics[name] = self._metrics.get(name, 0) + value
 
     def _local_reader(self):
         if self._closed or self.stopped.is_set():
@@ -319,48 +339,73 @@ class InputClient:
             return value
 
     def read(self, slot, path):
-        with self._lock:
-            return self._read(slot, path)
+        return self._read(slot, path)
+
+    def _check_open(self):
+        if self._closed or self.stopped.is_set():
+            raise OSError("Input client has closed or stopped")
 
     def _read(self, slot, path):
-        key = (slot, path)
-        if key not in self.cache:
-            value = self.rpc("read", slot, path, None)
-            array = value.open() if isinstance(value, (ArrayReference, ValueReference)) else value
+        key = slot, path
+        with self._cache_lock:
+            self._check_open()
+            if key in self.cache:
+                return self.cache[key]
+            cached = self._replay_maps.find(key)
+            if cached is not None:
+                return cached[0]
+        reference = self.rpc("read", slot, path, None)
+        with self._cache_lock:
+            self._check_open()
+            if isinstance(reference, ArrayReference):
+                stop = reference.shape[0] if reference.shape else 1
+                return self._replay_maps.authorize(key, 0, stop, True, reference)
+            array = reference.open() if isinstance(reference, ValueReference) else reference
             if isinstance(array, np.ndarray):
                 array.flags.writeable = False
             self.cache[key] = array
-        return self.cache[key]
+            return array
 
-    def read_slice(self, slot, path, shape, selection):
-        with self._lock:
-            return self._read_slice(slot, path, shape, selection)
-
-    def _read_slice(self, slot, path, shape, selection):
+    def read_slice(self, slot, path, shape, selection, dtype=None):
         span, local = _selection_span(shape, selection)
+        key = slot, path
         if span is None:
-            return self.read(slot, path)[selection]
+            return self._read(slot, path)[selection]
         first, stop = span
+        with self._cache_lock:
+            self._check_open()
+            if key in self.cache:
+                return self.cache[key][selection]
+            cached = self._replay_maps.find(key, first, stop) if first != stop else None
         if first == stop:
-            value = np.empty((0, *shape[1:]), dtype=self.rpc("dtype", slot, path))
+            dtype = dtype if dtype is not None else self.rpc("dtype", slot, path)
+            value = np.empty((0, *shape[1:]), dtype=dtype)
             value.flags.writeable = False
             return value[local]
-        reference = self.rpc("read", slot, path, span)
-        if not isinstance(reference, _RegionReference):
-            key = (slot, path)
-            if key not in self.cache:
-                value = reference.open() if isinstance(reference, (ArrayReference, ValueReference)) else reference
-                if isinstance(value, np.ndarray):
-                    value.flags.writeable = False
-                self.cache[key] = value
-            return self.cache[key][selection]
-        key = (reference.path, first, stop)
-        if key not in self.cache:
-            self.cache[key] = reference.open()
-        return self.cache[key][local]
+        if cached is not None:
+            array, origin = cached
+        else:
+            # The RPC lock serializes the protocol, never unrelated cache hits.
+            reference = self.rpc("read", slot, path, span)
+            with self._cache_lock:
+                self._check_open()
+                if not isinstance(reference, (_RegionReference, ArrayReference)):
+                    value = reference.open() if isinstance(reference, ValueReference) else reference
+                    if isinstance(value, np.ndarray):
+                        value.flags.writeable = False
+                    self.cache[key] = value
+                    return value[selection]
+                origin = first if isinstance(reference, _RegionReference) else 0
+                end = stop if isinstance(reference, _RegionReference) else shape[0]
+                array = self._replay_maps.authorize(key, origin, end, origin == 0 and end == shape[0], reference)
+        started = perf_counter()
+        temporal = first - origin if isinstance(local[0], int) else slice(first - origin, stop - origin)
+        value = array[(temporal, *local[1:])]
+        self.metric("input_replay_selection_seconds", perf_counter() - started)
+        return value
 
     def close(self):
-        with self._lock:
+        with self._lock, self._cache_lock:
             self._close()
 
     def _close(self):
@@ -376,11 +421,16 @@ class InputClient:
             packed = b"".join(struct.pack("dd", *interval) for interval in self._local_io)
             self.send("local_io", packed, self._local_io_dropped)
             self._local_io.clear()
-        self.send("metrics", self._metrics)
+        self.metric("input_replay_client_peak_retained_mappings", self._replay_maps.peak_retained)
+        self.metric("input_replay_client_peak_live_mappings", self._replay_maps.peak_live)
+        with self._metric_lock:
+            metrics = dict(self._metrics)
+        self.send("metrics", metrics)
         self.send("client_close")
         for value in self.cache.values():
             if isinstance(value, np.memmap) and not value._mmap.closed:
                 value._mmap.close()
+        self._replay_maps.close()
         self.cache.clear()
         self._closed = True
 
@@ -450,7 +500,7 @@ class InputDataset(InputNode):
             return self.file.client.local_read(self.file.filename, self.path, selection)
         if backend in ("nas_direct", "stream"):
             return self.file.client.direct_read(self.file.slot, self.path, self.shape, self.dtype, selection)
-        value = self.file.client.read_slice(self.file.slot, self.path, self.shape, selection)
+        value = self.file.client.read_slice(self.file.slot, self.file.entries[self.path].identity, self.shape, selection, self.dtype)
         if isinstance(value, np.ndarray):
             value.flags.writeable = False
         return value
@@ -829,9 +879,9 @@ class _LocalBlockStream:
 class InputService:
     """Authoritative metadata, bounded source reads and input-buffer ownership.
 
-    Only the reader thread mutates job, replay and stream state. Each source
-    operation yields to request traffic at a slab boundary. Scientific products
-    never enter this cache. Source files must outlive close().
+    The control thread alone mutates jobs, readiness and leases. SourceReader
+    owns one independent blocking I/O lane and exclusive in-flight destinations.
+    Scientific products never enter this cache. Sources must outlive close().
     """
 
     def __init__(self, sources, storage, mp_context, *, policy=None):
@@ -861,6 +911,10 @@ class InputService:
         self._undeclared = set()
         self._replays, self._jobs, self._pending, self._streams = {}, {}, {}, {}
         self._datasets = {}
+        self._inflight = None
+        self._io_serial = 0
+        self._small_pending = {}
+        self._open_pending = {}
         self._transfers = {}
         self._direct_pending = {}
         self._transfer_serial = 0
@@ -908,8 +962,12 @@ class InputService:
             Logger.log_perf(f"input_source slot={slot} storage={self.locations[slot]}")
         self._select_backends()
         self._metric("input_metadata_seconds", perf_counter() - started)
+        self.reader = SourceReader(sources, lambda *args: self._read_direct(*args),
+                                   lambda key: self._dataset(key), self._wake_completion)
+        self._datasets = self.reader.datasets  # Reader-owned; retained for diagnostics.
         self.thread = Thread(target=copy_context().run, args=(self._serve,), name="EyeFlowInputs", daemon=True)
         with Logger.perf_stage("run/input_thread_start"):
+            self.reader.thread.start()
             self.thread.start()
 
     def _metric(self, name, value=1):
@@ -1221,6 +1279,12 @@ class InputService:
             Logger.log_debug(f"Input client {identity} left an unread response")
 
     def _enqueue(self, key, priority, operation, *args):
+        if self._inflight is not None and self._inflight["job"][2:4] == (operation, args):
+            job = self._inflight["job"]
+            if priority < job[0]:
+                self._inflight["job"] = (priority, *job[1:])
+                self._metric("input_priority_changes")
+            return True
         previous = self._jobs.get(key)
         if previous is not None and previous[0] <= priority:
             return True
@@ -1274,13 +1338,10 @@ class InputService:
         from scratch_location import is_local_path
         if not is_local_path(self.storage.directory):
             raise OSError(f"Input replay scratch must be local: {self.storage.directory}")
-        dataset = self._dataset(key)
+        dataset = self._entry(key)
         if dataset.dtype.itemsize > self.policy.max_io_bytes:
             raise MemoryError("One source element exceeds max_io_bytes")
         if dataset.dtype.hasobject or not dataset.shape or not dataset.size or dataset.nbytes < 4096:
-            if key not in self.cache:
-                self.cache[key] = self._stage_small(dataset)
-                self.source_reads[key] = 1
             return None
         if shutil.disk_usage(self.storage.directory).free < dataset.nbytes + 4096:
             raise OSError("Insufficient local scratch disk space for input replay")
@@ -1296,13 +1357,16 @@ class InputService:
         self._replays[key] = replay
         return replay
 
+    def _entry(self, key):
+        slot, path = self.aliases[key]
+        return self.metadata[slot][1][path]
+
     def _dataset(self, key):
-        # Keep the native dataset handle (and its raw chunk cache) alive across
-        # slabs. Reopening H5D for every block can defeat configured cache reuse.
-        key = self.aliases[key]
-        if key not in self._datasets:
-            self._datasets[key] = self.sources[key[0]][key[1]]
-        return self._datasets[key]
+        return self.reader.dataset(self.aliases[key])
+
+    @property
+    def _priority(self):
+        return self.reader.current.priority if self.reader.current is not None else 0
 
     def _queue_region(self, key, region, priority):
         replay = self._replay(key)
@@ -1310,12 +1374,24 @@ class InputService:
             return
         if replay.states[region] == "ready":
             return
-        if replay.states[region] == "loading":
-            # A large frame may be partway through bounded sub-frame tiles.
-            self._enqueue(("replay", key, region), priority, "replay", key, region)
+        if self._inflight is not None and self._inflight["job"][2:4] == ("replay", (key, region)):
+            job = self._inflight["job"]
+            if priority < job[0]:
+                self._inflight["job"] = (priority, *job[1:])
+                self._metric("input_priority_changes")
+                Logger.log_perf(f"input_promotion running_job={job[1]} dataset={key} region={region} priority={priority}")
             return
         if self._enqueue(("replay", key, region), priority, "replay", key, region):
             replay.states[region] = "queued"
+
+    def _has_replay_demand(self, key, region):
+        replay = self._replays[key]
+        first, stop = region*replay.frames, (region+1)*replay.frames
+        return any(k == key and a < stop and first < b for k, a, b, *_ in self._pending.values()) or any(
+            stream["key"] == key and not stream.get("closing") and any(
+                buffer["state"] == "filling" and buffer["start"] < stop and first < buffer["stop"]
+                for buffer in stream["buffers"])
+            for stream in self._streams.values())
 
     def _lookahead(self, key, stop):
         if not self.policy.lookahead:
@@ -1339,10 +1415,22 @@ class InputService:
                 self._queue_region(candidate, region + offset, 1)
 
     def _handle(self, request):
+        started = perf_counter()
+        try:
+            self._handle_request(request)
+        finally:
+            elapsed = perf_counter() - started
+            self._metric("input_control_handling_seconds", elapsed)
+            self.storage.metrics.maximum("input_control_max_handling_seconds", elapsed)
+
+    def _handle_request(self, request):
         identity, operation, args, requested_at = request
         if identity is not None and identity in self._cancelled_clients:
             return
         self._metric("input_queue_wait_seconds", max(0, perf_counter() - requested_at))
+        if self._stop.is_set() and operation in ("read", "direct_read", "stream_open", "stream_next"):
+            self._reply(identity, error="Input service cancelled")
+            return
         try:
             if operation == "read":
                 slot, path, span = args
@@ -1352,12 +1440,19 @@ class InputService:
                     self._undeclared.add(key)
                 replay = self._replay(key)
                 if replay is None:
-                    self._reply(identity, self.cache[key])
+                    if key in self.cache:
+                        self._reply(identity, self.cache[key])
+                    else:
+                        self._small_pending.setdefault(key, set()).add(identity)
+                        if self._inflight is None or self._inflight["job"][2:4] != ("small", (key,)):
+                            self._enqueue(("small", key), 0, "small", key)
                 else:
                     first, stop = span if span is not None else (0, replay.array.shape[0])
                     regions = range(first // replay.frames, (stop - 1) // replay.frames + 1)
-                    self._metric("input_prefetch_hits" if all(replay.states[r] == "ready" for r in regions)
-                                 else "input_prefetch_misses")
+                    ready = all(replay.states[r] == "ready" for r in regions)
+                    self._metric("input_prefetch_hits" if ready else "input_prefetch_misses")
+                    if ready:
+                        self._metric("input_ready_reply_seconds", perf_counter() - requested_at)
                     replay.demanded.update(regions)
                     self._pending[identity] = (key, first, stop, span is None, requested_at)
                     # Only one missing slab per pending request is queued. Full
@@ -1390,14 +1485,20 @@ class InputService:
                 self._record_interval(intervals, (identity, *args))
                 if operation == "input_wait":
                     self._metric("input_consumer_blocked_seconds", args[1] - args[0])
+            elif operation == "io_complete":
+                self._drain_completions()
             elif operation == "shutdown":
                 self._stop.set()
+                self.stopped.set()
             elif operation == "plan":
                 self._plan_order = {name: i for i, name in enumerate(args[0])}
                 self._viable = set(args[0])
             elif operation == "viable":
                 self._viable = set(args[0])
                 self._release_planned_streams(lambda key: not any(
+                    p in self._viable and not use.optional
+                    for p, _, use in self.manifest.get(key, {}).get("consumers", ())))
+                self._cancel_running_prefetch(lambda key: not any(
                     p in self._viable and not use.optional
                     for p, _, use in self.manifest.get(key, {}).get("consumers", ())))
                 self._active.intersection_update(self._viable)
@@ -1410,6 +1511,7 @@ class InputService:
             elif operation == "cancel_prefetch":
                 key = self.aliases[args[0]] if args[0] is not None else None
                 self._release_planned_streams(lambda candidate: key is None or candidate == key)
+                self._cancel_running_prefetch(lambda candidate: key is None or candidate == key)
                 if key is None:
                     self._prefetch_paused = True
                 else:
@@ -1439,7 +1541,13 @@ class InputService:
                         if replay is not None:
                             self._queue_region(key, first // replay.frames, 3)
             elif operation == "stream_open":
-                self._open_stream(identity, *args)
+                try:
+                    self._open_stream(identity, *args)
+                except MemoryError:
+                    if any(s.get("closing") for s in self._streams.values()):
+                        self._open_pending[identity] = args
+                    else:
+                        raise
             elif operation == "stream_next":
                 stream = self._owned_stream(identity, args[0])
                 stream["waiting"] = requested_at
@@ -1464,6 +1572,9 @@ class InputService:
                     self._intervals_dropped = True
                     self._metric("input_metrics_clients_lost")
                 self._cancelled_clients.add(owner)
+                self._open_pending.pop(owner, None)
+                for pending in self._small_pending.values():
+                    pending.discard(owner)
                 self._pending.pop(owner, None)
                 self._close_transfer(owner)
                 self._direct_pending.pop(owner, None)
@@ -1472,10 +1583,21 @@ class InputService:
                 for stream_id, stream in list(self._streams.items()):
                     if stream["owner"] == owner:
                         self._close_stream(stream_id)
+                for job_key, job in list(self._jobs.items()):
+                    if job_key[0] == "replay" and job[0] == 0 and not self._has_replay_demand(*job_key[1:]):
+                        self._discard_job(job_key)
+                if self._inflight is not None:
+                    job = self._inflight["job"]
+                    if job[2] == "replay" and not self._has_replay_demand(*job[3]):
+                        self._inflight["cancel_followup"] = True
         except Exception as exc:  # return source failures without killing unrelated consumers
             self._reply(identity, error=f"Input {operation} failed: {exc}")
 
     def _close_transfer(self, owner):
+        transfer = self._transfers.get(owner)
+        if transfer is not None and transfer.get("loading"):
+            transfer["closing"] = True
+            return
         transfer = self._transfers.pop(owner, None)
         if transfer is not None:
             transfer["memory"].close()
@@ -1489,9 +1611,9 @@ class InputService:
             self._enqueue(("direct", owner), 0, "direct", owner, *args)
         self._direct_pending.clear()
 
-    def _direct_transfer(self, owner, slot, path, selection):
+    def _direct_transfer(self, owner, slot, path, selection, job):
         started = perf_counter()
-        dataset = self._dataset((slot, path))
+        dataset = self._entry((slot, path))
         shape = tuple(item.stop - item.start for item in selection)
         size = prod(shape) * dataset.dtype.itemsize
         if dataset.dtype.hasobject or not 0 < size <= self.policy.max_io_bytes:
@@ -1526,15 +1648,11 @@ class InputService:
         else:
             self._metric("input_direct_buffer_reuses")
         block = np.ndarray(shape, dtype=dataset.dtype, buffer=transfer["memory"].buf)
-        try:
-            self._read_direct(dataset, block, selection if selection else None)
-        finally:
-            del block
-        transfer["busy"] = True
+        transfer.update(busy=True, loading=True)
         self._transfer_serial += 1
         transfer["token"] = self._transfer_serial
-        self._metric("input_direct_transfer_seconds", perf_counter() - started)
-        self._reply(owner, (transfer["memory"].name, shape, transfer["token"]))
+        self._submit_io(job, self.aliases[slot, path], selection, block,
+                        info=dict(owner=owner, shape=shape, started=started))
 
     def _record_replay_consumption(self, key, regions):
         replay = self._replays[key]
@@ -1568,46 +1686,132 @@ class InputService:
             del self._pending[identity]
 
     def _read_direct(self, dataset, destination, selection):
-        started = perf_counter()
-        dataset.read_direct(destination, source_sel=selection)
-        ended = perf_counter()
-        self._record_interval(self.io_intervals, (started, ended))
-        self._metric("input_hdf5_read_seconds", ended - started)
-        self._metric("input_logical_bytes", destination.nbytes)
-        self._metric("source_reads")
-        source_id = f"{dataset.file.filename}:{dataset.name}"
-        metrics = self.dataset_metrics.setdefault(source_id, {"bytes": 0, "seconds": 0., "reads": 0})
-        metrics["bytes"] += destination.nbytes
-        metrics["seconds"] += ended - started
-        metrics["reads"] += 1
-        Logger.log_perf(
-            f"input_source_hdf5_read dataset={dataset.name} region={selection} "
-            f"priority={getattr(self, '_priority', 0)} "
-            f"reason={('demand', 'lookahead', 'active_prefetch', 'future_prefetch')[getattr(self, '_priority', 0)]} "
-            f"enqueued={getattr(self, '_job_enqueued', started):.6f} "
-            f"queue_seconds={getattr(self, '_job_wait', 0):.6f} "
-            f"at={started:.6f} end={ended:.6f} read_seconds={ended - started:.6f} "
-            f"logical_bytes={destination.nbytes}"
-        )
+        self.reader.read_direct(dataset, destination, selection)
+
+    def _wake_completion(self):
+        try:
+            self.requests.put_nowait((None, "io_complete", (), perf_counter()))
+        except Full:
+            pass  # Existing request traffic already wakes the control loop.
+
+    def _submit_io(self, job, key, selection=None, destination=None, *, flush=None, copy_from=None, reserved=0, info=None):
+        if self._inflight is not None:
+            raise RuntimeError("Only one source operation may be in flight")
+        self._io_serial += 1
+        self._inflight = dict(token=self._io_serial, job=job, reserved=reserved,
+                              issued_priority=job[0], **(info or {}))
+        self.reader.commands.put_nowait(SourceJob(self._io_serial, key, selection, destination,
+                                                  flush, copy_from, job[0], job[4]))
+
+    def _cancel_running_prefetch(self, predicate):
+        if self._inflight is not None:
+            job = self._inflight["job"]
+            if job[2] == "replay" and job[0] > 0 and predicate(job[3][0]):
+                self._inflight["cancel_followup"] = True
+
+    def _drain_completions(self):
+        while True:
+            try:
+                result = self.reader.completed.get_nowait()
+            except Empty:
+                return
+            if self._inflight is None or result.token != self._inflight["token"]:
+                self._metric("input_stale_completions")
+                continue
+            info, self._inflight = self._inflight, None
+            job = info["job"]
+            priority, _, operation, args, _ = job
+            if info["reserved"] and self.storage.budget is not None:
+                self.storage.budget.release_memory(info["reserved"], "input")
+            self._metric("input_io_operation_seconds", result.ended - result.started)
+            local_copy = operation == "stream" and info.get("replay_key") is not None
+            self._metric("input_replay_stream_copy_seconds" if local_copy else "input_source_operation_seconds",
+                         result.ended - result.started)
+            self._metric("input_completion_handoff_seconds", perf_counter() - result.ended)
+            self._metric("input_io_jobs_completed")
+            for source, size, first, last, small in result.reads:
+                self._record_interval(self.io_intervals, (first, last))
+                self._metric("input_hdf5_small_read_seconds" if small else "input_hdf5_read_seconds", last-first)
+                self._metric("source_reads")
+                self._metric("input_logical_bytes", size)
+                metrics = self.dataset_metrics.setdefault(source, {"bytes": 0, "seconds": 0., "reads": 0})
+                metrics["bytes"] += size
+                metrics["seconds"] += last-first
+                metrics["reads"] += 1
+            if result.error:
+                self._metric("input_source_operation_failures")
+                self._intervals_dropped = True  # An unsuccessful native operation has incomplete interval coverage.
+            if operation == "direct":
+                owner = args[0]
+                transfer = self._transfers.get(owner)
+                if transfer is not None:
+                    transfer["loading"] = False
+                    if self._stop.is_set() or transfer.get("closing") or owner in self._cancelled_clients or result.error:
+                        self._close_transfer(owner)
+                    if result.error:
+                        self._reply(owner, error=f"Input direct_read failed: {result.error}")
+                    elif owner in self._transfers and not self._stop.is_set():
+                        self._metric("input_direct_transfer_seconds", perf_counter()-info["started"])
+                        self._reply(owner, (transfer["memory"].name, info["shape"], transfer["token"]))
+                self._wake_direct()
+            elif operation == "stream":
+                self._read_stream(*args, result, info)
+            elif operation == "small":
+                key = args[0]
+                owners = self._small_pending.pop(key, set())
+                error = result.error or ("Input service cancelled" if self._stop.is_set() else None)
+                if error is None:
+                    try:
+                        value = result.value
+                        self.cache[key] = self.storage.store_value(value) if value.dtype.hasobject else self.storage.store(value, category="input")
+                        self.source_reads[key] = 1
+                    except Exception as exc:
+                        error = f"Small input storage failed: {exc}"
+                for owner in owners:
+                    self._reply(owner, self.cache.get(key), error)
+            else:
+                self._complete_replay(result, info)
+            self._fulfill()
+            for owner, arguments in list(self._open_pending.items()):
+                if self._stop.is_set():
+                    self._reply(owner, error="Input service cancelled")
+                    self._open_pending.pop(owner, None)
+                    continue
+                if owner in self._cancelled_clients:
+                    self._open_pending.pop(owner, None)
+                    continue
+                try:
+                    self._open_stream(owner, *arguments)
+                except MemoryError as exc:
+                    if any(stream.get("closing") for stream in self._streams.values()):
+                        continue
+                    self._reply(owner, error=str(exc))
+                except Exception as exc:
+                    self._reply(owner, error=str(exc))
+                self._open_pending.pop(owner, None)
 
     def _run_job(self, job):
         priority, _, operation, args, queued = job
-        self._job_enqueued = queued
-        self._priority, self._job_wait = priority, perf_counter() - queued
-        self._metric("input_job_queue_seconds", self._job_wait)
+        self._metric("input_job_queue_seconds", perf_counter() - queued)
+        if operation == "small":
+            if args[0] not in self.cache:
+                self._submit_io(job, args[0])
+            return
         if operation == "direct":
             owner, slot, path, selection = args
+            if owner in self._cancelled_clients:
+                return
             if sum(item["busy"] for item in self._transfers.values()) >= self.policy.direct_buffers:
                 self._direct_pending[owner] = slot, path, selection
             else:
                 try:
-                    self._direct_transfer(owner, slot, path, selection)
+                    self._direct_transfer(owner, slot, path, selection, job)
                 except Exception as exc:
                     self._reply(owner, error=f"Input direct_read failed: {exc}")
             return
         if operation == "stream":
             try:
-                self._read_stream(*args)
+                self._prepare_stream(*args, job)
             except Exception as exc:
                 stream = self._streams.get(args[0])
                 if stream is not None:
@@ -1616,86 +1820,78 @@ class InputService:
             return
         key, region = args
         replay = self._replays[key]
-        if replay.error:
+        if replay.error or replay.states[region] == "ready":
             return
         first = region * replay.frames
         stop = min(first + replay.frames, replay.array.shape[0])
-        working_bytes = replay.array[first:stop].nbytes
-        selection = np.s_[first:stop]
-        destination = replay.array[first:stop]
-        if working_bytes > self.policy.max_io_bytes:
+        selection, destination = np.s_[first:stop], replay.array[first:stop]
+        if destination.nbytes > self.policy.max_io_bytes:
             if region not in replay.tiles:
                 tiles = iter(_tiles(destination.shape, self.policy.max_io_bytes, destination.dtype.itemsize,
                                     (first, *(0 for _ in destination.shape[1:]))))
                 replay.tiles[region] = next(tiles), tiles
-            selection, _ = replay.tiles[region]
+            selection = replay.tiles[region][0]
             destination = replay.array[selection]
-            working_bytes = destination.nbytes
-        budget = self.storage.budget
-        reserved = budget is None or budget.reserve_memory(working_bytes, "input")
+        size, budget = destination.nbytes, self.storage.budget
+        reserved = budget is None or budget.reserve_memory(size, "input")
         if not reserved and priority == 0:
             self._release_planned_streams()
-            reserved = budget.reserve_memory(working_bytes, "input")
+            reserved = budget.reserve_memory(size, "input")
         if not reserved:
             if priority > 0:
                 replay.states[region] = "not_requested"
                 self._plan_retry = perf_counter() + 0.02
                 self._metric("input_speculation_declined_memory")
-                return
-            replay.error = f"Insufficient RAM budget for a {working_bytes:,}-byte input region"
-            replay.states[region] = "failed"
-            self._fulfill()
+            else:
+                replay.error = f"Insufficient RAM budget for a {size:,}-byte input region"
+                replay.states[region] = "failed"
+                self._fulfill()
             return
         replay.states[region] = "loading"
-        staged = perf_counter()
-        try:
-            # read_direct requires a contiguous destination. A spatial sub-frame
-            # tile may be strided in the mmap, so use one bounded temporary.
-            if destination.flags.c_contiguous:
-                self._read_direct(self._dataset(key), destination, selection)
-            else:
-                tile = np.empty(destination.shape, dtype=destination.dtype)
-                self._read_direct(self._dataset(key), tile, selection)
-                destination[...] = tile
-                del tile
-            flushed = perf_counter()
-            replay.array.flush()
-            self._metric("input_replay_flush_seconds", perf_counter() - flushed)
-            self._metric("input_replay_stage_seconds", perf_counter() - staged)
-            self._metric("input_replay_bytes", working_bytes)
-            if priority > 0:
-                self._metric("input_speculative_source_bytes", working_bytes)
-            if region in replay.tiles:
-                _, tiles = replay.tiles[region]
-                following = next(tiles, None)
-                if following is not None:
-                    replay.tiles[region] = following, tiles
-                    self._enqueue(("replay", key, region), priority, "replay", key, region)
-                    return
-                del replay.tiles[region]
-            # Readiness is published only after a successful complete read and
-            # flush. No job ever writes this region again.
-            replay.states[region] = "ready"
-            if priority > 0:
-                replay.prefetched.add(region)
-            following = next((r for r, state in enumerate(replay.states) if state == "not_requested"), None)
-            Logger.log_perf(f"input_region_ready dataset={key} region={region} at={perf_counter():.6f} "
-                            f"next_missing_region={following} eligibility=recheck_at_operation_boundary")
-            self.source_reads.setdefault(key, 1)
-            if sum(state == "ready" for state in replay.states) == 1:
-                self._metric("input_first_region_seconds", perf_counter() - replay.created)
-            if all(state == "ready" for state in replay.states):
-                self.cache[key] = replay.reference
-                self._metric("input_replays_completed")
-        except Exception as exc:
+        self._submit_io(job, key, selection, destination, flush=replay.array, reserved=size,
+                        info=dict(working_bytes=size, staged=perf_counter()))
+
+    def _complete_replay(self, result, info):
+        priority, _, _, (key, region), _ = info["job"]
+        replay = self._replays[key]
+        if result.error:
             replay.tiles.pop(region, None)
-            replay.error = f"Could not read {key} region {region}: {exc}"
+            replay.error = f"Could not read {key} region {region}: {result.error}"
             replay.states[region] = "failed"
             self._metric("input_replays_failed")
-        finally:
-            if budget is not None:
-                budget.release_memory(working_bytes, "input")
-        self._fulfill()
+            return
+        if self._stop.is_set():
+            return
+        self._metric("input_replay_flush_seconds", result.flush_seconds)
+        self._metric("input_replay_stage_seconds", result.ended-info["staged"])
+        self._metric("input_replay_bytes", info["working_bytes"])
+        if info["issued_priority"] > 0:
+            self._metric("input_speculative_source_bytes", info["working_bytes"])
+        if region in replay.tiles:
+            _, tiles = replay.tiles[region]
+            following = next(tiles, None)
+            if following is not None:
+                if info.get("cancel_followup") and (priority > 0 or not self._has_replay_demand(key, region)):
+                    replay.tiles.pop(region)
+                    replay.states[region] = "not_requested"
+                    return
+                replay.tiles[region] = following, tiles
+                replay.states[region] = "queued"
+                self._enqueue(("replay", key, region), priority, "replay", key, region)
+                return
+            del replay.tiles[region]
+        replay.states[region] = "ready"
+        if info["issued_priority"] > 0:
+            replay.prefetched.add(region)
+        following = next((r for r, state in enumerate(replay.states) if state == "not_requested"), None)
+        Logger.log_perf(f"input_region_ready dataset={key} region={region} at={perf_counter():.6f} "
+                        f"next_missing_region={following} eligibility=recheck_at_operation_boundary job={result.token}")
+        self.source_reads.setdefault(key, 1)
+        if sum(state == "ready" for state in replay.states) == 1:
+            self._metric("input_first_region_seconds", perf_counter()-replay.created)
+        if all(state == "ready" for state in replay.states):
+            self.cache[key] = replay.reference
+            self._metric("input_replays_completed")
 
     def _owned_stream(self, owner, stream_id):
         stream = self._streams[stream_id]
@@ -1710,7 +1906,7 @@ class InputService:
                 self._close_stream(identity)
 
     def _open_stream(self, owner, slot, path, frames, max_bytes, *, priority=1):
-        dataset = self._dataset((slot, path))
+        dataset = self._entry((slot, path))
         if not dataset.shape or dataset.dtype.hasobject:
             raise TypeError("Streaming requires a nonscalar fixed-size dtype")
         frames = self.policy.stream_frames if frames is None else frames
@@ -1807,38 +2003,48 @@ class InputService:
                 stream["next_fill"] = stop
                 self._enqueue(("stream", identity, index), stream["priority"], "stream", identity, index)
 
-    def _read_stream(self, identity, index):
+    def _prepare_stream(self, identity, index, job):
         stream = self._streams.get(identity)
-        if stream is None:
+        if stream is None or stream.get("closing") or stream.get("error"):
             return
         buffer = stream["buffers"][index]
-        key = self.aliases[stream["key"]]
+        if buffer["state"] in ("ready", "in_use"):
+            return
+        key = stream["key"]
         replay = self._replay(key) if stream["replay"] or key in self._replays else None
+        regions, source = (), None
         if replay is not None:
-            regions = range(buffer["start"] // replay.frames, (buffer["stop"] - 1) // replay.frames + 1)
+            regions = range(buffer["start"] // replay.frames, (buffer["stop"]-1) // replay.frames+1)
             missing = next((r for r in regions if replay.states[r] != "ready"), None)
-            if missing is not None and not replay.error:
+            if missing is not None:
+                if replay.error:
+                    raise OSError(replay.error)
                 self._queue_region(key, missing, 0)
                 self._enqueue(("stream", identity, index), 2, "stream", identity, index)
                 return
-        block = np.ndarray((buffer["stop"] - buffer["start"], *stream["shape"][1:]),
+            source = replay.array[buffer["start"]:buffer["stop"]]
+        block = np.ndarray((buffer["stop"]-buffer["start"], *stream["shape"][1:]),
                            dtype=stream["dtype"], buffer=buffer["memory"].buf)
-        try:
-            if replay is None:
-                self._read_direct(self._dataset(stream["key"]), block,
-                                  np.s_[buffer["start"]:buffer["stop"]])
-            else:
-                if missing is not None:
-                    raise OSError(replay.error)
-                replay.demanded.update(regions)
-                self._record_replay_consumption(key, regions)
-                np.copyto(block, replay.array[buffer["start"]:buffer["stop"]])
-            buffer.update(state="ready", speculative=self._priority >= 2, consumed=False)
-        except Exception as exc:
+        self._submit_io(job, key, np.s_[buffer["start"]:buffer["stop"]], block, copy_from=source,
+                        info=dict(replay_key=key if replay is not None else None, regions=regions))
+
+    def _read_stream(self, identity, index, result, info):
+        stream = self._streams.get(identity)
+        if stream is None:
+            return
+        if stream.get("closing") or self._stop.is_set():
+            self._close_stream(identity)
+            return
+        buffer = stream["buffers"][index]
+        if result.error:
             buffer["state"] = "failed"
-            stream["error"] = f"Input stream read failed: {exc}"
-        finally:
-            del block
+            stream["error"] = f"Input stream read failed: {result.error}"
+        else:
+            if info["replay_key"] is not None:
+                replay = self._replays[info["replay_key"]]
+                replay.demanded.update(info["regions"])
+                self._record_replay_consumption(info["replay_key"], info["regions"])
+            buffer.update(state="ready", speculative=info["issued_priority"] >= 2, consumed=False)
         self._stream_ready(identity)
 
     def _stream_ready(self, identity):
@@ -1880,7 +2086,16 @@ class InputService:
             return
 
     def _close_stream(self, identity):
-        stream = self._streams.pop(identity)
+        stream = self._streams[identity]
+        if stream["waiting"] is not None:
+            self._reply(stream["owner"], error="Input stream cancelled")
+            stream["waiting"] = None
+        stream["closing"] = True
+        for index in range(len(stream["buffers"])):
+            self._jobs.pop(("stream", identity, index), None)
+        if self._inflight is not None and self._inflight["job"][2] == "stream" and self._inflight["job"][3][0] == identity:
+            return  # Reader still owns a destination; completion retires the pool.
+        self._streams.pop(identity)
         unused = sum((buffer["stop"] - buffer["start"]) * prod(stream["shape"][1:]) * stream["dtype"].itemsize
                      for buffer in stream["buffers"] if buffer.get("speculative") and not buffer.get("consumed"))
         self._metric("input_unused_prefetch_bytes", unused)
@@ -1896,40 +2111,63 @@ class InputService:
 
     def _serve(self):
         try:
-            while not self._stop.is_set():
-                # Drain bounded traffic before each I/O unit; demand can promote
-                # an existing job instead of duplicating it.
+            while True:
+                self._drain_completions()
                 for _ in range(32):
                     try:
                         request = self.requests.get_nowait()
                     except Empty:
                         break
                     self._handle(request)
-                if self._stop.is_set():
+                self._drain_completions()
+                if self._stop.is_set() and self._inflight is None:
                     break
-                if not self._jobs or min(job[0] for job in self._jobs.values()) > 2:
-                    self._plan_prefetch()
-                if self._jobs:
+                if not self._stop.is_set() and self._inflight is None:
+                    if not self._jobs or min(job[0] for job in self._jobs.values()) > 2:
+                        self._plan_prefetch()
+                    if self._jobs:
+                        self._set_idle()
+                        key = min(self._jobs, key=lambda key: self._jobs[key][:2])
+                        self._run_job(self._jobs.pop(key))
+                        if self._inflight is None:
+                            continue
+                busy = self._inflight is not None
+                if busy:
                     self._set_idle()
-                    key = min(self._jobs, key=lambda key: self._jobs[key][:2])
-                    self._run_job(self._jobs.pop(key))
                 else:
                     self._set_idle(self._idle_cause)
-                    idle = perf_counter()
-                    reason, cause = self._idle_reason, self._idle_cause
-                    try:
-                        request = self.requests.get(timeout=0.02)
-                    except Empty:
-                        request = None
-                    waited = perf_counter() - idle
+                idle = perf_counter()
+                reason, cause = self._idle_reason, self._idle_cause
+                try:
+                    request = self.requests.get(timeout=0.1 if busy else 0.02)
+                except Empty:
+                    request = None
+                if not busy:
+                    waited = perf_counter()-idle
                     self._metric(f"input_idle_{reason}_seconds", waited)
                     if cause != reason:
                         self._metric(f"input_idle_{cause}_seconds", waited)
-                    if request is not None:
-                        self._handle(request)
+                if request is not None:
+                    self._handle(request)
+                if busy and not self.reader.thread.is_alive() and self.reader.completed.empty():
+                    raise OSError("Input source reader exited without a completion")
         finally:
             self._set_idle()
             self.stopped.set()
+            self.reader.close()  # No destination may be retired while it is being written.
+            if self._inflight is not None:
+                if self._inflight["reserved"] and self.storage.budget is not None:
+                    self.storage.budget.release_memory(self._inflight["reserved"], "input")
+                self._inflight = None
+            for transfer in self._transfers.values():
+                transfer["loading"] = False
+            for owners in self._small_pending.values():
+                for owner in owners:
+                    self._reply(owner, error="Input service cancelled")
+            self._small_pending.clear()
+            for owner in self._open_pending:
+                self._reply(owner, error="Input service cancelled")
+            self._open_pending.clear()
             for identity in list(self._pending):
                 self._reply(identity, error="Input service cancelled")
             self._pending.clear()
@@ -1960,9 +2198,6 @@ class InputService:
                 if not all(state == "ready" for state in replay.states):
                     self._metric("input_replays_cancelled")
                 replay.array._mmap.close()
-            for dataset in self._datasets.values():
-                dataset.id.close()
-            self._datasets.clear()
             useful = []
             for owner, first, last in self.compute_intervals:
                 useful.extend(_subtract_intervals((first, last),
@@ -1972,26 +2207,6 @@ class InputService:
                 self._metric("input_io_compute_overlap_seconds", interval_overlap(self.io_intervals, useful))
             Logger.log_perf(f"input_datasets metrics={self.dataset_metrics}")
             Logger.log_perf(f"input_summary metrics={self.storage.metrics.snapshot()}")
-
-    def _stage_small(self, dataset):
-        started = perf_counter()
-        value = np.asarray(dataset[()])
-        ended = perf_counter()
-        self._record_interval(self.io_intervals, (started, ended))
-        self._metric("input_hdf5_small_read_seconds", ended - started)
-        self._metric("source_reads")
-        self._metric("input_logical_bytes", value.nbytes)
-        source_id = f"{dataset.file.filename}:{dataset.name}"
-        metrics = self.dataset_metrics.setdefault(source_id, {"bytes": 0, "seconds": 0., "reads": 0})
-        metrics["bytes"] += value.nbytes
-        metrics["seconds"] += ended - started
-        metrics["reads"] += 1
-        Logger.log_perf(f"input_source_hdf5_read dataset={dataset.name} region=() priority=0 "
-                        f"reason=small_demand at={started:.6f} end={ended:.6f} "
-                        f"read_seconds={ended - started:.6f} logical_bytes={value.nbytes}")
-        if value.dtype.kind == "O":
-            return self.storage.store_value(value)
-        return self.storage.store(value, category="input")
 
     def close(self):
         if self._closed:
