@@ -1,7 +1,6 @@
 """Checks for ImageJ's radius-6 Gaussian blur of float images."""
 
 import numpy as np
-import pytest
 
 from calculations.math.spatial_gradient import gaussian2d_blur
 

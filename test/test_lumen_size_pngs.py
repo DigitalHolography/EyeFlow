@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch

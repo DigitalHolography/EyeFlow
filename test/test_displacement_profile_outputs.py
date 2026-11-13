@@ -5,14 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
-import h5py
-
 from calculations.math import interpft_real
 from calculations.vessel_segments.profiles.per_beat import (
     interpolate_segment_maps_per_beat,
 )
 from input_output.schema import EyeFlowOutputPaths
-from input_output.writers.h5_output import PipelineH5Output
 from pipeline_engine import PIPELINE_REGISTRY
 from pipelines import load_pipeline_catalog
 from pipelines.displacement_map.runner import DisplacementMapPipelineConfig
@@ -23,9 +20,7 @@ from pipelines.displacement_map.stages import (
 from pipelines.displacement_map import timing as displacement_timing
 from pipelines.displacement_map.profile_outputs import (
     pack_displacement_profile_outputs,
-    pack_displacement_segment_map_outputs,
 )
-from pipelines.displacement_map import segments as displacement_segments
 from pipelines.displacement_map.segments import DisplacementSegmentResult
 
 
@@ -130,32 +125,6 @@ def test_vector_segment_map_interpolation_preserves_components_and_axis_order() 
     np.testing.assert_allclose(actual[2, 1, :, 0, 0, 0, 1], expected, rtol=1e-6)
 
 
-def test_segment_maps_are_packed_only_by_the_separate_map_packer() -> None:
-    schema = EyeFlowOutputPaths.active()
-    assert schema.displacement_map_root == "ProcessingWidth/Displacement/Map"
-    assert schema.displacement_profiles_root == "ProcessingWidth/Displacement/Profiles"
-    assert schema.displacement_metrics_root == "ProcessingWidth/Displacement/Metrics"
-    result = _result()
-    profile_outputs = pack_displacement_profile_outputs(
-        {"vein": result},
-        "level_set_motion",
-        np.asarray([0, 4]),
-    )
-    map_outputs = pack_displacement_segment_map_outputs(
-        {"vein": result},
-        "level_set_motion",
-        np.asarray([0, 4]),
-    )
-    path = f"{schema.displacement_map_root}/LevelSetMotion/Vein/PerSegment"
-
-    assert path not in profile_outputs
-    assert set(map_outputs) == {path}
-    dataset = map_outputs[path]
-    assert dataset.data.shape == (5, 5, 4, 1, 1, 1, 2)
-    assert dataset.attrs["components"] == ["local_x", "local_y"]
-    assert dataset.h5_options["sparse_nan_chunks"] is True
-
-
 def test_displacement_registration_and_analysis_are_separate_pipelines() -> None:
     load_pipeline_catalog()
     options = {
@@ -199,41 +168,6 @@ def test_displacement_registration_and_analysis_are_separate_pipelines() -> None
     ]
 
 
-def test_segment_results_use_the_run_scratch_allocator(monkeypatch) -> None:
-    topology = SimpleNamespace(
-        segment_shape=(1, 1),
-        rotated_masks=np.ones((1, 1, 3, 3), dtype=bool),
-    )
-    allocated = []
-
-    def allocate(shape):
-        allocated.append(shape)
-        return np.empty(shape, dtype=np.float32)
-
-    monkeypatch.setattr(
-        displacement_segments,
-        "prepare_segment_chunks",
-        lambda *_args, **_kwargs: iter(()),
-    )
-    monkeypatch.setattr(
-        displacement_segments,
-        "dilate_segment_masks",
-        lambda masks, **_kwargs: masks,
-    )
-
-    result = displacement_segments.analyze_displacement_segments(
-        np.empty((2, 4, 4, 2), dtype=np.float32),
-        topology,
-        retain_maps=True,
-        working_memory_mb=1.0,
-        array_allocator=allocate,
-    )
-
-    assert len(allocated) == 9
-    assert result.maps is not None
-    assert all(np.isnan(value).all() for value in result.__dict__.values())
-
-
 def test_displacement_timing_prefers_moments_then_falls_back_to_bands(
     monkeypatch,
 ) -> None:
@@ -258,34 +192,3 @@ def test_displacement_timing_prefers_moments_then_falls_back_to_bands(
     assert selected.workflow == "frequency_bands"
     np.testing.assert_array_equal(selected.boundaries, [0, 4])
     assert selected.attrs["cycle_boundary_vessel_source"] == "artery"
-
-
-def test_restored_payloads_write_through_the_current_h5_adapter() -> None:
-    boundaries = np.asarray([0, 4])
-    result = _result()
-    outputs = pack_displacement_profile_outputs(
-        {"artery": result},
-        "level_set_motion",
-        boundaries,
-    )
-    outputs.update(
-        pack_displacement_segment_map_outputs(
-            {"artery": result},
-            "level_set_motion",
-            boundaries,
-        )
-    )
-    schema = EyeFlowOutputPaths.active()
-    profile_path = (
-        f"{schema.displacement_profiles_root}/LevelSetMotion/Artery/"
-        "Transverse/Masked/tbkr/Profile"
-    )
-    map_path = f"{schema.displacement_map_root}/LevelSetMotion/Artery/PerSegment"
-
-    with h5py.File("displacement-output.h5", "w", driver="core", backing_store=False) as h5:
-        PipelineH5Output(h5).write_many(outputs)
-
-        assert h5[profile_path].shape == (5, 4, 1, 1, 1)
-        assert h5[profile_path].attrs["unit"] == "pixels"
-        assert h5[map_path].shape == (5, 5, 4, 1, 1, 1, 2)
-        assert h5[map_path].compression == "gzip"

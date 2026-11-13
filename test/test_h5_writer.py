@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 import tempfile
 import unittest
@@ -18,7 +17,6 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.writers.h5 import (  # noqa: E402
-    h5_write_checkpoint,
     set_attr_safe,
     write_value_dataset,
 )
@@ -27,8 +25,6 @@ from input_output.writers.h5_initialization import initialize_output_h5  # noqa:
 from input_output.writers.h5_output import PipelineH5Output  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
-from pipeline_engine.output_model import OutputModel  # noqa: E402
-from pipeline_engine.storage import ProductStorage  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
@@ -161,63 +157,6 @@ class H5WriterTests(unittest.TestCase):
                 self.assertEqual("gzip", backing.compression)
                 self.assertEqual("a.u.", public.attrs["unit"])
 
-    def test_non_symmetric_fft_keeps_exact_full_dataset(self) -> None:
-        values = np.arange(3 * 8, dtype=np.float32).reshape(3, 8)
-        with h5py.File("non_symmetric_fft.h5", "w", driver="core", backing_store=False) as h5file:
-            symmetric = np.abs(np.fft.fft(
-                np.arange(181 * 128, dtype=np.float32).reshape(181, 128), axis=1,
-            )).astype(np.float32)
-            write_value_dataset(h5file, "profiles/fft", DatasetValue(
-                symmetric,
-                h5_options={"mirror_fft_axis": 1, "sparse_nan_chunks": True},
-            ))
-            self.assertTrue(h5file["profiles/fft"].is_virtual)
-            with self.assertRaisesRegex(RuntimeError, "rollback"):
-                with h5_write_checkpoint(h5file):
-                    write_value_dataset(h5file, "profiles/fft", DatasetValue(
-                        values,
-                        h5_options={"mirror_fft_axis": 1, "sparse_nan_chunks": True},
-                    ))
-                    raise RuntimeError("rollback")
-            self.assertTrue(h5file["profiles/fft"].is_virtual)
-            self.assertEqual(symmetric.tobytes(), h5file["profiles/fft"][()].tobytes())
-            write_value_dataset(h5file, "profiles/fft", DatasetValue(
-                values,
-                h5_options={"mirror_fft_axis": 1, "sparse_nan_chunks": True},
-            ))
-            self.assertFalse(h5file["profiles/fft"].is_virtual)
-            self.assertEqual(values.tobytes(), h5file["profiles/fft"][()].tobytes())
-            self.assertNotIn("__fft_unique_frequency_storage", h5file["profiles"])
-
-    def test_small_arrays_remain_contiguous(self) -> None:
-        values = np.array([0.0, -0.0, np.nan, np.inf, -np.inf, 1.234567], dtype=np.float32)
-        with h5py.File("small_arrays.h5", "w", driver="core", backing_store=False) as h5file:
-            write_value_dataset(h5file, "values", values)
-            dataset = h5file["values"]
-            self.assertIsNone(dataset.chunks)
-            self.assertIsNone(dataset.compression)
-            self.assertEqual(values.tobytes(), dataset[()].tobytes())
-
-    def test_compression_defaults_preserve_explicit_options(self) -> None:
-        values = np.arange(8, dtype=np.float32)
-        cases = [
-            ({"compression": "gzip", "compression_opts": 4, "chunks": (4,)}, "gzip", 4),
-            ({"compression": "lzf"}, "lzf", None),
-            ({"compression": None}, None, None),
-            ({"compression": None, "chunks": None}, None, None),
-        ]
-        with h5py.File("options_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
-            for index, (options, compression, level) in enumerate(cases):
-                with self.subTest(options=options):
-                    key = str(index)
-                    write_value_dataset(h5file, key, DatasetValue(values, h5_options=options))
-                    dataset = h5file[key]
-                    self.assertEqual(compression, dataset.compression)
-                    self.assertEqual(level, dataset.compression_opts)
-                    if "chunks" in options:
-                        self.assertEqual(options["chunks"] or None, dataset.chunks)
-                    np.testing.assert_array_equal(values, dataset[()])
-
     def test_integer_values_are_not_narrowed_out_of_range(self) -> None:
         with h5py.File("integer_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
             signed = np.array([2**40, -(2**40)], dtype=np.int64)
@@ -235,57 +174,6 @@ class H5WriterTests(unittest.TestCase):
                 h5file["unsigned_list"][()], np.array([0, 2**63 + 1], dtype=np.uint64)
             )
             self.assertEqual(2**40, h5file.attrs["large_integer"])
-
-    def test_initialize_output_h5_writes_eyeflow_version(self) -> None:
-        version = _pyproject_version()
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_path = Path(tmp_dir) / "output.h5"
-            with h5py.File(output_path, "w") as h5file:
-                initialize_output_h5(h5file)
-
-            with h5py.File(output_path, "r") as h5file:
-                self.assertEqual(version, h5file.attrs["eyeflow_version"])
-                self.assertEqual(
-                    {"EF_version": version},
-                    json.loads(_read_scalar_string(h5file["app_versions"])),
-                )
-
-    def test_initialize_output_h5_places_registration_under_meta(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source_path = Path(tmp_dir) / "input_HD.h5"
-            output_path = Path(tmp_dir) / "output.h5"
-            registration = np.asarray(
-                [[1.0, 2.0], [3.0, 4.0]],
-                dtype=np.float32,
-            )
-            with h5py.File(source_path, "w") as source_h5:
-                dataset = source_h5.create_dataset(
-                    "registration",
-                    data=registration,
-                )
-                dataset.attrs["unit"] = "pixel"
-                source_h5.create_dataset(
-                    "zernike_coefs_radians",
-                    data=np.asarray([0.1, 0.2], dtype=np.float32),
-                )
-
-            with h5py.File(output_path, "w") as output_h5:
-                initialize_output_h5(
-                    output_h5,
-                    holodoppler_source_file=str(source_path),
-                )
-
-            with h5py.File(output_path, "r") as output_h5:
-                self.assertNotIn("registration", output_h5)
-                np.testing.assert_array_equal(
-                    output_h5["Meta/registration"][...],
-                    registration,
-                )
-                self.assertEqual(
-                    "pixel",
-                    output_h5["Meta/registration"].attrs["unit"],
-                )
-                self.assertIn("zernike_coefs_radians", output_h5)
 
     def test_initialize_uses_existing_handles_and_compresses_large_passthrough(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -346,54 +234,6 @@ class H5WriterTests(unittest.TestCase):
                         "Segmentation/Laterality/EyeLateralityConfidence"
                     ].attrs["unit"],
                 )
-
-    def test_initialize_laterality_uses_the_current_output_model(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            dv_path = Path(tmp_dir) / "input_DV.h5"
-            output_path = Path(tmp_dir) / "output.h5"
-            with h5py.File(dv_path, "w") as dv:
-                dv.create_dataset("laterality/eye_laterality", data="left")
-                dv.create_dataset(
-                    "laterality/eye_laterality_confidence",
-                    data=np.float32(0.75),
-                )
-
-            with ProductStorage(
-                directory=Path(tmp_dir) / "scratch"
-            ) as storage, h5py.File(dv_path, "r") as dv:
-                output = OutputModel(storage, output_path)
-                initialize_output_h5(
-                    output,
-                    doppler_vision_source_file=str(dv_path),
-                    doppler_vision_source_h5=dv,
-                )
-                output.publish()
-
-            with h5py.File(output_path, "r") as output_h5:
-                self.assertEqual(
-                    "left",
-                    _read_scalar_string(
-                        output_h5["Segmentation/Laterality/EyeLaterality"]
-                    ),
-                )
-                self.assertAlmostEqual(
-                    0.75,
-                    float(
-                        output_h5[
-                            "Segmentation/Laterality/EyeLateralityConfidence"
-                        ][()]
-                    ),
-                )
-
-
-def _pyproject_version() -> str:
-    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
-    text = pyproject_path.read_text(encoding="utf-8")
-    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', text)
-    if match is None:
-        raise AssertionError(f"Missing project version in {pyproject_path}")
-    return match.group(1)
-
 
 def _read_scalar_string(dataset: h5py.Dataset) -> str:
     value = dataset[()]

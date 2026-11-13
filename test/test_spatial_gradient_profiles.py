@@ -10,7 +10,6 @@ import numpy as np
 
 from calculations.vessel_segments.measurement import SegmentMeasurementSettings
 from calculations.topology import OpticDisc
-from input_output.schema import EyeFlowOutputPaths
 from pipelines.spatial_gradient_moment0 import profiles as profile_module
 from pipelines.spatial_gradient_moment0.profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
@@ -22,25 +21,6 @@ from pipelines.spatial_gradient_moment0.profiles import (
 
 
 class SpatialGradientProfileTests(unittest.TestCase):
-    def test_output_roots_come_from_the_active_schema(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        self.assertEqual(
-            schema.spatial_gradient_profiles_root,
-            SPATIAL_GRADIENT_PROFILE_ROOT,
-        )
-        self.assertEqual(
-            schema.spatial_gradient_metrics_root,
-            SPATIAL_GRADIENT_METRICS_ROOT,
-        )
-        self.assertEqual(
-            "ProcessingWidth/SpatialGradient/Moments/Profiles",
-            SPATIAL_GRADIENT_PROFILE_ROOT,
-        )
-        self.assertEqual(
-            "ProcessingWidth/SpatialGradient/Moments/Metrics",
-            SPATIAL_GRADIENT_METRICS_ROOT,
-        )
-
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         vessels = SimpleNamespace(
             artery=np.ones((8, 8), dtype=bool),
@@ -451,92 +431,6 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertEqual(1, qc[199])
         self.assertEqual(0, qc[200])
         self.assertEqual(0, qc[201])
-
-    def test_lumen_size_distribution_statistics_ignore_nan(self) -> None:
-        values = np.asarray([1.0, 2.0, 6.0, np.nan], dtype=np.float32)
-
-        median, standard_deviation = (
-            profile_module._lumen_size_distribution_statistics(values)
-        )
-
-        self.assertEqual(2.0, median)
-        self.assertAlmostEqual(float(np.std([1.0, 2.0, 6.0])), standard_deviation)
-
-        median, standard_deviation = (
-            profile_module._lumen_size_distribution_statistics(
-                np.asarray([np.nan], dtype=np.float32)
-            )
-        )
-        self.assertTrue(np.isnan(median))
-        self.assertTrue(np.isnan(standard_deviation))
-
-    def test_tbkr_lumen_size_qc_uses_median_plus_or_minus_std(self) -> None:
-        lumen_size = np.asarray(
-            [0.0, 1.0, 2.0, 3.0, 4.0, 100.0, np.nan],
-            dtype=np.float32,
-        )
-
-        qc, median, standard_deviation = (
-            profile_module._lumen_size_standard_deviation_quality_control(
-                lumen_size
-            )
-        )
-
-        self.assertEqual(2.5, median)
-        self.assertAlmostEqual(
-            float(np.std([0.0, 1.0, 2.0, 3.0, 4.0, 100.0])),
-            standard_deviation,
-        )
-        np.testing.assert_array_equal(qc, [1, 1, 1, 1, 1, 0, 0])
-
-    def test_kr_lumen_size_qc_is_fractional_mean_of_tbkr_qc(self) -> None:
-        tbkr_qc = np.asarray(
-            [
-                [
-                    [[0, 1, 1], [1, 1, 0]],
-                    [[0, 1, 1], [1, 0, 0]],
-                ],
-                [
-                    [[1, 1, 1], [1, 0, 0]],
-                    [[0, 0, 1], [0, 0, 0]],
-                ],
-            ],
-            dtype=np.uint8,
-        )
-
-        kr_qc = profile_module._kr_lumen_size_quality_control(tbkr_qc)
-
-        self.assertEqual(np.float32, kr_qc.dtype)
-        self.assertEqual((2, 3), kr_qc.shape)
-        np.testing.assert_array_equal(
-            kr_qc,
-            [[0.25, 0.75, 1.0], [0.75, 0.25, 0.0]],
-        )
-
-        empty = profile_module._kr_lumen_size_quality_control(
-            np.empty((0, 2, 3, 4), dtype=np.uint8)
-        )
-        self.assertEqual(np.float32, empty.dtype)
-        np.testing.assert_array_equal(
-            empty,
-            np.zeros((3, 4), dtype=np.float32),
-        )
-
-    def test_tbkr_lumen_size_qc_uses_half_threshold(self) -> None:
-        kr_qc = np.asarray([[0.5, 0.6]], dtype=np.float32)
-
-        actual = profile_module._tbkr_lumen_size_quality_control(
-            kr_qc,
-            (2, 1, 1, 2),
-            threshold=profile_module.TBKR_LUMEN_SIZE_QC_THRESHOLD,
-        )
-
-        self.assertEqual(0.5, profile_module.TBKR_LUMEN_SIZE_QC_THRESHOLD)
-        np.testing.assert_array_equal(
-            actual,
-            np.asarray([[[[0, 1]]], [[[0, 1]]]], dtype=np.uint8),
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

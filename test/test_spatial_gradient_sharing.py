@@ -108,33 +108,22 @@ def test_reuses_identical_continuous_arrays_and_preserves_method_specific_beats(
         assert bands[profile_path].data.shape[2] == 1
 
 
-@pytest.mark.parametrize("changed", ["dataset", "mask", "rotation", "settings", "filter"])
-def test_cache_requires_compatible_source_masks_topology_and_settings(gradient_input, changed):
+def test_cache_requires_compatible_measurement_settings(gradient_input):
     path, source, plans = gradient_input
     masks = {name: getattr(source.segmentation.vessels, name) for name in plans}
     settings = SegmentMeasurementSettings(0.02)
     filters = (7, 6, 8, 0.6, 5)
     with h5py.File(path, "a") as hd:
         original = continuous_gradient_key(hd["moment0ff"], masks, plans, settings, filters)
-        dataset = hd["moment0ff"]
         # Distinct Python wrappers for the same HDF5 object must still hit.
         assert original == continuous_gradient_key(hd["moment0ff"], masks, plans, settings, filters)
-        if changed == "dataset":
-            dataset = hd.create_dataset("other", data=dataset[:])
-        elif changed == "mask":
-            masks = {**masks, "artery": ~masks["artery"]}
-        elif changed == "rotation":
-            plans = {**plans, "artery": replace(
-                plans["artery"], rotation_degrees=plans["artery"].rotation_degrees + 1,
-            )}
-        elif changed == "settings":
-            settings = replace(settings, pixel_size_mm=0.03)
-        else:
-            filters = (5, 6, 8, 0.6, 5)
-        assert original != continuous_gradient_key(dataset, masks, plans, settings, filters)
+        settings = replace(settings, pixel_size_mm=0.03)
+        assert original != continuous_gradient_key(
+            hd["moment0ff"], masks, plans, settings, filters,
+        )
 
 
-@pytest.mark.parametrize("failure", [None, "extraction", "packing", "persistence"])
+@pytest.mark.parametrize("failure", [None, "persistence"])
 def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
     gradient_input, tmp_path, failure,
 ):

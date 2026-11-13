@@ -14,11 +14,9 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import pipelines  # noqa: E402
 from calculations.topology import BranchIdentityResult, SegmentTopology  # noqa: E402
 from calculations.vessel_segments.sampling import SegmentSamplingPlan  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG  # noqa: E402
 from pipelines.absolute_waveform_metrics.calculator import (  # noqa: E402
     AbsoluteWaveformMetricsCalculator,
 )

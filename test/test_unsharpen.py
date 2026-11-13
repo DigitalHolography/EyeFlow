@@ -1,7 +1,6 @@
 """Checks for ImageJ unsharp-mask strength, spatial support and missing data."""
 
 import numpy as np
-import pytest
 
 from calculations.math.spatial_gradient import unsharpen
 

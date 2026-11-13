@@ -7,10 +7,7 @@ import unittest
 from pathlib import Path
 
 from app_settings import LAST_RUN_LOG_FILENAME
-from utils.logger import (
-    Logger,
-    format_log_message,
-)
+from utils.logger import Logger
 
 
 class LoggerTests(unittest.TestCase):

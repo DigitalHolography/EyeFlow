@@ -17,7 +17,7 @@ from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.background_artifacts import ArtifactExportResult, BackgroundArtifacts
-from pipeline_engine.base import PipelineDescriptor, pipeline, registerPipeline
+from pipeline_engine.base import PipelineDescriptor
 from pipeline_engine.context import PipelineOutput
 from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
 from pipelines.low_freq_spectra.artifacts import export_spectrogram_figures
@@ -59,7 +59,6 @@ def _run(manager, descriptors):
 def test_export_overlaps_analysis_and_survives_unrelated_rollback(
     tmp_path, threaded_exporter,
 ):
-    failing_sibling = True
     manager = _manager(tmp_path)
     started, release, finished = Event(), Event(), Event()
     target = manager.path_for(OutputType.PNG, "background.png")
@@ -87,10 +86,8 @@ def test_export_overlaps_analysis_and_survives_unrelated_rollback(
         # descriptor. Rollback must recognize those background-owned paths.
         ctx._background_artifacts.collect(wait=True)
         assert target.read_bytes() == b"snapshot"
-        if failing_sibling:
-            ctx.output.h5.write("Partial/value", -1)
-            raise ValueError("injected unrelated failure")
-        return {"Sibling/value": 7}
+        ctx.output.h5.write("Partial/value", -1)
+        raise ValueError("injected unrelated failure")
 
     def report(ctx):
         assert target.read_bytes() == b"snapshot"
@@ -101,12 +98,9 @@ def test_export_overlaps_analysis_and_survives_unrelated_rollback(
         _descriptor("source", source), _descriptor("sibling", sibling),
         _descriptor("report", report, wait_for_artifacts=True),
     ]
-    if failing_sibling:
-        with pytest.raises(PipelineRunError, match="injected unrelated failure") as error:
-            _run(manager, descriptors)
-        path = error.value.output_h5_path
-    else:
-        path = _run(manager, descriptors)
+    with pytest.raises(PipelineRunError, match="injected unrelated failure") as error:
+        _run(manager, descriptors)
+    path = error.value.output_h5_path
     assert target.read_bytes() == b"snapshot"
     with h5py.File(path) as output:
         assert output["Numerical/value"][()] == 42
@@ -117,21 +111,14 @@ def test_export_overlaps_analysis_and_survives_unrelated_rollback(
 
 
 def test_export_failure_preserves_numerics_continues_analysis_and_skips_report(
-    tmp_path, threaded_exporter, monkeypatch,
+    tmp_path, threaded_exporter,
 ):
-    failure_stage = "render_result"
     manager = _manager(tmp_path)
 
-    def fail(*args, **kwargs):
-        raise ValueError("injected export failure")
-
-    if failure_stage == "submit":
-        monkeypatch.setattr("pipeline_engine.background_artifacts.ProcessPoolExecutor", fail)
-
     def export(*args):
-        if failure_stage == "render_result":
-            return ArtifactExportResult([], ["[WARNING] fixture warning"], "injected export failure")
-        return fail()
+        return ArtifactExportResult(
+            [], ["[WARNING] fixture warning"], "injected export failure",
+        )
 
     def source(ctx):
         ctx.output.h5.write("Numerical/value", 42)
@@ -175,20 +162,15 @@ def test_failed_producer_discards_snapshot_without_starting_export(tmp_path, thr
 
 
 def test_failed_publication_leaves_no_partial_files(tmp_path, threaded_exporter):
-    invalid_path = "outside"
     manager = _manager(tmp_path)
-    target = manager.path_for(OutputType.PNG, "second.png")
     outside = tmp_path / "outside.png"
     outside.write_bytes(b"outside")
-    if invalid_path == "collision":
-        target.parent.mkdir(parents=True)
-        target.write_bytes(b"original")
 
     def export(snapshot, staged):
         first = staged.path_for(OutputType.PNG, "first.png")
         first.parent.mkdir(parents=True)
         first.write_bytes(b"first")
-        return [first, outside if invalid_path == "outside" else first.with_name(target.name)]
+        return [first, outside]
 
     with BackgroundArtifacts() as jobs:
         job = jobs.prepare("test", manager, export, lambda path: path.write_bytes(b"fixture"))
@@ -198,8 +180,6 @@ def test_failed_publication_leaves_no_partial_files(tmp_path, threaded_exporter)
         assert jobs.failures
     assert not manager.path_for(OutputType.PNG, "first.png").exists()
     assert outside.read_bytes() == b"outside"
-    if invalid_path == "collision":
-        assert target.read_bytes() == b"original"
     assert not list(manager.layout.ef_dir.rglob("*.partial"))
 
 

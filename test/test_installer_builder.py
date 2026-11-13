@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from installer.build_installer import clean_directory, project_metadata, verify_cli, write_inno_script
+from installer.build_installer import clean_directory, verify_cli, write_inno_script
 
 REPO = Path(__file__).resolve().parents[1]
 

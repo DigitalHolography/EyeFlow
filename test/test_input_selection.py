@@ -29,7 +29,7 @@ class _Var:
         self.value = value
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="module")
 def tcl_interpreter():
     try:
         return tk.Tcl()
@@ -103,7 +103,6 @@ def test_multiple_folder_selection_expands_and_deduplicates_all_inputs(tmp_path)
 
 
 def test_native_file_and_recursive_folder_selections_coexist(tmp_path):
-    folder_first = False
     first, second = _inputs(tmp_path)
     app = _app()
     controller = RunController.__new__(RunController)
@@ -111,19 +110,15 @@ def test_native_file_and_recursive_folder_selections_coexist(tmp_path):
     app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
     # The selected folder contains the second run one directory below it.
     app.ui_services.file_dialogs.askdirectories.return_value = (str(second.parent.parent),)
-    if folder_first:
-        controller.choose_holo_folder()
-        controller.choose_holo_file()
-    else:
-        controller.choose_holo_file()
-        controller.choose_holo_folder()
-    expected = [second, first] if folder_first else [first, second]
+    controller.choose_holo_file()
+    controller.choose_holo_folder()
+    expected = [first, second]
     _check_run_selection(app, expected)
     controller.choose_holo_folder()  # Overlapping selections must not duplicate runs.
     _check_run_selection(app, expected)
     app.ui_services.file_dialogs.askdirectories.assert_called_with(
         parent=app,
-        initialdir=str(first.parent if folder_first else second.parent.parent),
+        initialdir=str(second.parent.parent),
         title="Select folders containing .holo files or HD/DV runs (including subfolders)",
         mustexist=True,
     )
@@ -158,7 +153,6 @@ def test_text_lists_remain_a_standalone_input_when_adding_files_or_folders(tmp_p
 
 
 def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path):
-    last_picker = "folder"
     first, second = _inputs(tmp_path)
     settings_path = tmp_path / "settings.json"
     app = _app()
@@ -167,14 +161,9 @@ def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path):
     controller.app = app
     app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
     controller.choose_holo_file()
-    if last_picker == "file":
-        app.ui_services.file_dialogs.askopenfilenames.return_value = (str(second),)
-        controller.choose_holo_file()
-        expected = second.parent
-    else:
-        expected = second.parent.parent
-        app.ui_services.file_dialogs.askdirectories.return_value = (str(expected),)
-        controller.choose_holo_folder()
+    expected = second.parent.parent
+    app.ui_services.file_dialogs.askdirectories.return_value = (str(expected),)
+    controller.choose_holo_folder()
     assert app.input_controller.selected_holo_paths() == [first, second]
     app.ui_services.file_dialogs.askopenfilenames.return_value = ()
     controller.choose_holo_file()
@@ -202,10 +191,8 @@ def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path):
 def test_drop_handles_multiple_locations_folders_and_tcl_paths_with_spaces(
     tmp_path, tcl_interpreter,
 ):
-    kind = "mixed"
     first, second = _inputs(tmp_path)
-    dropped = {"files": [first, second], "folders": [first.parent, second.parent],
-               "mixed": [first, second.parent, first.parent]}[kind]
+    dropped = [first, second.parent, first.parent]
     app = _app()
     app.tk = tcl_interpreter
     event = SimpleNamespace(data=" ".join("{" + str(path) + "}" for path in dropped))

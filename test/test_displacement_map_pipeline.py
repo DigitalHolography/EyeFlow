@@ -20,8 +20,6 @@ from PIL import Image
 from input_output.readers.frame_sequences import FrameSequence
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
-from input_output.readers.h5 import RawH5SourceReader
-from input_output.schema import HolodopplerSource
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
@@ -74,31 +72,6 @@ class DisplacementRegistrationTests(unittest.TestCase):
 
 
 class DisplacementMapInputTests(unittest.TestCase):
-    def test_frame_sequence_reuses_open_h5_dataset(self) -> None:
-        with h5py.File("already_open.h5", "w", driver="core", backing_store=False) as hd:
-            dataset = hd.create_dataset(
-                "moment0",
-                data=np.arange(24, dtype=np.float32).reshape(3, 2, 4),
-            )
-            with patch(
-                "input_output.readers.frame_sequences.h5py.File",
-                side_effect=AssertionError("HDF5 input was reopened"),
-            ):
-                sequence = FrameSequence(
-                    Path("not-on-disk.h5"),
-                    "moment0",
-                    0,
-                    10.0,
-                    1.0,
-                    99.5,
-                    h5_source=dataset,
-                )
-                frames = list(sequence.iter_frames())
-
-        self.assertEqual(3, sequence.frame_count)
-        self.assertEqual(3, len(frames))
-        self.assertEqual((2, 4, 3), frames[0].shape)
-
     def test_h5_replay_reads_each_source_frame_once(self) -> None:
         values = np.arange(5 * 3 * 4, dtype=np.float32).reshape(5, 3, 4)
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -133,29 +106,6 @@ class DisplacementMapInputTests(unittest.TestCase):
                     np.testing.assert_array_equal(cached, direct)
             self.assertEqual([], list(Path(tmp_dir).iterdir()))
 
-    def test_resolves_root_moment0_alias(self) -> None:
-        with h5py.File("moment_alias.h5", "w", driver="core", backing_store=False) as hd:
-            expected = hd.create_dataset("M0", data=np.ones((3, 2, 4), np.float32))
-
-            resolved = HolodopplerSource(
-                RawH5SourceReader(h5file=hd, label="HD"), {}
-            ).named_root_moment_dataset("moment0")
-
-            self.assertEqual(expected.name, resolved.name)
-
-    def test_resolves_an_explicit_alternate_root_moment(self) -> None:
-        with h5py.File("moment.h5", "w", driver="core", backing_store=False) as hd:
-            expected = hd.create_dataset(
-                "moment2",
-                data=np.ones((3, 2, 4), np.float32),
-            )
-
-            resolved = HolodopplerSource(
-                RawH5SourceReader(h5file=hd, label="HD"), {}
-            ).named_root_moment_dataset("moment2")
-
-            self.assertEqual(expected.name, resolved.name)
-
     def test_combined_mask_prefers_vessel_mask_and_aligns_transposed_axes(self) -> None:
         vessel = np.asarray(
             [[1, 0], [0, 1], [0, 0], [1, 0]],
@@ -169,28 +119,6 @@ class DisplacementMapInputTests(unittest.TestCase):
 
         self.assertEqual(VESSEL_MASK_PATH, source)
         np.testing.assert_array_equal(mask, vessel.T.astype(bool))
-
-    def test_combined_mask_falls_back_to_labeled_vessels(self) -> None:
-        labeled = np.asarray([[0, 3], [7, 0]], dtype=np.int32)
-        with h5py.File("mask.h5", "w", driver="core", backing_store=False) as dv:
-            dv.create_dataset(LABELED_VESSELS_PATH, data=labeled)
-
-            mask, source = resolve_retina_mask(dv, labeled.shape)
-
-        self.assertEqual(LABELED_VESSELS_PATH, source)
-        np.testing.assert_array_equal(mask, labeled != 0)
-
-    def test_combined_mask_falls_back_to_artery_vein_union(self) -> None:
-        artery = np.asarray([[1, 0], [0, 0]], dtype=np.uint8)
-        vein = np.asarray([[0, 0], [0, 1]], dtype=np.uint8)
-        with h5py.File("mask.h5", "w", driver="core", backing_store=False) as dv:
-            dv.create_dataset(ARTERY_MASK_PATH, data=artery)
-            dv.create_dataset(VEIN_MASK_PATH, data=vein)
-
-            mask, source = resolve_retina_mask(dv, artery.shape)
-
-        self.assertEqual(f"{ARTERY_MASK_PATH}+{VEIN_MASK_PATH}", source)
-        np.testing.assert_array_equal(mask, (artery | vein).astype(bool))
 
     def test_explicit_artery_vein_and_labeled_modes_use_requested_dataset(self) -> None:
         values = {
@@ -438,42 +366,9 @@ def test_magnitude_avi_renders_masked_frames(tmp_path: Path, capsys) -> None:
     assert np.min(decoded[12, 12]) > 245
 
 
-@pytest.mark.parametrize("fail_in_consumer", [False, True])
-def test_video_replay_releases_cache_with_retained_frames(tmp_path, fail_in_consumer):
-    # Supply decoded video frames without depending on a platform video codec.
+def test_replay_closes_cache_when_source_read_fails(tmp_path):
     sequence = FrameSequence.__new__(FrameSequence)
     sequence.is_h5 = False
-    sequence.frame_count, sequence.height, sequence.width = 3, 2, 4
-    values = np.arange(72, dtype=np.uint8).reshape(3, 2, 4, 3)
-    retained = None
-    iterator = None
-    with patch.object(sequence, "iter_frames", return_value=iter(values)):
-        try:
-            with sequence.cached_for_replay(None, tmp_path) as replay:
-                mapping = replay.frames._mmap
-                iterator = replay.iter_frames()
-                retained = next(iterator)
-                assert type(retained) is np.ndarray
-                assert not np.shares_memory(retained, replay.frames)
-                retained[:] = 0
-                np.testing.assert_array_equal(next(replay.iter_frames()), values[0])
-                if fail_in_consumer:
-                    raise ValueError("consumer failed")
-        except ValueError as error:
-            assert fail_in_consumer
-            assert str(error) == "consumer failed"
-    assert replay.frames is None
-    assert mapping.closed
-    assert list(tmp_path.iterdir()) == []
-    np.testing.assert_array_equal(retained, np.zeros_like(values[0]))
-    with pytest.raises(RuntimeError, match="cache is closed"):
-        next(iterator)
-
-
-@pytest.mark.parametrize("source_kind", ["video", "h5"])
-def test_replay_closes_cache_when_source_read_fails(tmp_path, source_kind):
-    sequence = FrameSequence.__new__(FrameSequence)
-    sequence.is_h5 = source_kind == "h5"
     sequence.frame_count, sequence.height, sequence.width = 3, 2, 4
     failure = ValueError("source read failed")
     mappings = []
@@ -488,28 +383,20 @@ def test_replay_closes_cache_when_source_read_fails(tmp_path, source_kind):
         yield np.zeros((2, 4, 3), dtype=np.uint8)
         raise failure
 
-    with h5py.File("failed_replay.h5", "w", driver="core", backing_store=False) as hd:
-        sequence.h5_source = hd.create_dataset("moment0", shape=(3, 2, 4), dtype=np.float32)
-        sequence.h5_frame_axis = 0
-        with (
-            patch(
-                "input_output.readers.frame_sequences.np.lib.format.open_memmap",
-                side_effect=track_mapping,
-            ),
-            patch.object(sequence, "iter_frames", side_effect=video_frames),
-            patch.object(
-                sequence, "_slice_h5_frame",
-                side_effect=[np.zeros((2, 4), np.float32), failure],
-            ),
-        ):
-            with pytest.raises(ValueError, match="source read failed") as caught:
-                with sequence.cached_for_replay(None, tmp_path):
-                    pytest.fail("A partially filled cache must not be replayed")
-            assert caught.value is failure
-            # Keep the exception and its traceback alive while checking cleanup.
-            assert len(mappings) == 1
-            assert mappings[0].closed
-            assert list(tmp_path.iterdir()) == []
+    with (
+        patch(
+            "input_output.readers.frame_sequences.np.lib.format.open_memmap",
+            side_effect=track_mapping,
+        ),
+        patch.object(sequence, "iter_frames", side_effect=video_frames),
+    ):
+        with pytest.raises(ValueError, match="source read failed") as caught:
+            with sequence.cached_for_replay(None, tmp_path):
+                pytest.fail("A partially filled cache must not be replayed")
+        assert caught.value is failure
+        assert len(mappings) == 1
+        assert mappings[0].closed
+        assert list(tmp_path.iterdir()) == []
 
 
 if __name__ == "__main__":

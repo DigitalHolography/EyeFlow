@@ -11,9 +11,6 @@ from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_shape_metrics.metrics.calculator import (
     WaveformShapeMetricsCalculator,
 )
-from pipelines.waveform_shape_metrics.metrics.runner import (
-    run_waveform_shape_metric_calculations,
-)
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from utils.logger import Logger
 

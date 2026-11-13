@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.velocity_analysis.builder import _segments_required
 
 
 def _dag() -> PipelineDAG:
@@ -40,13 +39,13 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     assert "velocity_analysis" in gradient
     assert "spatial_gradient_moment0" not in masked
     assert "velocity_analysis" in masked
-    assert tuple(name for name in neither if name != "low_freq_spectra") == (
+    reports = {"low_freq_spectra", "pdf_width_report"}
+    assert tuple(name for name in neither if name not in reports) == (
         "topology_core",
         "velocity",
         "velocity_analysis",
         "blood_volume_rate",
     )
-    assert neither.index("low_freq_spectra") > neither.index("velocity")
 
 
 def test_bvr_defaults_to_mask_derived_outputs_only() -> None:

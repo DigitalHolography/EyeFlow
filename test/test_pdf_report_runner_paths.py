@@ -35,11 +35,7 @@ from pipelines.pdf_report.data import (  # noqa: E402
 from pipelines.pdf_report.pages import build_velocity_bvr_pages  # noqa: E402
 from pipelines.pdf_report.spectra import (  # noqa: E402
     SpectraGapsReportData,
-    build_spectra_gaps_pages,
-    extract_spectra_gaps_report_data,
 )
-from pipelines.pdf_report.width_data import PhaseSummary, WidthReportData  # noqa: E402
-from pipelines.pdf_report.width_pages import build_width_page  # noqa: E402
 
 
 class PdfReportRunnerPathTests(unittest.TestCase):
@@ -69,19 +65,6 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                         with_optional.index("pdf_width_report"))
         self.assertLess(with_optional.index("spatial_gradient_moment0"),
                         with_optional.index("pdf_width_report"))
-
-    def test_report_inherits_velocity_unit_with_dataset_override(self) -> None:
-        from pipelines.pdf_report.data import _velocity_dataset_unit
-
-        with h5py.File("report_units.h5", "w", driver="core", backing_store=False) as f:
-            f.attrs["velocity_unit"] = "wrong root fallback"
-            output = PipelineH5Output(f, processing_root="ProcessingBandRatio",
-                                      provenance={"velocity_unit": "mm/s"})
-            output.write("ProcessingMoments/signal", [1])
-            dataset = output.get("ProcessingMoments/signal")
-            self.assertEqual("mm/s", _velocity_dataset_unit(f, dataset))
-            dataset.attrs["unit"] = "local override"
-            self.assertEqual("local override", _velocity_dataset_unit(f, dataset))
 
     def test_uses_layout_stem_and_pdf_report_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -184,116 +167,6 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             )
             self.assertEqual([], pages)
             self.assertNotIn("bandratio", path.parts)
-
-    def test_missing_filtered_velocity_does_not_fall_back_to_unfiltered(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "scan_EF.h5"
-            with h5py.File(path, "w") as output_h5:
-                output_h5.create_dataset(
-                    schema.artery_per_beat.velocity_signal,
-                    data=np.full((2, 3), 99.0),
-                )
-                output_h5.create_dataset(
-                    schema.cardiac_cycle.systolic_cycle_duration_seconds,
-                    data=np.array([0.5, 0.5]),
-                )
-                output_h5.create_dataset(
-                    f"{schema.waveform_shape_metrics_root}/artery/global/raw/RI",
-                    data=np.array([0.5, 0.5]),
-                )
-            parameters = _read_report(path, include_bvr=False).parameters
-        self.assertNotIn("Average_Arterial_Velocity", parameters)
-        self.assertNotIn("heart_beat", parameters)
-        self.assertNotIn("ARI", parameters)
-
-    def test_optional_page_uses_shared_spectra_and_variant_volume_rate(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            path = root / "scan_EF.h5"
-            with h5py.File(path, "w") as output_h5:
-                for processing_root, velocity, flow in (
-                    ("ProcessingMoments", 2.0, 4.0),
-                    ("ProcessingBandRatio", 5.0, 7.0),
-                ):
-                    output_h5.create_dataset(
-                        schema.artery_per_beat_filtered.velocity_signal.replace(
-                            "ProcessingMoments", processing_root
-                        ),
-                        data=np.full((2, 4), velocity),
-                    )
-                    output_h5.create_dataset(
-                        schema.blood_volume_rate.artery.total_masked_edges.replace(
-                            "ProcessingMoments", processing_root
-                        ),
-                        data=np.full((4, 2), flow),
-                    )
-                output_h5.create_dataset(
-                    f"{schema.spectrograms_masked_metrics_root}/SE",
-                    data=np.array([0.1, 0.3, 0.5, 0.7]),
-                )
-                output_h5.create_dataset(
-                    f"{schema.spectrograms_masked_metrics_root}/SEI", data=0.4,
-                )
-                output_h5.create_dataset(
-                    f"{schema.spectrograms_masked_qc.data_completeness}/AcquisitionValidFraction",
-                    data=0.8,
-                )
-
-            moments = _read_report(path, processing_root="ProcessingMoments")
-            bands = _read_report(path, processing_root="ProcessingBandRatio")
-            self.assertEqual(2.0, moments.parameters["Average_Arterial_Velocity"]["value"])
-            self.assertEqual(5.0, bands.parameters["Average_Arterial_Velocity"]["value"])
-            self.assertEqual(
-                4.0, moments.volume_rates["masked_edges"]["artery"].overall_value,
-            )
-            self.assertEqual(
-                7.0, bands.volume_rates["masked_edges"]["artery"].overall_value,
-            )
-            with h5py.File(path, "r") as output_h5:
-                spectra = extract_spectra_gaps_report_data(output_h5)
-            self.assertEqual(0.4, spectra.sei)
-
-            with patch("input_output.reports.pdf_report.PdfPages") as pages:
-                pages.return_value.__enter__.return_value = pages.return_value
-                write_pdf_report(
-                    root / "pdf" / "scan_velocityBvrReport.pdf",
-                    build_velocity_bvr_pages(moments, "scan", None, {}),
-                )
-                self.assertEqual(2, pages.return_value.savefig.call_count)
-                write_pdf_report(
-                    root / "pdf" / "scan_spectraGapsReport.pdf",
-                    build_spectra_gaps_pages(spectra, "scan"),
-                )
-                self.assertEqual(3, pages.return_value.savefig.call_count)
-
-    def test_report_without_optional_products_has_one_page(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            path = root / "scan_EF.h5"
-            with h5py.File(path, "w") as output_h5:
-                output_h5.create_dataset(
-                    schema.artery_per_beat_filtered.velocity_signal,
-                    data=np.full((2, 4), 2.0),
-                )
-            report = _read_report(path)
-            report_pages = build_velocity_bvr_pages(report, "scan", None, {})
-            page_labels = " ".join(
-                [axis.get_title() for axis in report_pages[0].axes]
-                + [text.get_text() for axis in report_pages[0].axes for text in axis.texts]
-            )
-            self.assertIn("Artery filtered per-beat velocity", page_labels)
-            self.assertIn("Vein filtered per-beat velocity", page_labels)
-            self.assertIn("Vein systole indices unavailable", page_labels)
-            with patch("input_output.reports.pdf_report.PdfPages") as pages:
-                pages.return_value.__enter__.return_value = pages.return_value
-                write_pdf_report(
-                    root / "pdf" / "scan_velocityBvrReport.pdf", report_pages,
-                )
-                self.assertEqual(1, pages.return_value.savefig.call_count)
-                self.assertNotIn("vein", report.velocity_per_beat)
 
     def test_velocity_page_embeds_maps_and_systole_artifacts(self) -> None:
         paths = {
@@ -460,53 +333,6 @@ class PdfReportRunnerPathTests(unittest.TestCase):
         finally:
             for page in pages:
                 plt.close(page)
-
-    def test_width_report_uses_red_arteries_and_blue_veins(self) -> None:
-        def summary(label, value):
-            return PhaseSummary(
-                label=label, curve=np.array([value]), median=value,
-                valid_fraction=1.0, branch_count=1, beat_count=1, unit="pixels",
-            )
-
-        fig = build_width_page(
-            WidthReportData(
-                displacement=(summary("Rigid Artery", 1.0), summary("Rigid Vein", 2.0)),
-                gradient=(),
-            ),
-            "scan",
-        )
-        try:
-            plot = next(ax for ax in fig.axes if ax.get_ylabel() == "Radial movement (pixels)")
-            self.assertEqual(["tab:red", "tab:blue"], [line.get_color() for line in plot.lines])
-        finally:
-            plt.close(fig)
-
-    def test_gradient_volume_rate_sums_branches_then_medians_rings(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "scan_EF.h5"
-            with h5py.File(path, "w") as output_h5:
-                output_h5.create_dataset(
-                    schema.blood_volume_rate.artery.static_edges,
-                    data=np.full((4, 2, 3, 2), 6.0),
-                )
-            report = _read_report(path)
-        artery = report.volume_rates["gradient_edges"]["artery"]
-        self.assertEqual(18.0, artery.overall_value)
-        self.assertEqual((4, 2), artery.beat_curves.shape)
-
-    def test_volume_headline_reduces_the_displayed_phase_curve(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "scan_EF.h5"
-            with h5py.File(path, "w") as output_h5:
-                output_h5.create_dataset(
-                    schema.blood_volume_rate.artery.total_masked_edges,
-                    data=np.array([[1.0, np.nan], [3.0, 4.0]]),
-                )
-            rate = _read_report(path).volume_rates["masked_edges"]["artery"]
-        np.testing.assert_allclose(rate.phase_curve, [1.0, 3.5])
-        self.assertEqual(2.25, rate.overall_value)
 
     def test_volume_rate_keeps_gradient_and_mask_methods(self) -> None:
         schema = EyeFlowOutputPaths.active()

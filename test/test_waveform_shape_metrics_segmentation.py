@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from calculations.topology import AnnulusGeometry, OpticDisc
+from calculations.topology import OpticDisc
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
 from pipelines.topology_core.outputs import (
     ANNULUS_OUTLINE_LABEL,

@@ -2,26 +2,20 @@
 
 import zipfile
 
-import numpy as np
 import pytest
-from matplotlib.figure import Figure
 
 from input_output.archives.zip_archive import write_zip_artifact
 from scripts.migrate_artifacts import migrate_artifacts
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.artifact_names import prefixed_artifact_path
-from input_output.writers.eps import write_eps_file
-from input_output.writers.png import write_png_file
 
 
-@pytest.mark.parametrize("kind, namespace", [
-    (OutputType.PNG, "moments"),
-])
-def test_manager_prefixes_leaf_filename_once_for_every_format(tmp_path, kind, namespace):
-    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.v2.holo"))
-    if namespace is not None:
-        manager = manager.for_artifact_namespace(namespace)
+def test_manager_prefixes_png_leaf_filename_once(tmp_path):
+    kind = OutputType.PNG
+    manager = OutputManager(
+        HoloRunLayout.from_holo(tmp_path / "scan.v2.holo")
+    ).for_artifact_namespace("moments")
     expected = manager.dir_for(kind) / "nested" / f"scan.v2_plot.{kind.value}"
     assert manager.path_for(kind, f"nested/plot.{kind.value}") == expected
     assert manager.path_for(kind, f"nested/scan.v2_plot.{kind.value}") == expected

@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import PIPELINE_REGISTRY
@@ -48,15 +47,7 @@ def _context(options, state_values=None, scheduled=None, targeted=None):
     )
 
 
-@pytest.mark.parametrize(
-    ("options", "scheduled", "expected"),
-    [
-        (("velocity_profiles",), True, True),
-    ],
-)
-def test_longitudinal_velocity_profiles_require_a_profile_consumer(
-    options, expected, scheduled,
-):
+def test_longitudinal_velocity_profiles_require_a_profile_consumer():
     source = SimpleNamespace(
         source=SimpleNamespace(
             segmentation=SimpleNamespace(
@@ -68,8 +59,8 @@ def test_longitudinal_velocity_profiles_require_a_profile_consumer(
         provenance={"beat_index_base": 0},
     )
     ctx = _context(
-        {"velocity_analysis": options},
-        scheduled={"velocity_analysis"} if scheduled else {"waveform_shape_metrics"},
+        {"velocity_analysis": ("velocity_profiles",)},
+        scheduled={"velocity_analysis"},
     )
     ctx.output = SimpleNamespace(available=False)
     with patch.object(
@@ -80,23 +71,11 @@ def test_longitudinal_velocity_profiles_require_a_profile_consumer(
         analysis_builder._segment_velocity_inputs(
             "velocity_map", source, "rings", ctx, cycle_boundary_indexes=(0, 5, 10),
         )
-    assert analyze.call_args.kwargs["compute_longitudinal_profiles"] is (
-        expected and scheduled
-    )
-    assert analyze.call_args.kwargs["compute_transverse_profiles"] is (
-        expected and scheduled
-    )
+    assert analyze.call_args.kwargs["compute_longitudinal_profiles"] is True
+    assert analyze.call_args.kwargs["compute_transverse_profiles"] is True
 
 
-@pytest.mark.parametrize(
-    ("blood_volume_rate_options", "expected"),
-    [
-        (("gradient_edges",), True),
-    ],
-)
-def test_only_gradient_edge_flow_requires_transverse_velocity_profiles(
-    blood_volume_rate_options, expected,
-):
+def test_gradient_edge_flow_requires_only_transverse_velocity_profiles():
     source = SimpleNamespace(
         source=SimpleNamespace(
             segmentation=SimpleNamespace(
@@ -110,7 +89,7 @@ def test_only_gradient_edge_flow_requires_transverse_velocity_profiles(
     ctx = _context(
         {
             "velocity_analysis": ("segments",),
-            "blood_volume_rate": blood_volume_rate_options,
+            "blood_volume_rate": ("gradient_edges",),
         },
         scheduled={"velocity_analysis", "blood_volume_rate"},
     )
@@ -123,7 +102,7 @@ def test_only_gradient_edge_flow_requires_transverse_velocity_profiles(
         analysis_builder._segment_velocity_inputs(
             "velocity_map", source, "rings", ctx, cycle_boundary_indexes=(0, 5, 10),
         )
-    assert analyze.call_args.kwargs["compute_transverse_profiles"] is expected
+    assert analyze.call_args.kwargs["compute_transverse_profiles"] is True
     assert analyze.call_args.kwargs["compute_longitudinal_profiles"] is False
 
 

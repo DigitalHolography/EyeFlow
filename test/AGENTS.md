@@ -21,6 +21,12 @@ pytest node or file first; expand only after a failure or a concrete uncovered
 risk. Run the full suite when requested or when focused checks cannot establish
 the changed behavior.
 
+On the Windows development environment, the full suite currently takes about
+one to two minutes; treat this as an approximate regression baseline, not a
+correctness threshold. Run it quietly with `python -m pytest -q --durations=10`
+when it is justified, and investigate a substantial increase in total or
+per-test duration.
+
 Find a specific case with `rg -n 'def test_.*<behavior>' test/`, then run its
 pytest node (`python -m pytest test/test_file.py::test_name`). Measure duration
 with `--durations=10` when a focused check is slow; classify tests from those

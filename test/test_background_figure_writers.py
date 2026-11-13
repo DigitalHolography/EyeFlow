@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import h5py
 import numpy as np
-import pytest
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
@@ -21,7 +20,7 @@ from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import FigureArtifactWriter
 from pipeline_engine.base import PipelineDescriptor
 from pipeline_engine.run_service import execute_run, resolve_run_spec
-from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
+from pipeline_engine.runtime import run_pipelines_to_output
 from test_run_service import _write_input
 from utils.logger import Logger
 
@@ -153,12 +152,11 @@ def test_next_file_starts_before_exports_finish_and_completion_logs_are_asynchro
         input_paths=[first, second], target_names=["producer"],
         pipelines=[_descriptor("producer", source)],
     )
-    previous = Logger._current
     Logger.configure(on_log=on_log)
     try:
         result = execute_run(spec)
     finally:
-        Logger._current = previous
+        Logger.reset_current()
     assert result.succeeded, result.failures
     assert second_started.is_set()
     assert len(pools) == 1, "The same renderer pool should serve both inputs"
