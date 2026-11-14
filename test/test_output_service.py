@@ -79,6 +79,70 @@ def test_duplicate_service_does_not_spawn_or_detach_the_existing_writer(tmp_path
             assert physical['accepted'][()] == 7
 
 
+def test_duplicate_manager_preserves_the_active_acquisitions_storage(tmp_path):
+    with ProductStorage(directory=tmp_path/'scratch') as storage:
+        model = OutputModel(storage, tmp_path/'final.h5')
+        manager = IOManager(model)
+        try:
+            values = np.arange(32768, dtype='f4')
+            with model.checkpoint():
+                model.create_dataset('accepted', data=values)
+            manager.output.drain()
+            backing = Path(model.records['accepted'].value.path)
+            with pytest.raises(RuntimeError, match='listener is already bound'):
+                IOManager(model)
+            assert not storage._closed and backing.exists()
+            assert model._commit_listener == manager.output.submit
+            with model.checkpoint():
+                model.create_dataset('later', data=8)
+            manager.finish()
+            with h5py.File(model.filename) as physical:
+                np.testing.assert_array_equal(physical['accepted'][:], values)
+                assert physical['later'][()] == 8
+        finally:
+            manager.close()
+
+
+def test_failed_manager_construction_leaves_caller_storage_usable(tmp_path, monkeypatch):
+    with ProductStorage(directory=tmp_path/'scratch') as storage:
+        model = OutputModel(storage, tmp_path/'final.h5')
+        def failed_writer(*args, **kwargs):
+            raise OSError('writer could not start')
+        monkeypatch.setattr('pipeline_engine.io.manager.OutputService', failed_writer)
+        with pytest.raises(OSError, match='writer could not start'):
+            IOManager(model)
+        reference = storage.store_array(np.arange(32768, dtype='f4'))
+        assert Path(reference.path).exists() and not storage._closed
+
+
+def test_runtime_releases_new_storage_when_manager_construction_fails(tmp_path, monkeypatch):
+    import pipeline_engine.execution.runtime as runtime
+    from input_output.output_manager import OutputManager
+    from input_output.runs.layout import HoloRunLayout
+
+    created = []
+    def new_storage(**kwargs):
+        storage = ProductStorage(**kwargs)
+        created.append(storage)
+        return storage
+    def failed_manager(*args, **kwargs):
+        raise OSError('manager could not start')
+    monkeypatch.setattr(runtime, 'ProductStorage', new_storage)
+    monkeypatch.setattr(runtime, 'IOManager', failed_manager)
+    output_manager = OutputManager(HoloRunLayout.from_holo(tmp_path/'scan.holo'))
+    try:
+        with pytest.raises(OSError, match='manager could not start'):
+            runtime.run_pipelines_to_output(
+                output_manager=output_manager, pipelines=(),
+                holodoppler_h5=None, doppler_vision_h5=None,
+            )
+        assert len(created) == 1 and created[0]._closed
+        assert not created[0].directory.exists()
+    finally:
+        for storage in created:
+            storage.close()
+
+
 def test_manifest_interrupt_stops_the_batch_at_a_safe_health_boundary(tmp_path, monkeypatch):
     with output(tmp_path) as (model, service):
         interrupt = KeyboardInterrupt('stop output')
@@ -392,19 +456,62 @@ def test_cancelled_publication_never_replaces_existing_destination(tmp_path,monk
     assert final.read_bytes()==b'previous result' and not list(tmp_path.glob('.ef-*'))
 
 
-def test_resource_admission_and_ipc_failure_are_terminal_without_losing_commits(tmp_path,monkeypatch):
-    class RefusingBudget:
-        memory_limit=128*2**20
-        def try_acquire(self,*args): return False
-        def release(self,*args): raise AssertionError('unacquired reservation was released')
-    with output(tmp_path/'admission') as (model,service):
+@pytest.mark.parametrize('outcome', ['resume', 'cancel'])
+def test_busy_resource_admission_waits_without_operation_deadline(tmp_path, outcome):
+    from threading import Event
+
+    class GatedBudget:
+        memory_limit = 128 * 2**20
+
+        def __init__(self):
+            self.attempted, self.available = Event(), Event()
+            self.reservations = 0
+
+        def try_acquire(self, *args):
+            self.attempted.set()
+            if not self.available.is_set():
+                return False
+            self.reservations += 1
+            return True
+
+        def release(self, *args):
+            assert self.reservations > 0, 'unacquired reservation was released'
+            self.reservations -= 1
+
+    with output(tmp_path) as (model, service):
         assert service._ready.wait(10)
-        service.budget=RefusingBudget()
-        service.policy=replace(service.policy,operation_timeout=0.1)
-        with model.checkpoint(): model.create_dataset('accepted',data=7)
-        with pytest.raises(OutputServiceError,match='resource admission timed out'):
-            service.finish()
+        budget = service.budget = GatedBudget()
+        service.policy = replace(service.policy, operation_timeout=0.1)
+        with model.checkpoint():
+            model.create_dataset('accepted', data=7)
+        with ThreadPoolExecutor(1) as pool:
+            future = pool.submit(service.finish)
+            try:
+                assert budget.attempted.wait(5)
+                # A healthy writer must keep waiting when science owns the
+                # budget, even beyond the deadline for an active command.
+                assert not budget.available.wait(3 * service.policy.operation_timeout)
+                assert not future.done()
+                if outcome == 'cancel':
+                    service.request_abort()
+                    with pytest.raises(OutputServiceError, match='cancelled'):
+                        future.result(5)
+                else:
+                    # Restore a normal active-write allowance before admission
+                    # so loaded hosts do not turn this wait regression flaky.
+                    service.policy = replace(service.policy, operation_timeout=5)
+                    budget.available.set()
+                    with h5py.File(future.result(5)) as physical:
+                        assert physical['accepted'][()] == 7
+                    assert service.metrics.snapshot()['output_admission_wait_seconds'] >= 0.3
+            finally:
+                budget.available.set()
+                service.close()
+        assert budget.reservations == 0
         assert model.records['accepted'].committed
+
+
+def test_ipc_failure_is_terminal_without_losing_commits(tmp_path,monkeypatch):
     with output(tmp_path/'ipc') as (model,service):
         assert service._ready.wait(10)
         def fail(*args,**kwargs): raise OSError('output IPC failed')

@@ -80,6 +80,26 @@ def test_metadata_optional_and_legacy_spectrogram_group_do_not_read(tmp_path):
         assert not service._replays
 
 
+@pytest.mark.parametrize("declares_input", [False, True])
+def test_invalid_graph_is_excluded_from_advisory_input_plan(tmp_path, declares_input):
+    uses = (InputUse("hd.moment0", InputAccess.SEQUENTIAL),) if declares_input else ()
+    invalid = StageGraph((
+        StageSpec("first", _never_run, after=("second",), inputs=uses),
+        StageSpec("second", _never_run, after=("first",)),
+    ))
+    valid = StageGraph((StageSpec("read", _never_run, inputs=(
+        InputUse("hd.moment2", InputAccess.SEQUENTIAL),
+    )),))
+    with inputs(tmp_path) as (service, client, values):
+        service.configure({"invalid": invalid, "valid": valid})
+        assert "invalid" not in service._stage_order
+        assert set(service.manifest) == {service.aliases["hd", "moment2"]}
+        assert service.storage.metrics.snapshot()["input_graph_plans_skipped"] == 1
+        assert not service.source_reads
+        np.testing.assert_array_equal(client()["moment2"][:8], values[:8] + 1)
+        assert service.aliases["hd", "moment0"] not in service._replays
+
+
 def test_first_region_is_visible_without_full_staging_and_reused_by_alias(tmp_path):
     with inputs(tmp_path) as (service, client, values):
         first, second = client(), client()

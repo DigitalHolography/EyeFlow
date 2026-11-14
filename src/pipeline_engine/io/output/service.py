@@ -241,8 +241,10 @@ class OutputService:
                             if self.budget.try_acquire(1, memory):
                                 reserved = True
                                 break
-                            if perf_counter()-admitted_at > self.policy.operation_timeout:
-                                raise OutputServiceError("Output writer resource admission timed out")
+                            # Scientific stages may legitimately occupy the
+                            # budget longer than a writer operation's deadline.
+                            # Admission is waiting, not a running operation;
+                            # cancellation or writer death still ends this wait.
                             self._stop.wait(0.05)
                     if self._stop.is_set():
                         return

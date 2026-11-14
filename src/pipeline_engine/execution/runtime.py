@@ -43,6 +43,7 @@ from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget, current_resources
 from pipeline_engine.io.input.service import InputService, InputPolicy
 from pipeline_engine.execution.scheduler import CoordinatorScheduler
+from pipeline_engine.execution.dependencies import DependencyAvailability, dependency_availability
 from pipeline_engine.execution.process_executor import ProcessExecutor
 from pipeline_engine.execution.protocol import InvocationSettings
 from pipeline_engine.stage_graph.model import StageGraph
@@ -111,10 +112,16 @@ def run_pipelines_to_output(
     with budget.activate():
         with Logger.perf_stage("run/product_storage"):
             storage = ProductStorage(budget=budget)
-        work_h5 = OutputModel(storage, output_h5_path)
-        wait_for_exports = background_artifacts is None
-        background_artifacts = background_artifacts or BackgroundArtifacts()
-        io = IOManager(work_h5, artifacts=background_artifacts, owns_artifacts=wait_for_exports, budget=budget)
+        try:
+            work_h5 = OutputModel(storage, output_h5_path)
+            wait_for_exports = background_artifacts is None
+            background_artifacts = background_artifacts or BackgroundArtifacts()
+            io = IOManager(work_h5, artifacts=background_artifacts, owns_artifacts=wait_for_exports, budget=budget)
+        except BaseException:
+            # Until IOManager successfully accepts ownership, this caller owns
+            # the freshly allocated store and must clean up failed setup.
+            storage.close()
+            raise
         def progress():
             io.check_health()
             if on_progress is not None:
@@ -479,7 +486,8 @@ def _run_variant_pipeline(
         statuses = status.branch_status.setdefault(variant.name, {})
         label = f"{descriptor.name} [{variant.name}]"
         blocked = [dependency for dependency in dependencies
-                   if statuses.get(dependency, status.shared_status.get(dependency)) != "succeeded"]
+                   if dependency_availability(statuses.get(dependency, status.shared_status.get(dependency)))
+                   is not DependencyAvailability.SATISFIED]
         if descriptor.wait_for_artifacts:
             blocked.extend(background_artifacts.failures)
         if blocked:
@@ -539,7 +547,8 @@ def _run_shared_pipeline(
         arguments["execution_variant"] = canonical
         arguments["variables"].update(canonical.state)
     blocked = [dependency for dependency in dependencies
-               if status.shared_status.get(dependency) != "succeeded"]
+               if dependency_availability(status.shared_status.get(dependency))
+               is not DependencyAvailability.SATISFIED]
     if descriptor.wait_for_artifacts:
         blocked.extend(background_artifacts.failures)
     succeeded = False

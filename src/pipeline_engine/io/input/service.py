@@ -1010,7 +1010,15 @@ class InputService:
             produced = {product.id for stage in graph.stages for product in stage.products}
             external = {name for stage in graph.stages
                         for name in (*stage.requires, *stage.optional_requires)} - produced
-            plan = graph.plan(external_products=external)
+            try:
+                plan = graph.plan(external_products=external)
+            except ValueError as exc:
+                # Prefetch is advisory. Authoritative graph validation belongs
+                # to the invocation, where its failure leaves safe pipelines
+                # and their accepted outputs available.
+                Logger.log_debug(f"Skipping input prefetch plan for {pipeline}: {exc}")
+                self._metric("input_graph_plans_skipped")
+                continue
             self._stage_order[pipeline] = {name: i for i, name in enumerate(plan.order)}
             for stage_id in plan.order:
                 stage = plan.stage_by_id[stage_id]

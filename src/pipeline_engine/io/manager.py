@@ -22,6 +22,7 @@ class IOManager:
 
     The scientific ExitStack closes only input resources. This manager is then
     retained by batch finalization through artifact completion and publication.
+    Ownership of the model's storage transfers only after construction succeeds.
     """
 
     def __init__(self, model, *, artifacts=None, owns_artifacts=False, budget=None,
@@ -38,11 +39,7 @@ class IOManager:
         self._input_closed = self._closed = self._finished = False
         self._lifecycle = RLock()
         self._cancelled = Event()
-        try:
-            self.output = OutputService(model, budget=self.budget, context=self.context, policy=output_policy)
-        except BaseException:
-            model.storage.close()
-            raise
+        self.output = OutputService(model, budget=self.budget, context=self.context, policy=output_policy)
 
     def open_sources(self, hd_path, dv_path):
         if self._input_closed or self._sources is not None:

@@ -127,6 +127,10 @@ Writer mappings close after each operation. An acknowledgement releases writer
 admission, not the shared backing needed by later calculations, reports or exports.
 Worker product directories are nested inside the retained acquisition store.
 
+`IOManager` takes ownership of the accepted model's storage only after its
+constructor succeeds. Failed construction leaves the caller's storage usable;
+the runtime cleans up its own newly allocated store if setup fails.
+
 The actual output directory is verified as local before allocating IPC resources
 and again in the writer. This covers explicit storage directories and retained
 worker overrides as well as the default scratch selector. Windows requires a
@@ -150,8 +154,10 @@ chunk cache to 1 MiB. The process-tree RSS monitor includes the writer. These ar
 admission estimates, not an OS memory cap or additional persistent settings.
 
 The writer never reserves a CPU for its whole lifetime. Final draining yields an
-enclosing local compute reservation. Startup, death, command errors and bounded
-operation timeouts become explicit output failures. Abort wakes finalizers, reaps
+enclosing local compute reservation. Resource admission waits for scientific work
+without an operation deadline, while observing cancellation and writer death.
+Startup and active writer commands retain bounded timeouts. Death, command errors
+and these timeouts become explicit output failures. Abort wakes finalizers, reaps
 the process and delivery thread, then removes incomplete local files and manifests.
 Interrupts retained by an already accepted commit are raised at the next safe
 health boundary so Ctrl+C still stops the batch. Listener cleanup releases only

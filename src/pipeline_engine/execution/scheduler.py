@@ -2,6 +2,7 @@
 
 from utils.logger import Logger
 from pipeline_engine.product_exchange import ProductStatus
+from pipeline_engine.execution.dependencies import DependencyAvailability, dependency_availability
 
 
 class CoordinatorScheduler:
@@ -24,11 +25,16 @@ class CoordinatorScheduler:
     def _refresh_input_eligibility(self):
         if self.on_input_eligibility is None:
             return
-        impossible = {name for name, state in self.statuses.items() if state in ("failed", "skipped")}
-        # Propagate impossibility before dependency consumers reach dispatch.
-        for pipeline in self.pipelines:
-            if set(self._dependencies(pipeline)) & impossible:
-                impossible.add(pipeline.name)
+        impossible = {name for name, state in self.statuses.items()
+                      if dependency_availability(state) is DependencyAvailability.UNAVAILABLE}
+        # Propagate before dispatch, regardless of descriptor order. Product
+        # requirements deliberately do not enter this whole-invocation closure.
+        while True:
+            blocked = {pipeline.name for pipeline in self.pipelines
+                       if set(self._dependencies(pipeline)) & impossible}
+            if blocked <= impossible:
+                break
+            impossible.update(blocked)
         viable = tuple(p.name for p in self.pipelines
                        if p.name not in impossible and p.name not in self.completed)
         if viable != self._last_input_eligibility:
@@ -82,7 +88,9 @@ class CoordinatorScheduler:
                 continue
             if not self._products_ready(pipeline):
                 continue
-            blocked = [name for name in dependencies if self.statuses.get(name) != "succeeded"]
+            blocked = [name for name in dependencies
+                       if dependency_availability(self.statuses.get(name))
+                       is not DependencyAvailability.SATISFIED]
             if blocked:
                 self.pending.remove(pipeline)
                 self.statuses[pipeline.name] = "skipped"

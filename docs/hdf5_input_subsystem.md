@@ -125,6 +125,12 @@ dtype, chunks, compression, required and potential consumers. It never evaluates
 scientific callbacks. Invalid/missing candidates remain `unresolved`; stages own
 existing branch validation, fallbacks and failure isolation.
 
+Invalid stage graphs are skipped by advisory prefetch planning and validated by
+their invocation, allowing independent pipelines to finish. Dispatch and prefetch
+share the whole-invocation dependency-availability policy: partial, failed and
+skipped producers cannot satisfy those dependencies. Accepted product handles
+retain their separate readiness rules, including products from partial producers.
+
 `InputUse` describes metadata, small arrays, sequential slices, streaming blocks,
 or random slices. Random includes full-time-axis spatial selections. A required
 consumer count is **not** a physical pass count. Potential consumers also include

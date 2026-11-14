@@ -13,12 +13,14 @@ from pipeline_engine.data.scratch import RunArrayStorage
 from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor, PipelineOption
 from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipeline_engine.execution.invocation import _pipeline_checkpoint
+from pipeline_engine.stage_graph import StageGraph, StageSpec
 
 
-def _descriptor(name, run, dependencies=(), *, variants=False, options=()):
+def _descriptor(name, run, dependencies=(), *, variants=False, options=(), graph_factory=None):
     return PipelineDescriptor(
         name=name, description=name, available=True, dag_requires=dependencies,
         produces_execution_variants=variants, options=options,
+        graph_factory=graph_factory,
         pipeline_factory=lambda: SimpleNamespace(name=name, run=run, source_path=__file__),
     )
 
@@ -160,3 +162,48 @@ def test_failed_variant_producer_does_not_prevent_unrelated_pipeline(tmp_path):
     with h5py.File(result.outputs[0], "r") as output:
         assert output["Unrelated/value"][()] == 42
         assert json.loads(output.attrs["pipeline_status"])["shared"]["dependent"] == "skipped"
+
+
+def test_invalid_stage_graph_fails_only_its_invocation_and_publishes_partial_results(tmp_path):
+    holo = _write_input(tmp_path)
+    calls = []
+
+    def never_run(ctx):
+        pytest.fail("An invalid graph or its dependent must not execute")
+
+    graph = StageGraph((
+        StageSpec("first", never_run, after=("second",)),
+        StageSpec("second", never_run, after=("first",)),
+    ))
+
+    def source(ctx):
+        calls.append("source")
+        return {"Upstream/value": 7}
+
+    def independent(ctx):
+        calls.append("independent")
+        return {"Independent/value": 42}
+
+    spec = resolve_run_spec(
+        input_paths=[holo], target_names=["dependent", "independent"], pipelines=[
+            _descriptor("source", source),
+            _descriptor("invalid", lambda ctx: graph, ("source",), graph_factory=lambda **kwargs: graph),
+            _descriptor("dependent", never_run, ("invalid",)),
+            _descriptor("independent", independent, ("source",)),
+        ],
+    )
+    result = execute_run(spec)
+    assert not result.succeeded
+    assert calls == ["source", "independent"]
+    assert len(result.outputs) == 1
+    with h5py.File(result.outputs[0], "r") as output:
+        assert output["Upstream/value"][()] == 7
+        assert output["Independent/value"][()] == 42
+        assert json.loads(output.attrs["pipeline_status"])["shared"] == {
+            "source": "succeeded", "invalid": "failed",
+            "dependent": "skipped", "independent": "succeeded",
+        }
+        failures = json.loads(output.attrs["pipeline_failures"])
+        assert set(failures) == {"invalid"}
+        assert "Cycle detected in stage graph" in failures["invalid"]
+        assert set(json.loads(output.attrs["pipeline_skips"])) == {"dependent"}
