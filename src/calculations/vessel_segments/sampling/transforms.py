@@ -267,15 +267,11 @@ def _resample_rotate_values(
     valid = np.isfinite(values)
     shared_validity = _shared_spatial_validity(valid)
     filled = np.where(valid, values, np.float32(0.0))
-    resampled_values = ndi.affine_transform(
+    resampled_values = _affine_transform_cpu(
         filled,
         matrix,
         offset,
-        output_shape=output_shape,
-        order=1,
-        mode="grid-constant",
-        cval=0.0,
-        prefilter=False,
+        output_shape,
     ).astype(np.float32, copy=False)
     weight_values = shared_validity if shared_validity is not None else valid
     weight_matrix = matrix[-2:, -2:] if shared_validity is not None else matrix
@@ -285,15 +281,11 @@ def _resample_rotate_values(
         if shared_validity is not None
         else output_shape
     )
-    resampled_weights = ndi.affine_transform(
+    resampled_weights = _affine_transform_cpu(
         weight_values.astype(np.float32),
         weight_matrix,
         weight_offset,
-        output_shape=weight_shape,
-        order=1,
-        mode="grid-constant",
-        cval=0.0,
-        prefilter=False,
+        weight_shape,
     ).astype(np.float32, copy=False)
     finite_output = resampled_weights >= np.float32(0.5)
     np.divide(
@@ -304,6 +296,54 @@ def _resample_rotate_values(
     )
     np.copyto(resampled_values, np.nan, where=~finite_output)
     return resampled_values
+
+
+def _affine_transform_cpu(
+    values: np.ndarray,
+    matrix: np.ndarray,
+    offset: np.ndarray,
+    output_shape: tuple[int, ...],
+) -> np.ndarray:
+    """Resample finite values/weights, using 2D views for spatial-only maps.
+
+    Leading axes (frames, components) must retain their shape and map exactly
+    to themselves, with no coupling to the spatial axes. Otherwise keep the
+    N-dimensional transform, including genuine temporal interpolation.
+    Planes use input views and share one output allocation.
+    """
+    leading_axes = values.ndim - 2
+    if (
+        leading_axes > 0
+        and output_shape[:-2] == values.shape[:-2]
+        and np.array_equal(matrix[:-2], np.eye(values.ndim)[:-2])
+        and not np.any(matrix[-2:, :leading_axes])
+        and not np.any(offset[:leading_axes])
+    ):
+        output = np.empty(output_shape, dtype=values.dtype)
+        spatial_matrix = np.ascontiguousarray(matrix[-2:, -2:])
+        spatial_offset = offset[-2:]
+        for index in np.ndindex(values.shape[:-2]):
+            ndi.affine_transform(
+                values[index],
+                spatial_matrix,
+                spatial_offset,
+                output=output[index],
+                order=1,
+                mode="grid-constant",
+                cval=0.0,
+                prefilter=False,
+            )
+        return output
+    return ndi.affine_transform(
+        values,
+        matrix,
+        offset,
+        output_shape=output_shape,
+        order=1,
+        mode="grid-constant",
+        cval=0.0,
+        prefilter=False,
+    )
 
 
 def _fused_affine_mapping(

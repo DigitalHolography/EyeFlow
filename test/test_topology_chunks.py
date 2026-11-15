@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from scipy import ndimage as ndi
 
 from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
@@ -23,6 +24,7 @@ from calculations.vessel_segments.sampling.transforms import (
     resample_rotate_segment,
     rotate_segment_masks,
 )
+from calculations.vessel_segments.sampling import transforms
 from pipelines.spatial_gradient_moment0.profiles import (
     _spatial_gradient_chain,
 )
@@ -107,6 +109,40 @@ def test_masked_companion_applies_mask_after_interpolation_before_rotation() -> 
         atol=1e-6,
         equal_nan=True,
     )
+
+
+@pytest.mark.parametrize("mode", ["fused", "staged"])
+def test_cpu_masked_and_unmasked_chunks_match_original_nd_affine(mode):
+    prepared = _prepared(angle=-31.7)
+    cube = np.random.default_rng(91).normal(size=(11, 9, 9)).astype(np.float32)
+    cube[:, 0, :] = np.nan
+    cube[3, 4, 4] = np.nan
+    options = dict(
+        working_memory_mb=7.0,
+        include_masked_before_rotation=True,
+        transform_mode=mode,
+    )
+    if mode == "staged":
+        options.update(post_interpolation=_spatial_gradient_chain, temporal_halo=6,
+                       scratch_array_count=7)
+
+    def original_affine(values, matrix, offset, output_shape):
+        return ndi.affine_transform(
+            values, matrix, offset, output_shape=output_shape,
+            order=1, mode="grid-constant", cval=0.0, prefilter=False,
+        )
+
+    with patch.object(transforms, "optional_cupy_backend", return_value=None):
+        with patch.object(transforms, "_affine_transform_cpu", side_effect=original_affine):
+            expected = list(prepare_segment_chunks(cube, prepared, **options))
+        actual = list(prepare_segment_chunks(cube, prepared, **options))
+    assert len(actual) == len(expected)
+    for item, reference in zip(actual, expected):
+        assert item[:3] == reference[:3]
+        for name in ("rotated", "rotated_masked"):
+            values, previous = getattr(item, name), getattr(reference, name)
+            assert values.dtype == previous.dtype == np.dtype(np.float32)
+            np.testing.assert_array_equal(values.view(np.uint32), previous.view(np.uint32))
 
 
 @pytest.mark.parametrize("frame_count", [5, 17])
