@@ -3,6 +3,7 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,7 +17,10 @@ from input_output.writers.h5_output import PipelineH5Output
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.execution.background_artifacts import ArtifactExportResult, BackgroundArtifacts
+from pipeline_engine.execution.background_artifacts import ArtifactExportResult, ArtifactWorkers, BackgroundArtifacts
+from pipeline_engine.data.storage import ProductStorage
+from pipeline_engine.output.output_model import OutputModel
+from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.planning.base import PipelineDescriptor, pipeline, registerPipeline
 from pipeline_engine.context import PipelineOutput
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
@@ -54,6 +58,63 @@ def _run(manager, descriptors):
         output_manager=manager, pipelines=descriptors,
         holodoppler_h5=None, doppler_vision_h5=None,
     )
+
+
+@pytest.mark.parametrize("action", ["finish", "close"])
+def test_completion_retains_backing_for_exports_and_borrows_only_the_batch_pool(
+    tmp_path, threaded_exporter, monkeypatch, action,
+):
+    manager = _manager(tmp_path)
+    storage = ProductStorage()
+    started, release, read_backing, collecting = Event(), Event(), Event(), Event()
+    with ArtifactWorkers() as workers:
+        artifacts = BackgroundArtifacts(workers)
+        model = OutputModel(storage, manager.path_for(OutputType.H5))
+        completion = AcquisitionCompletion(model, artifacts=artifacts)
+        try:
+            with model.checkpoint():
+                model.create_dataset("accepted", data=np.arange(32768, dtype="f4"))
+            backing = model.records["accepted"].value.path
+            # A report barrier may join current exports before later stages add jobs.
+            completion.collect_artifacts(wait=True)
+
+            def export(snapshot, staged):
+                started.set()
+                assert release.wait(10)
+                np.testing.assert_array_equal(np.load(Path(snapshot.read_text())), np.arange(32768, dtype="f4"))
+                read_backing.set()
+                return []
+
+            job = artifacts.prepare("retained", manager, export, lambda path: path.write_text(backing))
+            artifacts.start(job)
+            assert started.wait(10)
+            original_collect = artifacts.collect
+            def collect(*, wait=False):
+                if wait:
+                    collecting.set()
+                return original_collect(wait=wait)
+            monkeypatch.setattr(artifacts, "collect", collect)
+            with ThreadPoolExecutor(1) as pool:
+                future = pool.submit(getattr(completion, action))
+                try:
+                    assert collecting.wait(10)
+                    assert not future.done() and not storage._closed
+                    assert not Path(model.filename).exists()
+                finally:
+                    release.set()
+                future.result(10)
+            assert read_backing.is_set() and storage._closed
+            assert artifacts.statuses == {"retained": "succeeded"}
+            assert Path(model.filename).exists() == (action == "finish")
+            if action == "finish":
+                with h5py.File(model.filename) as output:
+                    assert json.loads(output.attrs["artifact_status"]) == {"retained": "succeeded"}
+            # Only this acquisition's jobs were closed. The shared pool still works.
+            artifacts.__exit__(None, None, None)
+            assert workers._renderer.submit(int, 7).result(5) == 7
+        finally:
+            release.set()
+            completion.close()
 
 
 @pytest.mark.parametrize("failing_sibling", [False, True])

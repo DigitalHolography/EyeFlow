@@ -40,7 +40,7 @@ from velocity_calibration import (
 from pipeline_engine.planning.base import PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
-from pipeline_engine.io.manager import IOManager
+from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 @dataclass(frozen=True)
@@ -283,7 +283,7 @@ def _execute_batch(
         artifacts = BackgroundArtifacts(workers)
         file_started_at = perf_counter()
         numerical_error = None
-        finalizers: list[IOManager] = []
+        finalizers: list[AcquisitionCompletion] = []
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -344,36 +344,26 @@ def _execute_batch(
 
 
 def _discard_file_output(artifacts, outputs):
-    with ExitStack() as retained, artifacts:
+    with ExitStack() as retained:
+        if not outputs:
+            retained.enter_context(artifacts)
         for output in outputs:
             retained.callback(output.close)
 
 
 def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=(), started_at=None):
     """Drain retained output and publish after final sidecar statuses are known."""
-    import h5py
-
     metrics = finalizers[0].model.storage.metrics if finalizers else None
     try:
-        with ExitStack() as retained, artifacts:
+        with ExitStack() as retained:
+            if not finalizers:
+                # Setup failed before a completion handle could adopt these jobs.
+                retained.enter_context(artifacts)
+                artifacts.collect(wait=True)
             for output in finalizers:
                 retained.callback(output.close)
-            artifact_wait_started = perf_counter()
-            Logger.log_perf(
-                f"START pipeline=run variant=shared stage=background_artifact_join "
-                f"at={artifact_wait_started:.6f}"
-            )
-            artifacts.collect(wait=True)
-            Logger.log_perf(
-                f"END pipeline=run variant=shared stage=background_artifact_join "
-                f"at={perf_counter():.6f} wall={perf_counter() - artifact_wait_started:.3f}s"
-            )
             for output in finalizers:
                 output.finish()
-            if not finalizers and artifacts.statuses and output_path.is_file():
-                with h5py.File(output_path, "r+") as h5:
-                    h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)
-                    h5.attrs["artifact_failures"] = json.dumps(artifacts.failures, sort_keys=True)
             _log_performance_summary(
                 input_path, output_path, started_at, artifacts, metrics,
             )

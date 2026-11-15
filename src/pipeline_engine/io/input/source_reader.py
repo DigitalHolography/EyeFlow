@@ -13,26 +13,57 @@ from time import perf_counter
 import numpy as np
 
 from utils.logger import Logger
+from .state import Selection, SourceKey
+
+
+@dataclass(frozen=True)
+class ReadValue:
+    key: SourceKey
+
+
+@dataclass(frozen=True)
+class ReadInto:
+    key: SourceKey
+    destination: np.ndarray
+    selection: Selection
+    flush: np.memmap | None = None
+
+
+@dataclass(frozen=True)
+class CopyInto:
+    source: np.ndarray
+    destination: np.ndarray
 
 
 @dataclass(frozen=True)
 class SourceJob:
+    """Immutable control data; destinations are exclusively borrowed until completion."""
+
     token: int
-    key: tuple
-    selection: object = None
-    destination: object = None
-    flush: object = None
-    copy_from: object = None
+    operation: ReadValue | ReadInto | CopyInto
     priority: int = 0
     queued: float = 0.
+
+    def __post_init__(self):
+        if not isinstance(self.operation, (ReadValue, ReadInto, CopyInto)):
+            raise TypeError("A source job requires a typed read or copy operation")
+
+
+@dataclass(frozen=True)
+class SourceRead:
+    source: str
+    logical_bytes: int
+    started: float
+    ended: float
+    small: bool
 
 
 @dataclass(frozen=True)
 class SourceCompletion:
     token: int
-    value: object
+    value: np.ndarray | None
     error: str | None
-    reads: tuple
+    reads: tuple[SourceRead, ...]
     started: float
     ended: float
     flush_seconds: float
@@ -62,7 +93,7 @@ class SourceReader:
 
     def _record(self, dataset, selection, size, started, ended, small):
         identity = f"{dataset.file.filename}:{dataset.name}"
-        self._reads.append((identity, size, started, ended, small))
+        self._reads.append(SourceRead(identity, size, started, ended, small))
         command = self.current
         Logger.log_perf(f"input_source_hdf5_read dataset={dataset.name} region={selection} "
             f"priority={command.priority} reason={('demand', 'lookahead', 'active_prefetch', 'future_prefetch')[command.priority]} "
@@ -70,24 +101,29 @@ class SourceReader:
             f"read_seconds={ended-started:.6f} logical_bytes={size} job={command.token}")
 
     def _execute(self, command):
+        operation = command.operation
         value = None
-        if command.copy_from is not None:
-            np.copyto(command.destination, command.copy_from)
-        elif command.destination is None:
-            dataset = self.lookup(command.key)
+        if isinstance(operation, CopyInto):
+            np.copyto(operation.destination, operation.source)
+        elif isinstance(operation, ReadValue):
+            dataset = self.lookup(operation.key)
             started = perf_counter()
             value = np.asarray(dataset[()])
             self._record(dataset, (), value.nbytes, started, perf_counter(), True)
-        elif command.destination.flags.c_contiguous:
-            self.read(self.lookup(command.key), command.destination, command.selection)
+        elif isinstance(operation, ReadInto):
+            if operation.destination.flags.c_contiguous:
+                self.read(self.lookup(operation.key), operation.destination, operation.selection)
+            else:
+                tile = np.empty(operation.destination.shape, dtype=operation.destination.dtype)
+                self.read(self.lookup(operation.key), tile, operation.selection)
+                operation.destination[...] = tile
         else:
-            tile = np.empty(command.destination.shape, dtype=command.destination.dtype)
-            self.read(self.lookup(command.key), tile, command.selection)
-            command.destination[...] = tile
+            raise TypeError("Unsupported source operation")
         flushed = perf_counter()
-        if command.flush is not None:
-            command.flush.flush()
-        return value, perf_counter() - flushed if command.flush is not None else 0.
+        if isinstance(operation, ReadInto) and operation.flush is not None:
+            operation.flush.flush()
+            return value, perf_counter() - flushed
+        return value, 0.
 
     def _run(self):
         self._identity = get_ident()

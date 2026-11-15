@@ -14,13 +14,14 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.writers.h5_publication import OutputPublisher
+from input_output.writers.h5_publication import CompletedLocalOutput, OutputPublisher
 from pipeline_engine.data.storage import ProductStorage, ArrayReference, H5ArrayReference
 from pipeline_engine.io.manager import IOManager
-from pipeline_engine.io.output.protocol import OutputPolicy, OutputServiceError, WriteCommand, WriterConnection
+from pipeline_engine.io.output.protocol import OutputPolicy, OutputServiceError, DatasetWrite, WriteBatch, FinalizeOutput, FinalizeCommand, WriteCommand, WriterConnection
 from pipeline_engine.io.output.service import OutputService
 from pipeline_engine.io.output.writer import writer_main
-from pipeline_engine.output.output_model import OutputModel, Record
+from pipeline_engine.output.output_model import FinalizationSnapshot, OutputModel, Record
+from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.io.input.service import InputPolicy
 
@@ -47,6 +48,24 @@ def locked_hdf5_writer(entered, release, *args):
         entered.set()
         if not release.wait(15): raise RuntimeError('writer lock gate timed out')
         writer_main(*args)
+
+
+def test_output_protocol_snapshots_mutable_caller_collections():
+    from pipeline_engine.io.output.protocol import WriteAcknowledgement
+
+    writes = [DatasetWrite('value', Record('dataset', np.array([7]), committed=True))]
+    batch = WriteBatch(writes)
+    writes.clear()
+    assert len(batch.datasets) == 1 and batch.datasets[0].path == 'value'
+    measurements = {'seconds': 1.0}
+    paths = ['value']
+    ack = WriteAcknowledgement(1, metrics=measurements, paths=paths)
+    measurements['seconds'] = 99.0
+    paths.clear()
+    received = pickle.loads(pickle.dumps(ack))
+    assert received.metrics == (('seconds', 1.0),) and received.paths == ('value',)
+    with pytest.raises(TypeError, match='DatasetWrite'):
+        WriteBatch([('value', batch.datasets[0].record)])
 
 
 def test_explicit_network_scratch_is_rejected_before_ipc_allocation(tmp_path, monkeypatch):
@@ -79,10 +98,12 @@ def test_duplicate_service_does_not_spawn_or_detach_the_existing_writer(tmp_path
             assert physical['accepted'][()] == 7
 
 
-def test_duplicate_manager_preserves_the_active_acquisitions_storage(tmp_path):
+@pytest.mark.parametrize('duplicate_owner', [IOManager, AcquisitionCompletion])
+def test_duplicate_manager_preserves_the_active_acquisitions_storage(tmp_path, duplicate_owner):
     with ProductStorage(directory=tmp_path/'scratch') as storage:
         model = OutputModel(storage, tmp_path/'final.h5')
-        manager = IOManager(model)
+        completion = AcquisitionCompletion(model)
+        manager = completion.io
         try:
             values = np.arange(32768, dtype='f4')
             with model.checkpoint():
@@ -90,17 +111,17 @@ def test_duplicate_manager_preserves_the_active_acquisitions_storage(tmp_path):
             manager.output.drain()
             backing = Path(model.records['accepted'].value.path)
             with pytest.raises(RuntimeError, match='listener is already bound'):
-                IOManager(model)
+                duplicate_owner(model)
             assert not storage._closed and backing.exists()
             assert model._commit_listener == manager.output.submit
             with model.checkpoint():
                 model.create_dataset('later', data=8)
-            manager.finish()
+            completion.finish()
             with h5py.File(model.filename) as physical:
                 np.testing.assert_array_equal(physical['accepted'][:], values)
                 assert physical['later'][()] == 8
         finally:
-            manager.close()
+            completion.close()
 
 
 def test_failed_manager_construction_leaves_caller_storage_usable(tmp_path, monkeypatch):
@@ -128,7 +149,7 @@ def test_runtime_releases_new_storage_when_manager_construction_fails(tmp_path, 
     def failed_manager(*args, **kwargs):
         raise OSError('manager could not start')
     monkeypatch.setattr(runtime, 'ProductStorage', new_storage)
-    monkeypatch.setattr(runtime, 'IOManager', failed_manager)
+    monkeypatch.setattr(runtime, 'AcquisitionCompletion', failed_manager)
     output_manager = OutputManager(HoloRunLayout.from_holo(tmp_path/'scan.holo'))
     try:
         with pytest.raises(OSError, match='manager could not start'):
@@ -221,12 +242,12 @@ def test_ipc_contains_only_manifest_identity_and_large_arrays_keep_their_referen
         try:
             with model.checkpoint():
                 model.create_dataset('large',data=np.arange(1024*1024,dtype='f4'))
-            command=service._pending[0][0]
+            command=service._pending[0].command
             assert isinstance(command,WriteCommand) and len(pickle.dumps(command))<1024
             with Path(command.manifest).open('rb') as stream:
                 records=pickle.load(stream)
-            assert isinstance(records[0][1].value,ArrayReference)
-            assert Path(records[0][1].value.path).exists()
+            assert isinstance(records.datasets[0].record.value,ArrayReference)
+            assert Path(records.datasets[0].record.value.path).exists()
         finally:
             gate.set()
         service.finish()
@@ -275,19 +296,19 @@ def test_publication_failure_keeps_existing_file_and_removes_incoming(tmp_path,m
     def fail(*args): raise OSError('destination failed')
     monkeypatch.setattr(f'input_output.writers.h5_publication.{"shutil.copyfile" if failure=="copy" else "os.replace"}',fail)
     with pytest.raises(OSError,match='destination failed'):
-        OutputPublisher(destination).publish(local)
+        OutputPublisher(destination).publish(CompletedLocalOutput(local, local.stat().st_size))
     assert destination.read_bytes()==b'previous result'
     assert not list(tmp_path.glob('.ef-*')) and local.exists()
 
 
 def test_two_acquisitions_retain_independent_writers_after_input_closes(tmp_path):
-    a=IOManager(OutputModel(ProductStorage(),tmp_path/'a.h5'))
-    b=IOManager(OutputModel(ProductStorage(),tmp_path/'b.h5'))
+    a=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'a.h5'))
+    b=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'b.h5'))
     try:
-        assert a.output.process.pid != b.output.process.pid
+        assert a.io.output.process.pid != b.io.output.process.pid
         with a.model.checkpoint(): a.model.create_dataset('value',data=1)
-        a.close_input()
-        assert a.output.process.is_alive() and not (tmp_path/'a.h5').exists()
+        a.io.close_input()
+        assert a.io.output.process.is_alive() and not (tmp_path/'a.h5').exists()
         with b.model.checkpoint(): b.model.create_dataset('value',data=2)
         b.finish(); a.finish()
         assert a.finish()==tmp_path/'a.h5'
@@ -312,7 +333,7 @@ def test_duplicate_sequences_are_idempotent_and_conflicting_delivery_is_terminal
     try:
         assert receive().sequence==0
         manifest=tmp_path/'record.pickle'
-        manifest.write_bytes(pickle.dumps([('value',Record('dataset',np.array([7]),committed=True))]))
+        manifest.write_bytes(pickle.dumps(WriteBatch((DatasetWrite('value', Record('dataset',np.array([7]),committed=True)),))))
         command=WriteCommand(1,str(manifest),sha256(manifest.read_bytes()).hexdigest())
         for _ in range(2):
             commands.send(command)
@@ -324,9 +345,10 @@ def test_duplicate_sequences_are_idempotent_and_conflicting_delivery_is_terminal
             invalid=WriteCommand(3,str(manifest),command.digest)
         else:
             another=tmp_path/'invalid.pickle'
-            contents=({'':Record(committed=True)},('value','missing')) if conflict=='inventory' else [('value',Record('dataset',np.array([8]),committed=True))]
+            contents=FinalizeOutput(FinalizationSnapshot((('', Record(committed=True)),), ('value','missing'))) if conflict=='inventory' else WriteBatch((DatasetWrite('value',Record('dataset',np.array([8]),committed=True)),))
             another.write_bytes(pickle.dumps(contents))
-            invalid=WriteCommand(2,str(another),sha256(another.read_bytes()).hexdigest(),conflict=='inventory')
+            kind=FinalizeCommand if conflict=='inventory' else WriteCommand
+            invalid=kind(2,str(another),sha256(another.read_bytes()).hexdigest())
         commands.send(invalid)
         message=receive().error
         assert message and any(word in message for word in ('Conflicting','inventory','Out-of-order'))
@@ -362,7 +384,8 @@ def test_input_progresses_while_output_process_holds_its_hdf5_lock(tmp_path,monk
     source=tmp_path/'source.h5'
     values=np.arange(64*4*8,dtype='f4').reshape(64,4,8)
     with h5py.File(source,'w') as file: file['video']=values
-    io=IOManager(OutputModel(ProductStorage(),tmp_path/'final.h5'))
+    completion=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'final.h5'))
+    io=completion.io
     try:
         assert entered.wait(10)
         io.open_sources(source,None)
@@ -377,9 +400,9 @@ def test_input_progresses_while_output_process_holds_its_hdf5_lock(tmp_path,monk
         assert io.output.pending_count and not release.is_set()
         io.close_input()
         release.set()
-        io.finish()
+        completion.finish()
     finally:
-        release.set();io.close()
+        release.set();completion.close()
 
 
 def test_nonexposed_stage_serializes_before_later_failure_in_same_invocation(tmp_path):
@@ -426,7 +449,7 @@ def test_native_hdf5_backing_preserves_payload_attributes_without_dense_material
 def test_cancellation_during_serialization_wakes_finalizer_and_reaps_writer(tmp_path,monkeypatch):
     gate=mp.get_context('spawn').Event()
     monkeypatch.setattr('pipeline_engine.io.output.service.writer_main',partial(gated_writer,gate))
-    io=IOManager(OutputModel(ProductStorage(),tmp_path/'final.h5'))
+    io=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'final.h5'))
     with io.model.checkpoint(): io.model.create_dataset('value',data=7)
     try:
         with ThreadPoolExecutor(1) as pool:
@@ -434,7 +457,7 @@ def test_cancellation_during_serialization_wakes_finalizer_and_reaps_writer(tmp_
             io.close()
             with pytest.raises((OSError,RuntimeError),match='cancelled|closed|aborted'):
                 future.result(5)
-        assert io.closed and not io.output._thread.is_alive()
+        assert io.closed and not io.io.output._thread.is_alive()
         assert not (tmp_path/'final.h5').exists()
     finally:
         gate.set();io.close()
@@ -452,7 +475,7 @@ def test_cancelled_publication_never_replaces_existing_destination(tmp_path,monk
         cancelled.append(True)
     monkeypatch.setattr('input_output.writers.h5_publication.shutil.copyfile',copied)
     with pytest.raises(OSError,match='cancelled'):
-        OutputPublisher(final,cancelled=lambda:bool(cancelled)).publish(local)
+        OutputPublisher(final,cancelled=lambda:bool(cancelled)).publish(CompletedLocalOutput(local, local.stat().st_size))
     assert final.read_bytes()==b'previous result' and not list(tmp_path.glob('.ef-*'))
 
 
@@ -526,7 +549,7 @@ def test_aborted_startup_releases_transferred_handles_without_cyclic_gc(tmp_path
     import psutil
     process=psutil.Process()
     retained=[]
-    warm=IOManager(OutputModel(ProductStorage(),tmp_path/'warm.h5'))
+    warm=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'warm.h5'))
     warm.finish()
     retained.append(warm)
     baseline=process.num_handles()
@@ -534,11 +557,11 @@ def test_aborted_startup_releases_transferred_handles_without_cyclic_gc(tmp_path
     gc.disable()
     try:
         for i in range(6):
-            manager=IOManager(OutputModel(ProductStorage(),tmp_path/f'aborted{i}.h5'))
+            manager=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/f'aborted{i}.h5'))
             with manager.model.checkpoint(): manager.model.create_dataset('value',data=i)
             manager.close()
             retained.append(manager)
-            assert not manager.output._thread.is_alive()
+            assert not manager.io.output._thread.is_alive()
         assert process.num_handles() <= baseline+2
     finally:
         if enabled: gc.enable()

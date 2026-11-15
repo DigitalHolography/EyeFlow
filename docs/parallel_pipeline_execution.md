@@ -12,7 +12,7 @@ variant invocations have separate helpers; variant registration and status
 persistence are separate from dispatch. Small records group source views,
 preflight declarations and outcome dictionaries. The dictionaries remain shared
 with the scheduler; cleanup still belongs to the caller's `ExitStack` and final
-retained I/O and publication to `IOManager`.
+independent I/O lanes to `IOManager` and retained publication to `AcquisitionCompletion`.
 
 ## Readiness
 
@@ -62,7 +62,7 @@ acknowledged value, including rebindings to original input values.
 ## Resource and output lifetime
 
 Accepted products survive later failures; rejected acceptance rolls back its
-records, state and newly copied artifacts. `IOManager` retains backing until
+records, state and newly copied artifacts. `AcquisitionCompletion` retains backing until
 consumers, exports and publication finish. Worker cleanup closes its mappings
 without deleting shared backing. Publication uses a destination staging file and
 atomic replacement, preserving the prior output on failure. Output materialization

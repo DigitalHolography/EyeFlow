@@ -9,12 +9,12 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.writers.h5_publication import OutputPublisher
+from input_output.writers.h5_publication import CompletedLocalOutput, OutputPublisher
 from pipeline_engine.data.metrics import ExecutionMetrics
 from pipeline_engine.data.storage import ArrayReference, H5ArrayReference
-from pipeline_engine.io.output.protocol import WriteCommand
+from pipeline_engine.io.output.protocol import DatasetWrite, WriteBatch, FinalizeOutput, FinalizeCommand, WriteCommand
 from pipeline_engine.io.output.writer import _required_free_bytes, writer_main
-from pipeline_engine.output.output_model import Record
+from pipeline_engine.output.output_model import FinalizationSnapshot, Record
 from scratch_location import is_local_path
 
 
@@ -46,7 +46,7 @@ def test_publication_copies_once_to_destination_staging_and_reports_each_phase(t
     monkeypatch.setattr("input_output.writers.h5_publication.shutil.copyfile", copy)
     monkeypatch.setattr("input_output.writers.h5_publication.os.replace", publish)
     metrics = ExecutionMetrics()
-    assert OutputPublisher(destination, metrics).publish(local) == destination
+    assert OutputPublisher(destination, metrics).publish(CompletedLocalOutput(local, local.stat().st_size)) == destination
     assert events == ["copy", "replace"] and local.exists()
     assert not list(destination.parent.glob(".ef-*"))
     values = metrics.snapshot()
@@ -63,7 +63,7 @@ def test_cancelled_publication_does_not_begin_network_copy(tmp_path, monkeypatch
                         lambda *_: pytest.fail("cancelled publication started copying"))
     metrics = ExecutionMetrics()
     with pytest.raises(OSError, match="cancelled"):
-        OutputPublisher(destination, metrics, cancelled=lambda: True).publish(tmp_path / "absent.h5")
+        OutputPublisher(destination, metrics, cancelled=lambda: True).publish(CompletedLocalOutput(tmp_path / "absent.h5", 0))
     assert destination.read_bytes() == b"previous result"
     assert metrics.snapshot()["h5_publication_failures"] == 1
 
@@ -81,7 +81,7 @@ def test_copy_failure_reports_elapsed_time_and_cleans_partial_staging(tmp_path, 
     monkeypatch.setattr("input_output.writers.h5_publication.shutil.copyfile", failed_copy)
     metrics = ExecutionMetrics()
     with pytest.raises(OSError, match="copy interrupted"):
-        OutputPublisher(destination, metrics).publish(local)
+        OutputPublisher(destination, metrics).publish(CompletedLocalOutput(local, local.stat().st_size))
     assert destination.read_bytes() == b"previous result" and local.exists()
     assert not list(tmp_path.glob(".ef-*"))
     values = metrics.snapshot()
@@ -115,7 +115,7 @@ def test_writer_rejects_large_write_before_opening_backing_when_space_is_low(tmp
     backing.write_bytes(b"not a numpy file")
     record = Record("dataset", ArrayReference(str(backing), (100_000_000,), np.dtype("f4")), committed=True)
     manifest = tmp_path / "manifest.pickle"
-    manifest.write_bytes(pickle.dumps([("large", record)]))
+    manifest.write_bytes(pickle.dumps(WriteBatch((DatasetWrite("large", record),))))
     command = WriteCommand(1, str(manifest), sha256(manifest.read_bytes()).hexdigest())
     acknowledgements = []
     monkeypatch.setattr("pipeline_engine.io.output.writer.configure_native_threads", lambda *_: None)
@@ -139,26 +139,73 @@ def test_writer_rejects_network_scratch_before_creating_hdf5(tmp_path, monkeypat
     assert not local.exists()
 
 
+@pytest.mark.parametrize("final_command", [False, True])
+def test_writer_rejects_mismatched_typed_manifest_before_acknowledging_completion(tmp_path, monkeypatch, final_command):
+    payload = (WriteBatch((DatasetWrite("value", Record("dataset", np.array([1]), committed=True)),))
+               if final_command else FinalizeOutput(FinalizationSnapshot((), ())))
+    manifest = tmp_path / "mismatched.pickle"
+    manifest.write_bytes(pickle.dumps(payload))
+    kind = FinalizeCommand if final_command else WriteCommand
+    command = kind(1, str(manifest), sha256(manifest.read_bytes()).hexdigest())
+    acknowledgements = []
+    monkeypatch.setattr("pipeline_engine.io.output.writer.configure_native_threads", lambda *_: None)
+    writer_main(SimpleNamespace(recv=lambda: command), SimpleNamespace(send=acknowledgements.append),
+                str(tmp_path / "incomplete.h5"), 2**20)
+    assert len(acknowledgements) == 2
+    assert "manifest" in acknowledgements[-1].error
+    assert acknowledgements[-1].completed is None
+
+
 def test_writer_reports_separate_process_counters_for_each_operation(tmp_path, monkeypatch):
     contents = [
-        [("value", Record("dataset", np.arange(16), committed=True))],
-        ({"": Record(committed=True)}, ("value",)),
+        WriteBatch((DatasetWrite("value", Record("dataset", np.arange(16), committed=True)),)),
+        FinalizeOutput(FinalizationSnapshot((("", Record(committed=True)),), ("value",))),
     ]
     commands = []
     for sequence, payload in enumerate(contents, start=1):
         manifest = tmp_path / f"{sequence}.pickle"
         manifest.write_bytes(pickle.dumps(payload))
-        commands.append(WriteCommand(sequence, str(manifest), sha256(manifest.read_bytes()).hexdigest(), final=sequence == 2))
+        kind = FinalizeCommand if isinstance(payload, FinalizeOutput) else WriteCommand
+        commands.append(kind(sequence, str(manifest), sha256(manifest.read_bytes()).hexdigest()))
     iterator = iter(commands)
     acknowledgements = []
     monkeypatch.setattr("pipeline_engine.io.output.writer.configure_native_threads", lambda *_: None)
     writer_main(SimpleNamespace(recv=lambda: next(iterator)), SimpleNamespace(send=acknowledgements.append),
                 str(tmp_path / "complete.h5"), 2**20)
     assert len(acknowledgements) == 3 and not any(ack.error for ack in acknowledgements)
+    completed = acknowledgements[-1].completed
+    assert completed.path == tmp_path / "complete.h5"
+    assert completed.size_bytes == completed.path.stat().st_size
     for ack in acknowledgements[1:]:
-        assert ack.metrics["output_writer_cpu_seconds"] >= 0
-        assert ack.metrics["output_writer_sampled_rss_bytes"] > 0
-        assert all(value >= 0 for name, value in ack.metrics.items() if name.startswith("output_writer_os_"))
+        metrics = dict(ack.metrics)
+        assert metrics["output_writer_cpu_seconds"] >= 0
+        assert metrics["output_writer_sampled_rss_bytes"] > 0
+        assert all(value >= 0 for name, value in ack.metrics if name.startswith("output_writer_os_"))
+
+
+def test_publication_rejects_a_path_without_a_completion_receipt(tmp_path):
+    local = tmp_path / "local.h5"
+    with h5py.File(local, "w") as file:
+        file["value"] = 1
+    destination = tmp_path / "final.h5"
+    destination.write_bytes(b"previous result")
+    with pytest.raises(TypeError, match="receipt"):
+        OutputPublisher(destination).publish(local)
+    assert destination.read_bytes() == b"previous result"
+
+
+def test_publication_detects_changes_after_the_writer_closed(tmp_path):
+    local = tmp_path / "local.h5"
+    with h5py.File(local, "w") as file:
+        file["value"] = 1
+    receipt = CompletedLocalOutput(local, local.stat().st_size)
+    with local.open("ab") as stream:
+        stream.write(b"changed after completion")
+    destination = tmp_path / "final.h5"
+    destination.write_bytes(b"previous result")
+    with pytest.raises(OSError, match="changed after writer close"):
+        OutputPublisher(destination).publish(receipt)
+    assert destination.read_bytes() == b"previous result" and not list(tmp_path.glob(".ef-*"))
 
 
 @pytest.mark.parametrize("filesystem", ["ext4", "xfs", "btrfs", "zfs", "tmpfs", "overlay", "apfs", "exfat"])

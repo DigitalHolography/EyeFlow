@@ -11,11 +11,11 @@ import h5py
 import numpy as np
 import psutil
 
-from input_output.writers.h5_publication import write_record, reconcile_attributes
+from input_output.writers.h5_publication import CompletedLocalOutput, write_record, reconcile_attributes
 from runtime_limits import configure_native_threads
 from scratch_location import is_local_path
 
-from .protocol import WriteAcknowledgement
+from .protocol import FinalizeCommand, FinalizeOutput, WriteAcknowledgement, WriteBatch
 
 
 def _required_free_bytes(record):
@@ -96,20 +96,23 @@ def writer_main(commands, acknowledgements, local_path, cache_bytes):
             try:
                 previous = completed.get(command.sequence)
                 if previous is not None:
-                    if previous != (command.digest, command.final):
+                    if previous != (command.digest, type(command)):
                         raise ValueError("Conflicting repeated output sequence")
                     acknowledgements.send(WriteAcknowledgement(command.sequence))
                     continue
                 if command.sequence != sequence + 1:
                     raise ValueError("Out-of-order output sequence")
                 contents = _load_manifest(command)
-                if command.final:
-                    groups, expected = contents
+                completed_output = None
+                if isinstance(command, FinalizeCommand):
+                    if not isinstance(contents, FinalizeOutput):
+                        raise ValueError("Finalization requires a FinalizeOutput manifest")
+                    groups, expected = contents.snapshot.groups, contents.snapshot.dataset_paths
                     if set(expected) != set(datasets):
                         raise ValueError("Accepted output dataset inventory differs from writer inventory")
                     if any(path not in output or not isinstance(output[path], h5py.Dataset) for path in expected):
                         raise ValueError("A serialized scientific dataset is missing")
-                    for path, record in sorted(groups.items(), key=lambda item: (item[0].count('/'), item[0])):
+                    for path, record in sorted(groups, key=lambda item: (item[0].count('/'), item[0])):
                         group = output.require_group(path) if path else output
                         reconcile_attributes(group, record)
                     flushed = perf_counter()
@@ -120,9 +123,13 @@ def writer_main(commands, acknowledgements, local_path, cache_bytes):
                     metrics['output_close_seconds'] = perf_counter()-closing
                     output = None
                     metrics["output_completed_file_bytes"] = local.stat().st_size
+                    completed_output = CompletedLocalOutput(local, local.stat().st_size)
                     metrics["output_final_metadata_seconds"] = perf_counter() - started
                 else:
-                    for path, record in contents:
+                    if not isinstance(contents, WriteBatch):
+                        raise ValueError("Dataset writing requires a WriteBatch manifest")
+                    for item in contents.datasets:
+                        path, record = item.path, item.record
                         if not path or path != path.strip('/') or '\\' in path or record.kind != "dataset" or not record.committed:
                             raise ValueError("Writer received an invalid or uncommitted scientific dataset")
                         signature = hashlib.sha256(pickle.dumps(record, protocol=5)).hexdigest()
@@ -148,7 +155,7 @@ def writer_main(commands, acknowledgements, local_path, cache_bytes):
                     output.flush()
                     metrics['output_progress_flush_seconds'] = perf_counter()-flushed
                 sequence = command.sequence
-                completed[sequence] = command.digest, command.final
+                completed[sequence] = command.digest, type(command)
                 metrics["output_writer_operation_seconds"] = perf_counter() - started
                 metrics["output_writer_cpu_seconds"] = process_time() - cpu_started
                 after = _process_sample(process)
@@ -156,10 +163,11 @@ def writer_main(commands, acknowledgements, local_path, cache_bytes):
                 for name in ("read_bytes", "write_bytes", "read_count", "write_count"):
                     if name in before and name in after:
                         metrics[f"output_writer_os_{name}"] = max(0, after[name] - before[name])
-                written_paths = () if command.final else tuple(path for path, _ in contents)
-                acknowledgements.send(WriteAcknowledgement(sequence, metrics=metrics, paths=written_paths, messages=tuple(messages)))
+                written_paths = () if completed_output is not None else tuple(item.path for item in contents.datasets)
+                acknowledgements.send(WriteAcknowledgement(sequence, metrics=metrics, paths=written_paths,
+                    messages=tuple(messages), completed=completed_output))
                 idle_at = perf_counter()
-                if command.final:
+                if completed_output is not None:
                     return
             except BaseException as exc:
                 acknowledgements.send(WriteAcknowledgement(command.sequence, f"{type(exc).__name__}: {exc}"))

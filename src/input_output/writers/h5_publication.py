@@ -2,6 +2,7 @@
 
 import os
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 from time import perf_counter
@@ -10,6 +11,22 @@ import h5py
 
 from .h5_storage import _create_dataset
 from utils.logger import Logger
+
+
+@dataclass(frozen=True)
+class CompletedLocalOutput:
+    """Receipt produced after the exclusive writer has closed its complete file."""
+
+    path: Path
+    size_bytes: int
+
+    def __post_init__(self):
+        object.__setattr__(self, "path", Path(self.path))
+        if isinstance(self.size_bytes, bool) or not isinstance(self.size_bytes, int) or self.size_bytes < 0:
+            raise ValueError("Completed output size must be a nonnegative integer")
+
+    def __fspath__(self):
+        return os.fspath(self.path)
 
 
 def _write_attributes(node, record):
@@ -83,7 +100,7 @@ class OutputPublisher:
         self.destination, self.metrics = Path(destination), metrics
         self.cancelled = cancelled
 
-    def publish(self, local):
+    def publish(self, completed: CompletedLocalOutput):
         started = perf_counter()
         final = self.destination
         incoming = final.with_name(f".ef-{uuid4().hex[:16]}.h5")
@@ -92,9 +109,14 @@ class OutputPublisher:
         try:
             if self.cancelled is not None and self.cancelled():
                 raise OSError("Output publication was cancelled")
+            if not isinstance(completed, CompletedLocalOutput):
+                raise TypeError("Publication requires a completed local output receipt")
+            local = completed.path
             if not h5py.is_hdf5(local):
                 raise OSError("Completed local output is not an HDF5 file")
             size = Path(local).stat().st_size
+            if size != completed.size_bytes:
+                raise OSError("Completed local output changed after writer close")
             if self.metrics is not None:
                 self.metrics.add("h5_publication_file_bytes", size)
             final.parent.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ import pytest
 from test_input_service import inputs, _spawn_consumer
 from pipeline_engine.io.input.service import InputPolicy
 from pipeline_engine.io.input.source_reader import SourceCompletion
+from pipeline_engine.io.input.state import ReplayInFlight, ReplayRead, ScheduledRead, StreamInFlight
 from pipeline_engine.resources import ResourceBudget
 
 
@@ -158,13 +159,13 @@ def test_stale_completion_never_publishes_the_active_destination(tmp_path):
         with held_source(service) as (entered,proceed,_),ThreadPoolExecutor(1) as pool:
             request=pool.submit(file['moment2'].read_slice,np.s_[:2])
             assert entered.wait(5)
-            token=service._inflight['token']
+            token=service._inflight.token
             service.reader.completed.put_nowait(SourceCompletion(token+1000,None,None,(),perf_counter(),perf_counter(),0.))
             service._wake_completion()
             barrier=client()
             barrier.client.rpc('dtype','hd','moment0')
             try:
-                assert not request.done() and service._inflight['token']==token
+                assert not request.done() and service._inflight.token==token
                 assert service.storage.metrics.snapshot()['input_stale_completions']==1
             finally:
                 proceed.set()
@@ -209,7 +210,7 @@ def test_reclaim_during_fill_defers_free_until_completion(tmp_path):
                 process.terminate(); process.join(5)
                 service.release_client(file.client.identity)
                 barrier.client.rpc('dtype','hd','moment0')
-                assert next(iter(service._streams.values()))['closing']
+                assert next(iter(service._streams.values())).closing
                 assert budget.used['input'] > 0
                 proceed.set()
                 assert retired.wait(5)
@@ -277,3 +278,16 @@ def test_repeated_startup_and_exception_cleanup_retire_all_input_ownership(tmp_p
         assert file.client._replay_maps.live_count == 0
         assert budget.used['input'] == 0
         assert all(not Path(path).exists() for path in replay_paths)
+def test_promoted_input_job_preserves_issued_priority_and_rejects_mismatched_state():
+    from dataclasses import FrozenInstanceError
+
+    request = ReplayRead(("hd", "moment0"), 0)
+    job = ScheduledRead(request, priority=3, sequence=1, queued_at=1.0)
+    flight = ReplayInFlight(token=1, job=job, issued_priority=3, working_bytes=64, staged=1.0)
+    flight.job = flight.job.promote(0)
+    assert flight.job.priority == 0 and flight.issued_priority == 3
+    assert flight.job.queued_at == job.queued_at and flight.job.operation == request
+    with pytest.raises(FrozenInstanceError):
+        request.region = 1
+    with pytest.raises(TypeError, match="StreamRead"):
+        StreamInFlight(token=2, job=job, issued_priority=3, replay_key=None, regions=())

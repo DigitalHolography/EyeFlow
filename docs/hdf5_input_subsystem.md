@@ -4,6 +4,13 @@ The input runtime lives in `pipeline_engine/io/input/`: `service.py` owns contro
 and clients, `source_reader.py` owns blocking reads, `replay.py` owns local mapping
 authorization, and `location.py` classifies source storage.
 
+`state.py` defines frozen scheduled-read operations and operation-specific in-flight
+records. Mutable `StreamState`, `StreamBuffer` and `DirectTransfer` instances belong
+exclusively to the control thread. Buffer and transfer methods validate lease
+transitions; region states use `RegionState`. Promoting an in-flight job changes
+its scheduling priority while preserving the priority at which its source read
+was issued.
+
 The runtime owns one `InputService` control thread and one `SourceReader` I/O
 thread. Only the control thread changes readiness, queues, priorities, consumer
 ownership and reservations. Only the reader opens native datasets, executes source
@@ -89,6 +96,12 @@ mutates scheduler dictionaries. The coordinator uses metadata snapshots, avoidin
 h5py calls and its process-wide `phil` lock during ordinary control handling.
 Completion notifications wake the existing request queue; no busy polling or
 additional HDF5 readers are needed.
+
+Reader commands contain one explicit `ReadValue`, `ReadInto` or `CopyInto` operation,
+with typed `SourceRead` measurements in their completion. A frozen command may
+borrow a mutable destination exclusively until acknowledgement; the source reader
+drops those views before the controller retires their storage. Scheduling records
+and operation-specific in-flight data do not cross the process boundary.
 
 Replay transitions are `not_requested -> queued -> loading -> ready`, or
 `loading -> failed`. Queued cancellation returns to `not_requested`. A cancelled

@@ -66,6 +66,18 @@ class Record:
         return self
 
 
+@dataclass(frozen=True)
+class FinalizationSnapshot:
+    """Accepted inventory and final group metadata, with no provisional datasets."""
+
+    groups: tuple[tuple[str, Record], ...]
+    dataset_paths: tuple[str, ...]
+
+    def __post_init__(self):
+        object.__setattr__(self, "groups", tuple((path, record) for path, record in self.groups))
+        object.__setattr__(self, "dataset_paths", tuple(self.dataset_paths))
+
+
 class Attributes(MutableMapping):
     def __init__(self, node):
         self.node = node
@@ -559,22 +571,31 @@ class OutputModel(OutputGroup):
         return records, {path: version for path, version in versions.items()
                          if overrides.get(path, self.records.get(path)).committed}
 
-    def publish(self):
-        """Publish through the shared I/O policy (also used by standalone callers)."""
-        from input_output.writers.h5_publication import OutputPublisher
-        from pipeline_engine.io.output.service import OutputService
-
+    def commit_pending(self):
+        """Explicit acceptance for standalone callers without an active writer."""
         if self._checkpoints:
             raise RuntimeError("Cannot publish an active output transaction.")
         if self._commit_listener is not None:
             raise RuntimeError("Cannot publish while an output service is already bound.")
         ProductCheckpoint(self).commit(tuple(self._records))
-        service = OutputService(self)
-        try:
-            local = service.finish()
-            OutputPublisher(self.filename, self.storage.metrics).publish(local)
-        finally:
-            service.close()
+
+    def finalization_snapshot(self) -> FinalizationSnapshot:
+        """Accept final structure/metadata while retaining dataset commit rules."""
+        if self._checkpoints:
+            raise RuntimeError("Cannot finalize an active output transaction")
+        ProductCheckpoint(self).commit(tuple(
+            path for path, record in self.records.items() if record.kind == "group"))
+        records = self.committed_records()
+        return FinalizationSnapshot(
+            groups=tuple((path, record) for path, record in records.items() if record.kind == "group"),
+            dataset_paths=tuple(path for path, record in records.items() if record.kind == "dataset"),
+        )
+
+    def publish(self):
+        """Compatibility facade; the completion component owns all publication."""
+        from pipeline_engine.output.completion import publish_output_model
+
+        return publish_output_model(self)
 
 
 class ProductCheckpoint:

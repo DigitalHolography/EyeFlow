@@ -11,6 +11,26 @@ from pipeline_engine.output.output_model import OutputModel, OutputImmutableErro
 from pipeline_engine.data.storage import ProductStorage
 
 
+def test_finalization_snapshot_preserves_the_dataset_acceptance_boundary(tmp_path):
+    from dataclasses import FrozenInstanceError
+
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        with model.checkpoint():
+            model.create_dataset("accepted", data=7)
+        model.create_dataset("provisional", data=9)
+        model.require_group("FinalMetadata").attrs["status"] = "partial"
+        snapshot = model.finalization_snapshot()
+        assert snapshot.dataset_paths == ("accepted",)
+        assert dict(snapshot.groups)["FinalMetadata"].attrs["status"] == "partial"
+        assert not model.records["provisional"].committed
+        with pytest.raises(FrozenInstanceError):
+            snapshot.dataset_paths = ("provisional",)
+        with model.checkpoint():
+            with pytest.raises(RuntimeError, match="active output transaction"):
+                model.finalization_snapshot()
+
+
 def test_incremental_dense_shape_is_sparse_atomic_immutable_and_reused(tmp_path):
     """A 1 TiB logical output needs only its two written chunks, never dense RAM."""
     import psutil

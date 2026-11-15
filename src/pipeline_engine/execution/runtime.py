@@ -47,7 +47,7 @@ from pipeline_engine.execution.dependencies import DependencyAvailability, depen
 from pipeline_engine.execution.process_executor import ProcessExecutor
 from pipeline_engine.execution.protocol import InvocationSettings
 from pipeline_engine.stage_graph.model import StageGraph
-from pipeline_engine.io.manager import IOManager
+from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductExchangeRegistry
 from pipeline_engine.product_exchange.acceptance import ProductAcceptance
 
@@ -91,7 +91,7 @@ def run_pipelines_to_output(
     on_pipeline_success: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
     background_artifacts: BackgroundArtifacts | None = None,
-    on_finalization_ready: Callable[[IOManager], None] | None = None,
+    on_finalization_ready: Callable[[AcquisitionCompletion], None] | None = None,
 ) -> Path:
     """Run resolved pipelines and write outputs through an OutputManager."""
     setup_started = perf_counter()
@@ -116,9 +116,10 @@ def run_pipelines_to_output(
             work_h5 = OutputModel(storage, output_h5_path)
             wait_for_exports = background_artifacts is None
             background_artifacts = background_artifacts or BackgroundArtifacts()
-            io = IOManager(work_h5, artifacts=background_artifacts, owns_artifacts=wait_for_exports, budget=budget)
+            completion = AcquisitionCompletion(work_h5, artifacts=background_artifacts, budget=budget)
+            io = completion.io
         except BaseException:
-            # Until IOManager successfully accepts ownership, this caller owns
+            # Until completion successfully accepts ownership, this caller owns
             # the freshly allocated store and must clean up failed setup.
             storage.close()
             raise
@@ -135,7 +136,7 @@ def run_pipelines_to_output(
                 stack.callback(io.close_input)
                 Logger.log_perf(f"END stage=run/runtime_setup at={perf_counter():.6f} wall={perf_counter() - setup_started:.6f}s")
                 return _execute_input(
-                    io=io,
+                    completion=completion,
                     work_h5=work_h5,
                     output_h5_path=output_h5_path,
                     output_manager=output_manager,
@@ -160,21 +161,21 @@ def run_pipelines_to_output(
                 )
         except BaseException as exc:
             if not isinstance(exc, Exception):
-                io.close()
+                completion.close()
                 raise
             raise
         finally:
             # Workers and input mappings have closed before payload ownership
             # is either transferred to the batch or completed here.
-            if io.closed:
+            if completion.closed:
                 pass
             elif on_finalization_ready is None:
-                io.finish()
+                completion.finish()
             else:
                 try:
-                    on_finalization_ready(io)
+                    on_finalization_ready(completion)
                 except BaseException:
-                    io.close()
+                    completion.close()
                     raise
 
 
@@ -215,7 +216,7 @@ class _ExecutionStatus:
 
 def _execute_input(
     *,
-    io,
+    completion,
     work_h5,
     output_h5_path,
     output_manager: OutputManager,
@@ -241,8 +242,9 @@ def _execute_input(
     """Prepare sources and execution, run the plan, then finalize input status.
 
     The caller's ExitStack remains responsible for worker, client and source
-    cleanup. Final output ownership remains with IOManager.
+    cleanup. Final output ownership remains with AcquisitionCompletion.
     """
+    io = completion.io
     hd_h5, dv_h5 = io.open_sources(holodoppler_h5, doppler_vision_h5)
     _initialize_work_h5(
         work_h5=work_h5, pipelines=pipelines, target_names=target_names,
@@ -290,12 +292,12 @@ def _execute_input(
         computation_cache=computation_cache, background_artifacts=background_artifacts,
     )
     _execute_coordinator_pipelines(
-        scheduler, plan, status, sources, arguments, background_artifacts,
+        scheduler, plan, status, sources, arguments, completion,
         on_pipeline_start=on_pipeline_start, on_pipeline_success=on_pipeline_success,
         on_progress=on_progress,
     )
     _finish_input_execution(
-        work_h5, output_h5_path, status, background_artifacts,
+        work_h5, output_h5_path, status, completion,
         wait_for_exports=wait_for_exports,
     )
     return output_h5_path
@@ -423,16 +425,16 @@ def _coordinator_arguments(
 
 
 def _execute_coordinator_pipelines(
-    scheduler, plan, status, sources, common_arguments, background_artifacts,
+    scheduler, plan, status, sources, common_arguments, completion,
     *, on_pipeline_start, on_pipeline_success, on_progress,
 ) -> None:
     """Dispatch ready coordinator jobs, checkpoint outcomes, and notify progress."""
+    background_artifacts = completion.artifacts
     work_h5 = common_arguments["work_h5"]
     executor = scheduler.executor
     for pipeline_index, descriptor in scheduler.coordinator_jobs():
         # Only consumers of artifacts wait; ordinary calculations keep running.
-        background_artifacts.collect(wait=descriptor.wait_for_artifacts)
-        _write_artifact_status(work_h5, background_artifacts)
+        completion.collect_artifacts(wait=descriptor.wait_for_artifacts)
         if descriptor.wait_for_artifacts:
             work_h5.flush()
         if on_pipeline_start is not None:
@@ -458,8 +460,7 @@ def _execute_coordinator_pipelines(
             succeeded = _run_shared_pipeline(
                 descriptor, dependencies, arguments, plan, status, executor, background_artifacts,
             )
-        background_artifacts.collect()
-        _write_artifact_status(work_h5, background_artifacts)
+        completion.collect_artifacts()
         _write_execution_variant_status(
             work_h5,
             [v for v in status.execution_variants if v.name not in status.variant_failures],
@@ -617,9 +618,10 @@ def _write_pipeline_status(work_h5, status) -> None:
 
 
 def _finish_input_execution(
-    work_h5, output_h5_path, status, background_artifacts, *, wait_for_exports,
+    work_h5, output_h5_path, status, completion, *, wait_for_exports,
 ) -> None:
     """Join required exports and report failure only after safe work completes."""
+    background_artifacts = completion.artifacts
     _write_pipeline_status(work_h5, status)
     _write_execution_variant_status(
         work_h5, [v for v in status.execution_variants if v.name not in status.variant_failures],
@@ -627,8 +629,7 @@ def _finish_input_execution(
     )
     if wait_for_exports and background_artifacts.pending:
         Logger.log("Waiting for background figure exports before completing this run...")
-    background_artifacts.collect(wait=wait_for_exports)
-    _write_artifact_status(work_h5, background_artifacts)
+    completion.collect_artifacts(wait=wait_for_exports)
     work_h5.flush()
     artifacts_failed = wait_for_exports and bool(background_artifacts.failures)
     shared_failed = "failed" in status.shared_status.values()
@@ -688,17 +689,6 @@ def _initialize_work_h5(
         f"END pipeline=run variant=shared stage=output_initialization "
         f"at={perf_counter():.6f} wall={perf_counter() - started:.3f}s"
     )
-
-
-def _write_artifact_status(work_h5, background_artifacts):
-    if background_artifacts.statuses:
-        work_h5.attrs["artifact_status"] = json.dumps(
-            background_artifacts.statuses, sort_keys=True,
-        )
-        work_h5.attrs["artifact_failures"] = json.dumps(
-            background_artifacts.failures, sort_keys=True,
-        )
-        work_h5.attrs["artifact_timings"] = json.dumps(background_artifacts.timings, sort_keys=True)
 
 
 def _write_execution_variant_status(

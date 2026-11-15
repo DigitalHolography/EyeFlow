@@ -143,7 +143,7 @@ thread and `ProductExchangeRegistry` owns cross-pipeline readiness. Both executi
 modes use the same invocation/checkpoint and executable stage-graph code.
 `io/manager.py` owns the acquisition's input service and progressive output service.
 Inputs replay from read-only local storage. One spawned output writer materializes
-accepted datasets while calculations continue. The manager retains result payloads
+accepted datasets while calculations continue. `output/completion.py` retains result payloads
 until exports and atomic HDF5 publication finish, including when completion overlaps
 the next input. Reports read the accepted model before publication. See the
 [runtime I/O contract](runtime_io.md) for commit boundaries and process ownership.

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from pipeline_engine.io.input.service import InputPolicy, InputService
+from pipeline_engine.io.input.state import ReplayRead
 from pipeline_engine.data.storage import ProductStorage
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.stage_graph import InputAccess, InputUse, StageGraph, StageSpec
@@ -248,7 +249,7 @@ def test_two_buffers_overlap_without_overwriting_lease_and_early_exit(tmp_path):
         original = service._read_stream
         def measured(identity, index, *completion):
             original(identity, index, *completion)
-            if service._streams[identity]["buffers"][index]["start"] == 8:
+            if service._streams[identity].buffers[index].start == 8:
                 second_ready.set()
         service._read_stream = measured
         file = client()
@@ -261,7 +262,7 @@ def test_two_buffers_overlap_without_overwriting_lease_and_early_exit(tmp_path):
                 with pytest.raises(RuntimeError, match="Release"):
                     next(blocks)
                 assert service.storage.metrics.snapshot()["source_reads"] == 2
-                names = [buf["memory"].name for buf in service._streams[blocks.identity]["buffers"]]
+                names = [buf.memory.name for buf in service._streams[blocks.identity].buffers]
                 assert budget.used["input"] == 2 * values[:8].nbytes
             lease = next(blocks)
             with lease as block:
@@ -421,7 +422,7 @@ def test_tight_stream_budget_degrades_to_one_smaller_buffer(tmp_path):
         with file["moment0"].iter_blocks(frames=32) as blocks:
             with next(blocks) as block:
                 assert block.nbytes <= 3072
-                assert len(service._streams[blocks.identity]["buffers"]) == 1
+                assert len(service._streams[blocks.identity].buffers) == 1
         file.client.rpc("dtype", "hd", "moment0")
         assert budget.used["input"] == 0
 
@@ -497,7 +498,7 @@ def test_speculative_job_count_is_bounded(tmp_path):
             original_read(dataset, destination, selection)
         def counted(*args):
             result = original_enqueue(*args)
-            counts.append(sum(job[0] > 0 and job[2] == "replay" for job in service._jobs.values()))
+            counts.append(sum(job.priority > 0 and isinstance(job.operation, ReplayRead) for job in service._jobs.values()))
             return result
         service._read_direct, service._enqueue = held, counted
         service.prefetch(("hd", "moment0"))
@@ -858,7 +859,7 @@ def test_future_stream_adopts_existing_exclusive_buffers_without_replay(tmp_path
         original = service._read_stream
         def measured(*args):
             original(*args)
-            if sum(b["state"] == "ready" for stream in service._streams.values() for b in stream["buffers"]) == 2:
+            if sum(b.state == "ready" for stream in service._streams.values() for b in stream.buffers) == 2:
                 ready.set()
         service._read_stream = measured
         service.configure({"spectra": _prefetch_graph(InputUse("hd.moment0", InputAccess.STREAM))}, execution_order=("spectra",))
@@ -866,8 +867,8 @@ def test_future_stream_adopts_existing_exclusive_buffers_without_replay(tmp_path
         assert "spectra" not in service._active
         assert not service._replays
         initial = next(iter(service._streams))
-        memories = [b["memory"].name for b in service._streams[initial]["buffers"]]
-        assert service._streams[initial]["owner"] is None
+        memories = [b.memory.name for b in service._streams[initial].buffers]
+        assert service._streams[initial].owner is None
         file = client()
         with file["moment0"].iter_blocks(writable=True) as blocks:
             assert blocks.identity == initial
@@ -901,7 +902,7 @@ def test_future_stream_cancellation_releases_memory_and_keeps_demand_capacity(tm
         with file["moment2"].iter_blocks(frames=16) as blocks:
             with next(blocks) as block:
                 np.testing.assert_array_equal(block, values[:16] + 1)
-                assert sum(s["owner"] is not None for s in service._streams.values()) == 1
+                assert sum(s.owner is not None for s in service._streams.values()) == 1
         service.update_prefetch(())
         file.client.rpc("dtype", "hd", "moment0")
         assert not service._streams and budget.used["input"] == 0
@@ -942,7 +943,7 @@ def test_future_stream_queue_bound_cancellation_and_source_failure(tmp_path):
         assert read.wait(5)
         file = client()
         file.client.rpc("dtype", "hd", "moment0")
-        assert len(next(iter(service._streams.values()))["buffers"]) == 1
+        assert len(next(iter(service._streams.values())).buffers) == 1
         with pytest.raises(OSError, match="planned source failure"):
             with file["moment0"].iter_blocks() as blocks:
                 next(blocks)
@@ -992,7 +993,7 @@ def test_real_spectral_graph_allows_future_buffers_but_skips_absent_video(tmp_pa
                 if present:
                     assert ready.wait(5)
                     assert not service._active and not service._replays
-                    assert next(iter(service._streams.values()))["owner"] is None
+                    assert next(iter(service._streams.values())).owner is None
                 else:
                     assert not service._streams and not service.source_reads
             finally:

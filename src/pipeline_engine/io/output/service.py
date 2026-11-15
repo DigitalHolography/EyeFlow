@@ -13,10 +13,15 @@ from threading import Condition, Event, Thread
 from time import perf_counter
 
 from pipeline_engine.resources import suspend_compute
+from pipeline_engine.output.output_model import FinalizationSnapshot
+from input_output.writers.h5_publication import CompletedLocalOutput
 from scratch_location import is_local_path
 from utils.logger import Logger
 
-from .protocol import OutputPolicy, OutputServiceError, WriteCommand, WriterConnection
+from .protocol import (
+    DatasetWrite, FinalizeCommand, FinalizeOutput, OutputPolicy, OutputServiceError,
+    PendingWrite, WriteBatch, WriteCommand, WriterConnection,
+)
 from .writer import writer_main
 
 
@@ -53,6 +58,7 @@ class OutputService:
         self._accepted_times = {}
         self._manifests = set()
         self._error = None
+        self._completed_output = None
         self._closed = self._finished = False
         self.process = context.Process(target=_writer_target or writer_main,
             args=(WriterConnection(receiver), WriterConnection(sender), str(self.local_path), self.policy.hdf5_cache_bytes),
@@ -110,6 +116,8 @@ class OutputService:
 
     def request_abort(self):
         """Wake delivery/finalization without deleting storage still in use."""
+        if self._finished:
+            return
         self._fail(OutputServiceError("Output serialization was cancelled"))
         self._stop.set()
         with self._condition:
@@ -137,22 +145,23 @@ class OutputService:
                     continue
                 amount = self._size(record)
                 if batch and (len(batch) >= 32 or size+amount > self.policy.max_pending_bytes):
-                    if self._enqueue(batch, size, block=False) is None:
+                    if self._enqueue(WriteBatch(tuple(DatasetWrite(*item) for item in batch)), size, block=False) is None:
                         return
                     self._submitted.update(path for path, _ in batch)
                     batch, size = [], 0
                 batch.append((path, record))
                 size += amount
             if batch:
-                if self._enqueue(batch, size, block=False) is None:
+                if self._enqueue(WriteBatch(tuple(DatasetWrite(*item) for item in batch)), size, block=False) is None:
                     return
                 self._submitted.update(path for path, _ in batch)
             self._cursor = cursor
         except Exception as exc:
             self._fail(exc)
 
-    def _enqueue(self, contents, size=0, *, final=False, block=True):
+    def _enqueue(self, contents: WriteBatch | FinalizeOutput, size=0, *, block=True):
         started = perf_counter()
+        final = isinstance(contents, FinalizeOutput)
         # Yield an enclosing scientific reservation while applying backpressure.
         # This matters on a single CPU: delivery must be able to admit the writer.
         with (suspend_compute() if block else nullcontext()), self._condition:
@@ -181,22 +190,24 @@ class OutputService:
                 path.unlink(missing_ok=True)
                 raise
             self._sequence += 1
-            accepted_at = started if final else min(self._accepted_times[path] for path, _ in contents)
-            command = WriteCommand(self._sequence, str(path), digest.hexdigest(), final, accepted_at)
+            accepted_at = started if final else min(self._accepted_times[item.path] for item in contents.datasets)
+            command_type = FinalizeCommand if final else WriteCommand
+            command = command_type(self._sequence, str(path), digest.hexdigest(), accepted_at)
+            manifest_bytes = path.stat().st_size
             self._manifests.add(path)
-            self._manifest_bytes += path.stat().st_size
-            self._pending.append((command, size, accepted_at))
+            self._manifest_bytes += manifest_bytes
+            self._pending.append(PendingWrite(command, size, accepted_at, manifest_bytes))
             self._jobs += 1
             self._bytes += size
             self.metrics.maximum("output_peak_pending_jobs", self._jobs)
             self.metrics.maximum("output_peak_pending_logical_bytes", self._bytes)
             self.metrics.maximum("output_peak_pending_manifest_bytes", self._manifest_bytes)
-            self.metrics.add("output_command_manifest_bytes", path.stat().st_size)
+            self.metrics.add("output_command_manifest_bytes", manifest_bytes)
             self.metrics.add("output_submission_seconds", perf_counter()-started)
             if not final:
-                self.metrics.add("output_datasets_accepted", len(contents))
+                self.metrics.add("output_datasets_accepted", len(contents.datasets))
                 self.metrics.add("output_logical_bytes_accepted", size)
-            Logger.log_perf(f"output_commit output={self._output_name} sequence={command.sequence} datasets={0 if final else len(contents)} accepted_at={accepted_at:.6f} submitted_at={perf_counter():.6f}")
+            Logger.log_perf(f"output_commit output={self._output_name} sequence={command.sequence} datasets={0 if final else len(contents.datasets)} accepted_at={accepted_at:.6f} submitted_at={perf_counter():.6f}")
             self._condition.notify_all()
             return command.sequence
 
@@ -226,12 +237,13 @@ class OutputService:
                         if not self.process.is_alive() and not self._finished and not self._stop.is_set():
                             raise OutputServiceError("Output writer exited unexpectedly")
                         continue
-                    command, size, committed = self._pending.popleft()
+                    pending = self._pending.popleft()
+                    command = pending.command
                 reserved = False
                 # Numerical payload stays mapped/copied by HDF5, while the small
                 # manifest must be decoded into Python objects in the child.
                 memory = (min(self.policy.admission_memory_bytes, self.budget.memory_limit//8)
-                          + 2*Path(command.manifest).stat().st_size) if self.budget else 0
+                          + 2*pending.manifest_bytes) if self.budget else 0
                 admitted_at = perf_counter()
                 try:
                     if self.budget:
@@ -268,27 +280,34 @@ class OutputService:
                         raise OutputServiceError("Output acknowledgement sequence differs")
                     if ack.error:
                         raise OutputServiceError(ack.error)
-                    for name, value in ack.metrics.items():
+                    if isinstance(command, FinalizeCommand):
+                        if ack.completed is None or ack.completed.path != self.local_path:
+                            raise OutputServiceError("Writer did not acknowledge a closed complete local output")
+                    elif ack.completed is not None:
+                        raise OutputServiceError("Unexpected output completion during a dataset batch")
+                    for name, value in ack.metrics:
                         if name == "output_writer_sampled_rss_bytes":
                             self.metrics.maximum(name, value)
                         else:
                             self.metrics.add(name, value)
                     for message in ack.messages:
                         Logger.log_perf(f"output={self._output_name} {message}")
-                    self.metrics.add("output_commit_to_write_complete_seconds", perf_counter()-committed)
+                    self.metrics.add("output_commit_to_write_complete_seconds", perf_counter()-pending.accepted_at)
                     self.metrics.add("output_commands_completed", 1)
                     with self._condition:
                         self._jobs -= 1
-                        self._bytes -= size
+                        self._bytes -= pending.logical_bytes
                         self._completed = command.sequence
                         self._written.update(ack.paths)
+                        if ack.completed is not None:
+                            self._completed_output = ack.completed
                         self._condition.notify_all()
                     manifest = Path(command.manifest)
                     with self._condition:
-                        self._manifest_bytes -= manifest.stat().st_size
+                        self._manifest_bytes -= pending.manifest_bytes
                     manifest.unlink(missing_ok=True)
                     self._manifests.discard(manifest)
-                    if command.final:
+                    if isinstance(command, FinalizeCommand):
                         return
                 finally:
                     if reserved:
@@ -306,23 +325,20 @@ class OutputService:
                 self._condition.wait(0.1)
             self.check_health()
 
-    def finish(self):
+    def finish(self, snapshot: FinalizationSnapshot | None = None) -> CompletedLocalOutput:
         if self._finished:
-            return self.local_path
-        if self.model._checkpoints:
-            raise RuntimeError("Cannot finalize an active output transaction")
+            return self._completed_output
+        snapshot = snapshot if snapshot is not None else self.model.finalization_snapshot()
         started = perf_counter()
         self.metrics.add("output_jobs_at_analysis_end", self.pending_count)
-        records = self.model.committed_records()
-        groups = {path: record for path, record in records.items() if record.kind == "group"}
-        expected = tuple(path for path, record in records.items() if record.kind == "dataset")
+        expected = snapshot.dataset_paths
         with suspend_compute():
             while not set(expected).issubset(self._submitted):
                 self.submit(self.model)
                 self.check_health()
                 self.drain()
         self.check_health()
-        self._enqueue((groups, expected), final=True)
+        self._enqueue(FinalizeOutput(snapshot))
         self.drain()
         self.process.join(self.policy.shutdown_timeout)
         if self.process.is_alive() or self.process.exitcode:
@@ -332,7 +348,7 @@ class OutputService:
         self.metrics.add("output_final_drain_seconds", perf_counter()-started)
         Logger.log_perf(f"END pipeline=run variant=shared stage=hdf5_serialization at={perf_counter():.6f} progressive=True wall={perf_counter()-self._started:.3f}s output={self._output_name}")
         Logger.log_perf(f"output_summary metrics={self.metrics.snapshot()}")
-        return self.local_path
+        return self._completed_output
 
     def close(self):
         if self._closed:

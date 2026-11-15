@@ -1,16 +1,10 @@
 """Acquisition I/O ownership, with independent input and retained output lifetimes."""
 
 from contextlib import ExitStack
-import json
 import multiprocessing
-from pathlib import Path
-from time import perf_counter
-from threading import Event, RLock
+from threading import RLock
 
-from input_output.writers.h5 import open_h5, write_root_attributes
-from input_output.writers.h5_publication import OutputPublisher
-from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
-from pipeline_engine.output.output_model import ProductCheckpoint
+from input_output.writers.h5 import open_h5
 from utils.logger import Logger
 
 from .input.service import InputService
@@ -18,27 +12,22 @@ from .output.service import OutputService
 
 
 class IOManager:
-    """Own services and storage; the existing runtime still schedules science.
+    """Coordinate independent input/output lanes over borrowed product storage.
 
-    The scientific ExitStack closes only input resources. This manager is then
-    retained by batch finalization through artifact completion and publication.
-    Ownership of the model's storage transfers only after construction succeeds.
+    AcquisitionCompletion owns exports, final metadata, publication and storage
+    release. Closing these lanes never closes the caller's model storage.
     """
 
-    def __init__(self, model, *, artifacts=None, owns_artifacts=False, budget=None,
-                 context=None, output_policy=None):
+    def __init__(self, model, *, budget=None, context=None, output_policy=None):
         self.model = model
-        self.artifacts = artifacts if artifacts is not None else BackgroundArtifacts()
-        self.owns_artifacts = owns_artifacts or artifacts is None
         self.context = context or multiprocessing.get_context("spawn")
         self.budget = budget if budget is not None else model.storage.budget
         self._inputs = ExitStack()
         self._sources = None
         self.input = None
         self.files = {}
-        self._input_closed = self._closed = self._finished = False
+        self._input_closed = self._closed = False
         self._lifecycle = RLock()
-        self._cancelled = Event()
         self.output = OutputService(model, budget=self.budget, context=self.context, policy=output_policy)
 
     def open_sources(self, hd_path, dv_path):
@@ -71,55 +60,17 @@ class IOManager:
         self.output.submit(self.model)
         self.output.check_health()
 
-    def finish(self):
-        with self._lifecycle:
-            return self._finish()
-
     @property
     def closed(self):
         return self._closed
 
-    def _finish(self):
-        if self._finished:
-            return Path(self.model.filename)
-        if self._closed:
-            raise RuntimeError("Cannot publish a closed acquisition")
-        started = perf_counter()
-        try:
-            self.close_input()
-            self.artifacts.collect(wait=True)
-            write_root_attributes(self.model, {
-                "artifact_status": json.dumps(self.artifacts.statuses, sort_keys=True),
-                "artifact_failures": json.dumps(self.artifacts.failures, sort_keys=True),
-                "artifact_timings": json.dumps(self.artifacts.timings, sort_keys=True),
-            })
-            if self.model._checkpoints:
-                raise RuntimeError("Cannot finalize an active output transaction")
-            # Final structural metadata may be written outside scientific stages;
-            # this does not authorize any uncommitted scientific dataset.
-            ProductCheckpoint(self.model).commit(tuple(
-                path for path, record in self.model.records.items() if record.kind == "group"))
-            local = self.output.finish()
-            OutputPublisher(self.model.filename, self.model.storage.metrics,
-                            cancelled=self._cancelled.is_set).publish(local)
-            self._finished = True
-            return Path(self.model.filename)
-        finally:
-            self.model.storage.metrics.add("output_finalization_seconds", perf_counter()-started)
-            self.close()
-
     def close(self):
-        self._cancelled.set()
-        if not self._finished:
-            self.output.request_abort()
+        self.output.request_abort()
         with self._lifecycle:
             if self._closed:
                 return
             self._closed = True
             with ExitStack() as cleanup:
-                cleanup.callback(self.model.storage.close)
-                if self.owns_artifacts:
-                    cleanup.callback(self.artifacts.__exit__, None, None, None)
                 cleanup.callback(self.output.close)
                 self.close_input()
 

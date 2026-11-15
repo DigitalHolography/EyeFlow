@@ -1,7 +1,14 @@
 """Small spawn-safe output commands; scientific payloads stay in owned files."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from collections.abc import Mapping
 import os
+from typing import TYPE_CHECKING
+
+from input_output.writers.h5_publication import CompletedLocalOutput
+
+if TYPE_CHECKING:
+    from pipeline_engine.output.output_model import FinalizationSnapshot, Record
 
 
 def _rebuild_connection(handle, readable, writable):
@@ -52,21 +59,61 @@ class OutputPolicy:
 
 
 @dataclass(frozen=True)
+class DatasetWrite:
+    path: str
+    record: "Record"
+
+
+@dataclass(frozen=True)
+class WriteBatch:
+    datasets: tuple[DatasetWrite, ...]
+
+    def __post_init__(self):
+        object.__setattr__(self, "datasets", tuple(self.datasets))
+        if any(not isinstance(item, DatasetWrite) for item in self.datasets):
+            raise TypeError("A write batch requires DatasetWrite records")
+
+
+@dataclass(frozen=True)
+class FinalizeOutput:
+    snapshot: "FinalizationSnapshot"
+
+
+@dataclass(frozen=True)
 class WriteCommand:
     sequence: int
     manifest: str
     digest: str
-    final: bool = False
     accepted_at: float = 0.
+
+
+@dataclass(frozen=True)
+class FinalizeCommand(WriteCommand):
+    """The referenced manifest must contain FinalizeOutput, not a dataset batch."""
+
+
+@dataclass(frozen=True)
+class PendingWrite:
+    command: WriteCommand
+    logical_bytes: int
+    accepted_at: float
+    manifest_bytes: int
 
 
 @dataclass(frozen=True)
 class WriteAcknowledgement:
     sequence: int
     error: str | None = None
-    metrics: dict = field(default_factory=dict)
-    paths: tuple = ()
-    messages: tuple = ()
+    metrics: tuple[tuple[str, int | float], ...] = ()
+    paths: tuple[str, ...] = ()
+    messages: tuple[str, ...] = ()
+    completed: CompletedLocalOutput | None = None
+
+    def __post_init__(self):
+        metrics = self.metrics.items() if isinstance(self.metrics, Mapping) else self.metrics
+        object.__setattr__(self, "metrics", tuple((name, value) for name, value in metrics))
+        object.__setattr__(self, "paths", tuple(self.paths))
+        object.__setattr__(self, "messages", tuple(self.messages))
 
 
 class OutputServiceError(OSError):

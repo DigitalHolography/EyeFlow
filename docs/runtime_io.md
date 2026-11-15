@@ -25,14 +25,18 @@ classDiagram
         start_input()
         close_input()
         check_health()
-        finish()
         close()
     }
     IOManager --> InputService
     InputService --> SourceReader
     IOManager --> OutputService
     IOManager --> OutputModel
-    IOManager --> OutputPublisher
+    AcquisitionCompletion --> IOManager
+    AcquisitionCompletion --> OutputModel
+    AcquisitionCompletion --> BackgroundArtifacts
+    AcquisitionCompletion --> OutputPublisher
+    OutputModel --> FinalizationSnapshot
+    OutputService --> CompletedLocalOutput
     OutputModel --> ProductStorage
     OutputService --> OutputWriter
 ```
@@ -45,7 +49,8 @@ classDiagram
 | Input source thread | Existing single HDF5 read lane and exclusively owned destinations |
 | Output delivery thread | Bounded command manifests, writer admission, acknowledgements, errors and counters |
 | Output writer process | Exclusive incomplete primary HDF5 handle, accepted dataset serialization, final metadata/inventory verification |
-| `IOManager` | Acquisition services, raw input handles, retained output/artifact lifetime and final publication |
+| `IOManager` | Independent acquisition I/O lanes and raw input handles; borrows product storage |
+| `AcquisitionCompletion` | Per-acquisition artifact jobs, final metadata, accepted backing lifetime and publication |
 | `OutputPublisher` | Copy a completed closed local file to a hidden destination name, then atomically replace |
 
 The stable input implementation moved mechanically from `data/input_*` to
@@ -53,18 +58,21 @@ The stable input implementation moved mechanically from `data/input_*` to
 replay/stream limits and zero-RPC authorization behavior are unchanged. Generic
 storage, transfer and calculation scratch remain under `data`.
 
-`output/finalization.py` and its `PendingOutput` wrapper were removed. The manager
-is itself the retained finalization handle used by the existing batch scheduler.
-The terminal full-model serialization loop was removed from `h5_publication.py`.
-Standalone `OutputModel.publish()` uses the same writer and publication components.
+`output/completion.py` supplies the retained `AcquisitionCompletion` handle used
+by the batch scheduler. It owns per-acquisition jobs, while `BackgroundArtifacts`
+borrows the batch renderer pool. `IOManager` closes I/O lanes without serializing
+artifact metadata, publishing files or releasing accepted product storage.
+Standalone `OutputModel.publish()` is a compatibility facade that delegates to
+the same completion component and explicitly borrows the caller's storage.
 
 | Implementation | Change |
 |---|---|
-| `io/manager.py` | Retained acquisition lifecycle, input close, artifact/status reconciliation and publication |
+| `io/manager.py` | Independent I/O lane lifecycle and input closure |
+| `output/completion.py` | Artifact/status reconciliation, final snapshot, publication and retained backing release |
 | `io/output/service.py` | Accepted-ledger delivery, bounded backlog, resource admission, completion/error handling |
 | `io/output/writer.py`, `protocol.py` | Spawned exclusive writer, sequence/inventory checks and child-owned IPC connections |
-| `io/input/` | Mechanical relocation of the four stable input modules and their imports |
-| `output/output_model.py` | Safe post-commit observer; standalone publication uses the same output service |
+| `io/input/` | Typed scheduling/in-flight state, exclusive stream/transfer leases and the existing independent source reader |
+| `output/output_model.py` | Safe post-commit observer and public accepted finalization snapshot |
 | `execution/runtime.py`, `run_service.py` | Manager setup, health/progress, retained batch handoff; existing DAG/batch scheduling preserved |
 | `execution/worker.py`, `data/transfer.py` | Updated input namespace imports |
 | `input_output/writers/h5_publication.py` | Reused record/attribute encoding and independent atomic publisher |
@@ -117,6 +125,15 @@ the end, including deletion of stale keys and replacement attribute dtypes. Fina
 inventory validation uses logical scientific paths: encoding-owned private VDS
 backing datasets are allowed. No scientific dataset is rewritten at finalization.
 
+`WriteBatch` contains named `DatasetWrite` records; `FinalizeOutput` contains the
+model's immutable `FinalizationSnapshot`. Different command types identify those
+manifest contracts, and the writer rejects mismatches. `PendingWrite` names queue
+accounting fields, and acknowledgement measurements are immutable key/value
+tuples. `OutputService.finish()` returns `CompletedLocalOutput` only after the
+writer acknowledges closure and exits successfully. The publisher accepts that
+receipt, verifies its file size, then performs the destination copy and replace.
+Neither service nor completion accesses the model's private checkpoint stack.
+
 ## Backing, resources and cancellation
 
 Large payloads remain in their existing immutable `.npy` or private HDF5 backing.
@@ -127,9 +144,12 @@ Writer mappings close after each operation. An acknowledgement releases writer
 admission, not the shared backing needed by later calculations, reports or exports.
 Worker product directories are nested inside the retained acquisition store.
 
-`IOManager` takes ownership of the accepted model's storage only after its
-constructor succeeds. Failed construction leaves the caller's storage usable;
-the runtime cleans up its own newly allocated store if setup fails.
+`AcquisitionCompletion` adopts its I/O lanes, per-acquisition jobs and storage
+only after construction succeeds. Failed construction leaves caller-owned storage
+usable; the runtime cleans up its own newly allocated store if setup fails.
+Closing I/O lanes alone never closes product storage. Completion closes the lanes,
+settles its artifact jobs and finally releases owned storage, including on abort.
+Artifact-group teardown is idempotent and never shuts down a borrowed batch pool.
 
 The actual output directory is verified as local before allocating IPC resources
 and again in the writer. This covers explicit storage directories and retained
@@ -187,17 +207,19 @@ VDS sources remain `'.'`, so copying and renaming the completed file is safe.
 sequenceDiagram
     participant R as Existing acquisition runtime
     participant I as IOManager
+    participant C as AcquisitionCompletion
     participant A as Background artifacts
     participant W as Output writer
     participant P as OutputPublisher
     R->>I: Create model/services; run existing scientific DAG
     R->>I: Close workers, input client/service and source handles
     R-->>R: Next acquisition may start
-    I->>A: Join exports and reconcile final artifact statuses
-    I->>W: Drain accepted ledger; final group/root metadata and inventory
-    W-->>I: Successful close of complete local HDF5
-    I->>P: Copy to hidden destination and atomically replace
-    I->>I: Release retained backing exactly once
+    C->>A: Join exports and reconcile final artifact statuses
+    C->>C: Obtain accepted FinalizationSnapshot
+    C->>W: Drain accepted ledger and serialize final snapshot
+    W-->>C: CompletedLocalOutput receipt after successful close
+    C->>P: Publish closed file through hidden destination staging
+    C->>C: Release retained backing exactly once
 ```
 
 The existing batch limit remains two unfinished acquisitions. A single batch
