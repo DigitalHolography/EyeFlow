@@ -52,7 +52,7 @@ The main scientific flow is:
 ```text
 HD + DV -> velocity (moments and/or calibrated bands) -> cardiac timing
         -> topology_core -----------------------------+-> velocity_analysis
-        -> low_freq_spectra (optional HD video)       |       -> metrics/reports
+        -> low_freq_spectra (optional HD video)       |       -> metrics/artifacts
         -> spatial_gradient_moment0 (timing + topology)
         -> displacement_map -> displacement_profiles (optional)
 ```

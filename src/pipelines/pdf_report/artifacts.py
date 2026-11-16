@@ -1,4 +1,4 @@
-"""Standalone figure artifacts owned by the moments PDF pipeline."""
+"""Standalone figure artifacts owned by the moments report pipeline."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from input_output.writers.article import save_article_figure_pair
 from plotting.article import ARTICLE_ASPECT_RATIO, ARTICLE_DPI
 
 from .data import ReportData
-from .pages import plot_filtered_velocity
+from .plots import plot_filtered_velocity
 
 
 def export_moments_report_figures(output, report: ReportData) -> list[Path]:
@@ -24,7 +24,8 @@ def export_moments_report_figures(output, report: ReportData) -> list[Path]:
             ax,
             report.velocity_per_beat.get(vessel),
             report.velocity_units.get(vessel, "mm/s"),
-            f"{vessel.title()} filtered per-beat velocity",
+            f"{vessel.title()} Per-Beat Velocity",
+            unfiltered_values=report.velocity_per_beat_unfiltered.get(vessel),
         )
         paths.extend(
             save_article_figure_pair(

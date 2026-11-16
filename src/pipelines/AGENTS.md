@@ -18,7 +18,7 @@ declaration, then its runner and output module.
 | Flow rate option families | `blood_volume_rate/` |
 | Displacement registration and profiles | `displacement_map/` |
 | Waveform descriptors | `waveform_shape_metrics/`, `absolute_waveform_metrics/`, `lowrank_waveform_decomposition/` |
-| PDF measurements and page composition | `pdf_report/` |
+| PDF/HTML report measurements and presentation | `pdf_report/` |
 
 Hidden `velocity`, `topology_core`, and `low_freq_spectra` publish shared work.
 Visible products declare their upstream requirements; never infer availability

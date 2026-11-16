@@ -143,6 +143,9 @@ class PulsePngExporterTests(unittest.TestCase):
             self.assertEqual(10, fig.axes[0].title.get_fontsize())
             self.assertEqual("normal", fig.axes[0].title.get_fontweight())
             self.assertEqual(["sans-serif"], fig.axes[0].title.get_fontfamily())
+            self.assertTrue(
+                all(line.get_alpha() is None for line in fig.axes[0].lines[1:])
+            )
             self.assertNotIn("Acceleration", fig.axes[0].get_ylabel())
             self.assertIn(r"$\mathrm{mm.s^{-1}}$", fig.axes[0].get_ylabel())
             self.assertAlmostEqual(1.618, fig.get_figwidth() / fig.get_figheight(), places=3)

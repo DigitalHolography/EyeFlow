@@ -19,6 +19,7 @@ from pipelines.blood_volume_rate.outputs import (
     BLOOD_VOLUME_RATE_ENVELOPE_GRAY,
     LUMEN_DIAMETER_FIGURE_ASPECT_RATIO,
     _blood_volume_rate_figure,
+    _lumen_diameter_distribution_figure,
     pack_gradient_edge_outputs,
     pack_mask_derived_outputs,
 )
@@ -239,9 +240,46 @@ def test_blood_volume_rate_figure_plots_median_and_one_sd_over_beats() -> None:
         assert np.isclose(np.min(y_values), center - sd)
         assert np.isclose(np.max(y_values), center + sd)
 
+
+def test_lumen_diameter_figure_keeps_statistics_out_of_the_plot() -> None:
+    fig = _lumen_diameter_distribution_figure(
+        np.asarray([60.0, 70.0, 80.0, 90.0])
+    )
+    ax = fig.axes[0]
+
+    assert ax.get_legend() is None
+    assert not ax.texts
+
     assert all(spine.get_visible() for spine in ax.spines.values())
     assert all(np.isclose(spine.get_linewidth(), 0.4) for spine in ax.spines.values())
     width, height = fig.get_size_inches()
     assert np.isclose(width / height, LUMEN_DIAMETER_FIGURE_ASPECT_RATIO)
+
+
+def test_page_two_lumen_and_bvr_figures_have_identical_visible_plot_bounds() -> None:
+    lumen = _lumen_diameter_distribution_figure(
+        np.asarray([60.0, 70.0, 80.0, 90.0])
+    )
+    rate = _blood_volume_rate_figure(
+        np.asarray([
+            [-1234.0, 2345.0],
+            [-3456.0, 4567.0],
+            [5678.0, -6789.0],
+            [7890.0, -8901.0],
+        ])
+    )
+
+    np.testing.assert_allclose(
+        lumen.axes[0].get_position().bounds,
+        rate.axes[0].get_position().bounds,
+    )
+    np.testing.assert_allclose(lumen.get_size_inches(), rate.get_size_inches())
+    for fig in (lumen, rate):
+        fig.canvas.draw()
+        tight = fig.axes[0].get_tightbbox(fig.canvas.get_renderer())
+        assert tight.x0 >= fig.bbox.x0
+        assert tight.y0 >= fig.bbox.y0
+        assert tight.x1 <= fig.bbox.x1
+        assert tight.y1 <= fig.bbox.y1
 
 

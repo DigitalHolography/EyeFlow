@@ -42,8 +42,8 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     assert "velocity_analysis" in gradient
     assert "spatial_gradient_moment0" not in masked
     assert "velocity_analysis" in masked
-    reports = {"low_freq_spectra", "pdf_width_report"}
-    assert tuple(name for name in neither if name not in reports) == (
+    unrelated = {"low_freq_spectra"}
+    assert tuple(name for name in neither if name not in unrelated) == (
         "topology_core",
         "velocity",
         "velocity_analysis",

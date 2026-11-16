@@ -153,7 +153,7 @@ add their own dependencies.
 For `sample.holo`, EyeFlow owns `sample/sample_EF/`. A new attempt replaces an
 existing directory before running. The primary result is
 `sample_EF/h5/sample_EF.h5`; artifact directories such as `png`, `avi`, `eps`,
-and `pdf` are created when needed. The output HDF5 records source files,
+`pdf`, and `html` are created when needed. The output HDF5 records source files,
 selected targets, resolved execution order/options, version data, and velocity
 semantics.
 
@@ -165,7 +165,8 @@ to inspect the changes, then omit `--dry-run` to apply them.
 
 Major result families include continuous and per-beat velocity, heartbeat,
 topology/segmentation, cross-section profiles, waveform metrics, spatial-gradient
-lumen metrics, blood-volume-rate products, displacement products, and reports.
+lumen metrics, blood-volume-rate products, displacement products, and the
+moments velocity/blood-volume-rate report in PDF and self-contained HTML.
 The executable output-path schema is centralized in
 `src/input_output/schema/eyeflow_output.py`.
 

@@ -13,6 +13,7 @@ from plotting.article import (
     ARTICLE_ASPECT_RATIO,
     DIAGNOSTIC_ARTICLE_STYLE as STYLE,
 )
+from plotting.colors import opaque_on_background
 from plotting.units import display_unit
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
@@ -44,7 +45,7 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             maxima,
             minima,
             ctx.velocity_axis_label,
-            "Artery systole indices",
+            "Artery Systole Indices",
         ),
         _systole_plot(
             writer,
@@ -55,7 +56,7 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             maxima,
             minima,
             ctx.velocity_axis_label,
-            "Vein systole indices",
+            "Vein Systole Indices",
         ),
     ]
     for vessel, artifact_paths in zip(("artery", "vein"), artifact_groups):
@@ -74,7 +75,7 @@ def _systole_plot(
     maxima: np.ndarray,
     minima: np.ndarray,
     velocity_label: str = f"Velocity ({display_unit('mm/s')})",
-    title: str = "Systole indices",
+    title: str = "Systole Indices",
 ) -> list[Path]:
     fig, ax = _plt().subplots(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
     ax.plot(
@@ -91,8 +92,9 @@ def _systole_plot(
             )
             for idx in valid:
                 ax.axvline(
-                    time[idx], color=marker_color, linestyle="--",
-                    linewidth=STYLE.event_line_width, alpha=0.75,
+                    time[idx],
+                    color=opaque_on_background(marker_color, opacity=0.75),
+                    linestyle="--", linewidth=STYLE.event_line_width,
                 )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(velocity_label)
