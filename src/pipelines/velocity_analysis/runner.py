@@ -15,7 +15,7 @@ from calculations.blood_flow_velocity import (
 from calculations.topology import AnnulusGeometry
 from data_manager import InvocationResource
 from input_output import EyeFlowOutputPaths
-from pipeline_engine import ProductSpec, StageGraph, StageSpec, read_int_setting
+from pipeline_engine import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.context import require_managed_runtime
 from pipelines.signal_settings import band_limited_harmonics
 from pipelines.topology_core.runner import prepared_topologies
@@ -34,7 +34,6 @@ from .artifacts import (
     export_pulse_pngs,
     export_rotated_mean_pngs,
 )
-from .constants import NUMBER_OF_RADII_IN_FOV, SEGMENT_INNER_RADIUS_FRAC, SEGMENT_OUTER_RADIUS_FRAC
 from .models import VelocityAnalysis, VelocitySegmentResult
 from .outputs import (
     pack_velocity_per_beat_inputs,
@@ -105,7 +104,8 @@ def _inputs(ctx):
     source = load_velocity_analysis_source_data(ctx)
     harmonic_count = band_limited_harmonics(ctx)
     attrs = _context_attrs(source, retinal, harmonic_count, "eyeflow_velocity_analysis",
-                           _number_of_radii_in_fov(ctx), retinal.cardiac_cycle_source)
+                           prepared_topologies(ctx)["artery"].native.ring_settings,
+                           retinal.cardiac_cycle_source)
     ctx.dag.handoff("inputs", (retinal, InvocationResource(source), harmonic_count, attrs))
 
 
@@ -277,25 +277,6 @@ def _segments_required(ctx) -> bool:
 
 def _pulse_pngs_required(ctx) -> bool:
     return ctx.pipeline_targeted("velocity_analysis") or ctx.pipeline_scheduled("pdf_report")
-
-
-def _number_of_radii_in_fov(ctx) -> int:
-    value = read_int_setting(
-        ctx,
-        default=NUMBER_OF_RADII_IN_FOV,
-        keys=(
-            "number_of_radii_in_FOV",
-            "number_of_radii_in_fov",
-            "NumberOfRadiiInFOV",
-            # Accept the earlier spelling for compatibility.
-            "number_of_radii_over_FOV",
-            "number_of_radii_over_fov",
-            "NumberOfRadiiOverFOV",
-        ),
-    )
-    if value < 1:
-        raise ValueError("number_of_radii_in_FOV must be positive.")
-    return value
 
 
 def _build_segments(
@@ -512,7 +493,7 @@ def _context_attrs(
     velocity: RetinalVelocity,
     harmonic_count: int,
     analysis_source: str,
-    number_of_radii_in_fov: int,
+    ring_settings: AnnulusGeometry,
     cardiac_cycle_detection_source: str,
 ) -> dict[str, object]:
     output_paths = EyeFlowOutputPaths.active()
@@ -540,13 +521,10 @@ def _context_attrs(
         ],
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
-        "velocity_section_geometry": "optic_disc_centered_frame_fraction",
-        "velocity_section_inner_radius_fraction": float(SEGMENT_INNER_RADIUS_FRAC),
-        "velocity_section_outer_radius_fraction": float(SEGMENT_OUTER_RADIUS_FRAC),
-        "velocity_section_outer_to_disc_radius": float(
-            SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
-        ),
-        "number_of_radii_in_FOV": int(number_of_radii_in_fov),
+        "velocity_section_geometry": "optic_disc_centered_annuli",
+        "velocity_section_inner_radius_fraction": float(ring_settings.inner_radius_frac),
+        "velocity_section_outer_radius_fraction": float(ring_settings.outer_radius_frac),
+        **ring_settings.metadata(source_data.source.segmentation.vessels.artery.shape),
         "arterial_velocity_signal_path": (analysis_paths.retinal_artery_velocity_signal),
         "venous_velocity_signal_path": (analysis_paths.retinal_vein_velocity_signal),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,

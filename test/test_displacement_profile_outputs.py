@@ -29,8 +29,8 @@ from pipelines.displacement_map import segments as displacement_segments
 from pipelines.displacement_map.segments import DisplacementSegmentResult
 
 
-def _result(*, retain_maps: bool = True) -> DisplacementSegmentResult:
-    signal_shape = (1, 1, 5)
+def _result(*, retain_maps: bool = True, ring_count: int = 1) -> DisplacementSegmentResult:
+    signal_shape = (ring_count, 1, 5)
     curve = np.asarray([0.0, 2.0, 0.0, 1.0, 0.0], dtype=np.float32)
     profiles = np.broadcast_to(curve, (*signal_shape, curve.size)).copy()
     scalar = np.ones(signal_shape, dtype=np.float32)
@@ -128,6 +128,23 @@ def test_vector_segment_map_interpolation_preserves_components_and_axis_order() 
 
     assert actual.shape == (3, 2, 4, 1, 1, 1, 2)
     np.testing.assert_allclose(actual[2, 1, :, 0, 0, 0, 1], expected, rtol=1e-6)
+
+
+def test_displacement_profiles_and_segment_maps_accept_a_denser_radial_axis():
+    result = _result(ring_count=7)
+    outputs = pack_displacement_profile_outputs(
+        {"artery": result}, "level_set_motion", np.asarray([0, 4])
+    )
+    outputs.update(pack_displacement_segment_map_outputs(
+        {"artery": result}, "level_set_motion", np.asarray([0, 4])
+    ))
+    radial_products = 0
+    for dataset in outputs.values():
+        axes = dataset.attrs.get("dimDesc", [])
+        if "radius" in axes:
+            assert dataset.data.shape[axes.index("radius")] == 7
+            radial_products += 1
+    assert radial_products > 10
 
 
 def test_segment_maps_are_packed_only_by_the_separate_map_packer() -> None:

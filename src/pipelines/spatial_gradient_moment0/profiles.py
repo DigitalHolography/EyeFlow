@@ -48,14 +48,10 @@ def extract_spatial_gradient_segments(
 ):
     """Interpolate raw moment0ff, filter its gradient, then rotate each segment."""
 
-    legacy_number_of_radii = None
     if hasattr(source, "source_data"):
         waveform_context = source
         waveform_source = waveform_context.source_data
         source = waveform_source.source
-        legacy_number_of_radii = waveform_context.attrs.get(
-            "number_of_radii_in_FOV"
-        )
         if prepared_topologies is None:
             prepared_topologies = {
                 "artery": waveform_context.artery_segments.profile.topology,
@@ -80,11 +76,6 @@ def extract_spatial_gradient_segments(
         "ring_settings",
         None,
     )
-    if ring_settings is None and legacy_number_of_radii is not None:
-        ring_settings = source.segmentation.optic_disc.annulus_geometry(
-            tuple(int(size) for size in artery_mask.shape),
-            number_of_radii_in_fov=int(legacy_number_of_radii),
-        )
     if ring_settings is None:
         raise RuntimeError("Prepared topology has no annulus geometry.")
     masks = {"artery": artery_mask, "vein": vein_mask}

@@ -20,6 +20,7 @@ from plotting.article import (
     ARTICLE_WIDTH_INCHES as LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
     COMPACT_ARTICLE_STYLE,
     apply_article_style,
+    add_temporal_mean_reference,
     create_article_figure,
     prepare_article_fill_layer,
 )
@@ -364,6 +365,7 @@ def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
         linestyle="-",
         linewidth=COMPACT_ARTICLE_STYLE.signal_line_width,
     )
+    add_temporal_mean_reference(ax, median, label="_nolegend_")
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$")

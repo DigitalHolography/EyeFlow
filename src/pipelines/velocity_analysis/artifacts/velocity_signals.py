@@ -14,6 +14,7 @@ from plotting.article import (
     ARTICLE_DPI as VELOCITY_FIGURE_DPI,
     ARTICLE_WIDTH_INCHES as VELOCITY_FIGURE_WIDTH_INCHES,
     COMPACT_ARTICLE_STYLE,
+    add_temporal_mean_reference,
     apply_article_style,
     create_article_figure,
     prepare_article_fill_layer,
@@ -92,6 +93,7 @@ def _velocity_figure(
         linestyle="-",
         linewidth=COMPACT_ARTICLE_STYLE.signal_line_width,
     )
+    add_temporal_mean_reference(ax, signal, label="_nolegend_")
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$")

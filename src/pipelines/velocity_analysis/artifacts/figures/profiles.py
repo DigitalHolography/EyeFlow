@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from plotting.article import apply_article_style
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE, apply_article_style
 from plotting.formatting import add_colorbar
 from .common import _plt
 from pipelines.velocity.semantics import resolve_velocity_semantics
@@ -95,7 +95,7 @@ def _save_profile_map(
         ylabel="Time (s)",
         title=f"{vessel_name.capitalize()} transverse velocity profiles (raw)",
     )
-    apply_article_style(fig)
+    apply_article_style(fig, DIAGNOSTIC_ARTICLE_STYLE)
     return writer.save_figure(
         fig,
         f"{vessel_name}_velocity_profile_map.png",

@@ -8,7 +8,8 @@ import re
 import sys
 from collections.abc import Iterable, Mapping
 from importlib import metadata as importlib_metadata
-from numbers import Integral
+from math import isfinite
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -39,6 +40,36 @@ VELOCITY_WORKFLOW_METHODS = {
     "bandratio": "frequency_bands",
 }
 DEFAULT_VELOCITY_WORKFLOW_SELECTION = "both"
+
+LEGACY_ANNULUS_COUNT_KEYS = (
+    "number_of_radii_in_FOV", "number_of_radii_in_fov", "NumberOfRadiiInFOV",
+    "number_of_radii_over_FOV", "number_of_radii_over_fov", "NumberOfRadiiOverFOV",
+)
+
+
+def validate_annulus_settings(settings: Mapping[str, object] | None) -> dict[str, object]:
+    """Validate native-pixel options or an intentionally saved legacy count.
+
+    None dimensions resolve per image; an unspecified stride is half the size.
+    Explicit new values take precedence over every legacy count alias.
+    """
+    settings = settings or {}
+    result = {}
+    for name in ("annulus_size", "annulus_stride"):
+        value = settings.get(name)
+        if value is not None:
+            if (isinstance(value, bool) or not isinstance(value, Real)
+                    or not isfinite(value) or value <= 0):
+                raise ValueError(f"{name} must be finite and strictly positive (native pixels).")
+            value = float(value)
+        result[name] = value
+    if all(value is None for value in result.values()):
+        count = next((settings[key] for key in LEGACY_ANNULUS_COUNT_KEYS if key in settings), None)
+        if count is not None:
+            if isinstance(count, bool) or not isinstance(count, Integral) or count < 1:
+                raise ValueError("number_of_radii_in_FOV must be positive and an integer.")
+            result["number_of_radii_in_FOV"] = int(count)
+    return result
 
 
 def validate_velocity_workflow_selection(value: object) -> str:
@@ -366,6 +397,7 @@ class AppSettingsStore:
             ) from exc
         if not isinstance(settings, dict):
             raise TypeError("The configuration must contain a JSON object.")
+        validate_annulus_settings(settings)
         validate_band_limited_harmonics_setting(
             settings.get("band_limited_harmonics", DEFAULT_BAND_LIMITED_HARMONICS_SETTING)
         )
@@ -387,6 +419,9 @@ class AppSettingsStore:
 
     def load_input_backend(self) -> str:
         return validate_input_backend(self.load().get("input_backend", "auto"))
+
+    def load_annulus_settings(self) -> dict[str, object]:
+        return validate_annulus_settings(self.load())
 
     def load_input_unknown_transport(self) -> str:
         return validate_input_unknown_transport(self.load().get("input_unknown_transport", "coordinator"))

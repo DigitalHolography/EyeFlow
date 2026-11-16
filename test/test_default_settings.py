@@ -60,6 +60,9 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
         self.assertEqual(12, settings["band_limited_harmonics"])
         self.assertFalse(settings["copy_hd_passthrough"])
+        self.assertIsNone(settings["annulus_size"])
+        self.assertIsNone(settings["annulus_stride"])
+        self.assertNotIn("number_of_radii_in_FOV", settings)
 
     def test_renamed_pipeline_options_are_migrated(self) -> None:
         options, changed = normalize_pipeline_options(

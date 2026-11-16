@@ -18,6 +18,7 @@ from app_settings import (
     selected_velocity_methods,
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
+    validate_annulus_settings,
 )
 from input_output.readers.h5 import MergedAttrs, PipelineInputSource, RawH5SourceReader
 from input_output.writers.h5_output import PipelineH5Output
@@ -142,6 +143,7 @@ class PipelineContext:
         velocity_estimation_method: str | None = DEFAULT_VELOCITY_ESTIMATION_METHOD,
         velocity_workflow_selection: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
         band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
+        annulus_settings: Mapping[str, object] | None = None,
         output_manager: OutputManager | None = None,
         processing_root: str | None = None,
         output_provenance: Mapping[str, Any] | None = None,
@@ -175,6 +177,7 @@ class PipelineContext:
             ),
         )
         self.state = PipelineState(variables)
+        self.annulus_settings = validate_annulus_settings(annulus_settings)
         # Pure, completed computations may be reused across execution variants.
         # This per-input memo is separate from transactional pipeline products:
         # callers own compatibility keys and must store only immutable successes.

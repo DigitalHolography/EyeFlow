@@ -22,6 +22,7 @@ from app_settings import (
     validate_copy_hd_passthrough,
     validate_input_backend,
     validate_input_unknown_transport,
+    validate_annulus_settings,
 )
 from input_output import HoloRunLayout, resolve_selected_run_layouts
 from input_output.output_manager import (
@@ -67,6 +68,7 @@ class RunSpec:
     velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION
     input_backend: str = "auto"
     input_unknown_transport: str = "coordinator"
+    annulus_settings: Mapping[str, object] | None = None
 
     @property
     def total_pipeline_units(self) -> int:
@@ -121,11 +123,13 @@ def resolve_run_spec(
     velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
     input_backend: str = "auto",
     input_unknown_transport: str = "coordinator",
+    annulus_settings: Mapping[str, object] | None = None,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
     input_backend = validate_input_backend(input_backend)
+    resolved_annulus_settings = validate_annulus_settings(annulus_settings)
     input_unknown_transport = validate_input_unknown_transport(input_unknown_transport)
     resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
@@ -196,6 +200,7 @@ def resolve_run_spec(
         velocity_estimation_method=resolved_velocity_selection,
         input_backend=input_backend,
         input_unknown_transport=input_unknown_transport,
+        annulus_settings=resolved_annulus_settings,
     )
 
 
@@ -325,6 +330,7 @@ def _execute_batch(
                 pipeline_options=spec.pipeline_options,
                 band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
                 band_limited_harmonics=spec.band_limited_harmonics,
+                annulus_settings=spec.annulus_settings,
                 copy_hd_passthrough=spec.copy_hd_passthrough,
                 input_backend=spec.input_backend,
                 input_unknown_transport=spec.input_unknown_transport,

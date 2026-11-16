@@ -109,6 +109,11 @@ are `uint8` 0/1 with `original_class="bool"`, `unit="1"`, and `(x, y)` axes.
 The numerical operations and fallback parameters live in
 `calculations/topology/` and `pipelines/topology_core/`.
 
+Annular vessel measurements use independently configured native-pixel size
+and stride, with 50% overlap by default. See [annulus sampling](annulus_sampling.md)
+for geometry, saved-configuration migration, terminal sections, output metadata,
+and the implications of correlated spatial samples.
+
 The hidden `low_freq_spectra` pipeline runs once after scheduled velocity work
 when `/spectrograms` is available. Shared products use
 `/ProcessingSpectrograms`, without workflow copies:
@@ -165,6 +170,11 @@ A failed method does not erase the other's accepted products; run status and
 failure attributes identify partial results.
 
 ## Output and serialization
+
+Article figures use 11 pt typography and 0.4 pt borders. Diagnostic figures
+keep their existing typography. Velocity and BVR cardiac-phase article
+figures show the temporal mean of the displayed median beat as a dashed gray
+line when finite phases are available.
 
 `EyeFlowOutputPaths.active()` in `schema/eyeflow_output.py` owns current HDF5
 paths. The primary file is `h5/<stem>_EF.h5` under `<stem>_EF/`. Major roots are

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import numpy as np
-from scipy import ndimage as ndi
 
 from calculations.topology import OpticDisc, segment_mask_areas_pixels
 from calculations.topology.capillary import (
@@ -28,11 +27,11 @@ from input_output.schema.serialization import (
 )
 from input_output.schema.output_payload import DatasetValue
 from input_output.writers.h5_storage import segment_mask_h5_options
+from .annulus_visualization import annulus_gray_levels, annulus_outline_image, circle_outline as _circle_outline
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
 INNER_R0_VESSEL_LABEL = -3
-_FOUR_CONNECTED = ndi.generate_binary_structure(2, 1)
 
 
 def _pack_segmentation_outputs(
@@ -71,7 +70,39 @@ def _pack_segmentation_outputs(
     pixel_pitch_m = np.float32(pixel_pitch.isotropic_m)
 
     segmentation = schema.segmentation
+    geometry = ring_settings.metadata(image_shape)
+    annuli = segmentation.annuli
     metrics = {
+        annuli.size: _segmentation_value(geometry["annulus_size_pixels"], {"unit": "pixels"}),
+        annuli.stride: _segmentation_value(geometry["annulus_stride_pixels"], {"unit": "pixels"}),
+        annuli.count: _segmentation_value(np.int32(ring_settings.ring_count), {"unit": "1"}),
+        annuli.bounds_pixels: _segmentation_value(geometry["annulus_bounds_pixels"], {
+            "unit": "pixels", "dimDesc": ["radius", "boundary"],
+            "boundaries": ["inner", "outer"], "center_path": f"/{segmentation.optic_disc.center}",
+            "membership": "inner < radius <= outer", "index_base": 0,
+        }),
+        annuli.bounds_fraction: _segmentation_value(geometry["annulus_bounds_fraction"], {
+            "unit": "1", "dimDesc": ["radius", "boundary"], "boundaries": ["inner", "outer"],
+            "radial_coordinate": "fraction_of_image_half_diagonal",
+        }),
+        annuli.radius_scale_pixels: _segmentation_value(geometry["annulus_radius_scale_pixels"], {
+            "unit": "pixels", "definition": "max(hypot((ny-1)/2, (nx-1)/2), 1)",
+        }),
+        annuli.outline_intensity: DatasetValue(
+            _serialize_spatial_image(annulus_outline_image(
+                image_shape, center_xy, ring_settings, r0_radius_pixels=topology_disc_radius,
+            )),
+            {
+                **_mask_attrs("annulus_geometry_visualization"),
+                "unit": "1", "background_intensity": np.uint8(0),
+                "display_range": np.asarray([0, 255], dtype=np.uint8),
+                "annulus_gray_levels": annulus_gray_levels(ring_settings),
+                "shade_rule": "annulus_index_modulo_gray_level_count",
+                "shared_boundary_policy": "earliest_annulus_wins",
+                "annulus_bounds_path": f"/{annuli.bounds_pixels}",
+                "description": "Monochrome annulus outlines; white first, then gray by stride phase",
+            },
+        ),
         segmentation.optic_disc.mask: _segmentation_value(
             _serialize_spatial_image(source_disc_mask),
             _mask_attrs(mask_source),
@@ -449,34 +480,15 @@ def _with_outlines(label_map: np.ndarray, outlines: np.ndarray) -> np.ndarray:
     return image
 
 
-def _circle_outline(
-    image_shape: tuple[int, int],
-    center_xy: np.ndarray,
-    radius_pixels: float,
-) -> np.ndarray:
-    center_x, center_y = (float(value) for value in center_xy)
-    y, x = np.ogrid[: image_shape[0], : image_shape[1]]
-    circle = (y - center_y) ** 2 + (x - center_x) ** 2 <= float(radius_pixels) ** 2
-    return circle & ~ndi.binary_erosion(circle, structure=_FOUR_CONNECTED)
-
-
 def _annulus_outlines(
     image_shape: tuple[int, int],
     center_xy: np.ndarray,
     r0_radius_pixels: int,
     settings: AnnulusGeometry,
 ) -> np.ndarray:
-    scale = max(image_half_diagonal(*image_shape), 1.0)
-    radii = [float(r0_radius_pixels)]
-    radii.extend(
-        (float(settings.inner_radius_frac) + (ring_index + 1) * float(settings.ring_width_frac))
-        * scale
-        for ring_index in range(int(settings.ring_count))
-    )
-    outlines = np.zeros(image_shape, dtype=bool)
-    for radius in dict.fromkeys(radii):
-        outlines |= _circle_outline(image_shape, center_xy, radius)
-    return outlines
+    return annulus_outline_image(
+        image_shape, center_xy, settings, r0_radius_pixels=r0_radius_pixels,
+    ) > 0
 
 
 def _mask_attrs(source: str) -> dict[str, object]:

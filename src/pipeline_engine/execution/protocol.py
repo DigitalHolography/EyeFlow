@@ -63,6 +63,7 @@ class InvocationSettings:
     pipeline_targets: tuple[str, ...]
     velocity_workflow_selection: str
     band_ratio_frequency_scale_hz: float
+    annulus_settings: dict = field(default_factory=dict)
 
     def context_arguments(self):
         return {
@@ -71,6 +72,7 @@ class InvocationSettings:
             "pipeline_targets": self.pipeline_targets,
             "velocity_workflow_selection": self.velocity_workflow_selection,
             "band_ratio_frequency_scale_hz": self.band_ratio_frequency_scale_hz,
+            "annulus_settings": self.annulus_settings,
             "velocity_estimation_method": None,
             "execution_variant": None,
         }

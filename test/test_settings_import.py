@@ -8,9 +8,48 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+import pytest
 
 from app_settings import AppSettingsStore
 from ui.controllers.settings import SettingsController
+from app_settings import validate_annulus_settings
+from calculations.topology import OpticDisc
+from pipelines.topology_core.annulus_sampling import resolve_annulus_geometry
+
+
+@pytest.mark.parametrize("settings,size,stride", [
+    ({}, 4.0, 2.0),
+    ({"annulus_size": 7.5}, 7.5, 3.75),
+    ({"annulus_stride": 1.25}, 4.0, 1.25),
+    ({"number_of_radii_in_FOV": 10}, 10.0, 10.0),
+    ({"NumberOfRadiiOverFOV": 20}, 5.0, 5.0),
+    ({"annulus_size": 7.5, "number_of_radii_in_FOV": -1}, 7.5, 3.75),
+    ({"annulus_stride": 1.25, "number_of_radii_in_FOV": 10}, 4.0, 1.25),
+])
+def test_saved_annulus_settings_and_count_migration(tmp_path, settings, size, stride):
+    path = tmp_path / "import.json"
+    path.write_text(json.dumps(settings), encoding="utf-8")
+    store = AppSettingsStore(path=tmp_path / "active.json")
+    store.import_file(path)
+    ctx = SimpleNamespace(annulus_settings=store.load_annulus_settings())
+    # Acquisition counts are not intentional user settings and must be ignored.
+    ctx.attrs = {"number_of_radii_in_FOV": 2}
+    geometry = resolve_annulus_geometry(ctx, OpticDisc(None, (50, 40), 4, 4), (80, 100))
+    metadata = geometry.metadata((80, 100))
+    assert metadata["annulus_size_pixels"] == pytest.approx(size)
+    assert metadata["annulus_stride_pixels"] == pytest.approx(stride)
+
+
+@pytest.mark.parametrize("value", [0, -0.5, float("nan"), float("inf"), True, "4"])
+@pytest.mark.parametrize("name", ["annulus_size", "annulus_stride"])
+def test_invalid_annulus_settings_do_not_replace_saved_configuration(tmp_path, name, value):
+    store = AppSettingsStore(path=tmp_path / "active.json")
+    store.save({"annulus_size": 5})
+    source = tmp_path / "invalid.json"
+    source.write_text(json.dumps({name: value}), encoding="utf-8")
+    with pytest.raises(ValueError, match=name):
+        store.import_file(source)
+    assert store.load() == {"annulus_size": 5}
 
 
 class _FileDialogs:

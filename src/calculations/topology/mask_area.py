@@ -14,7 +14,7 @@ def annulus_widths_pixels(
 ) -> np.ndarray:
     """Return radial widths, including a clipped final annulus."""
 
-    radius_scale = image_half_diagonal(*image_shape)
+    radius_scale = max(image_half_diagonal(*image_shape), 1.0)
     widths = np.zeros(ring_count, dtype=np.float32)
     for ring_index in range(ring_count):
         inner, outer = section_bounds(settings, ring_index)
