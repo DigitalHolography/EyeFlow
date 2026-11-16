@@ -8,7 +8,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 from test_run_service import _descriptor, _write_input
-from test_stem_list_inputs import _Var
 
 from app_settings import AppSettingsStore
 from input_output.runs.inputs import batch_root as _batch_root
@@ -20,6 +19,17 @@ from pipeline_engine.execution.run_service import (
 from ui.controllers.input import InputController
 from ui.controllers.run import RunController
 from ui.services import TkFileDialogService
+
+
+class _Var:
+    def __init__(self, value=""):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = value
 
 
 @pytest.fixture(scope="module", autouse=True)

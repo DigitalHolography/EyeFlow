@@ -71,7 +71,7 @@ def extract_spatial_gradient_segments(
     if prepared_topologies is None:
         raise RuntimeError("Spatial-gradient analysis requires prepared topology.")
 
-    moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
+    moment0ff = ctx.inputs.hd.as_holodoppler().moment0ff()
     if moment0ff is None:
         raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
     artery_topology = prepared_topologies["artery"]

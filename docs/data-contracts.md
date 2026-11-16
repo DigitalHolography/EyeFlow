@@ -152,6 +152,18 @@ All image volumes are lazy HDF5 datasets. Moments and LF/HF bands have axes
 `(frame, y, x)`; the frequency-resolved capillary source has the separate layout
 described below.
 
+`HolodopplerSource` exposes `moment0()`, `moment2()`, `moment0ff()` and
+`spectrograms()`. Each returns a lazy validated dataset or `None` when absent;
+`required=True` raises for missing inputs. Present malformed datasets still
+raise validation errors. `moment(name, required=True)` handles configured root
+moments, and `frequency_bands()` resolves the validated low/high pair. There are
+no separate `optional_*` or `*_dataset` accessor variants.
+
+Both adapters declare an `INPUTS` dictionary of lazy resolver functions.
+`TypedSource.input_datasets(name)` invokes only the requested resolver, so
+planning does not read video arrays. Shared alias/rank/dtype handling lives in
+`RawH5SourceReader.dataset()`.
+
 | Logical value | HDF5 path(s) | Requirement |
 |---|---|---|
 | Zeroth moment | `/moment0`, legacy `/M0` | Required by the moments workflow and moment-based products |
@@ -673,6 +685,12 @@ using the isotropic value.
 
 ## DV input
 
+DV array access uses `RawH5SourceReader.array()` directly. Runtime adapters enable
+its small-array cache, which reads native samples once and returns independent
+copies for each requested dtype or caller edit. The DV adapter has no separate
+`_array()` implementation. Optic-disc field paths are shared by input planning
+and measurement loading.
+
 DV spatial arrays are native `(y, x)` values: dimension 0 is Y and dimension 1
 is X, including `/segmentation/Retina/vessel_segmentation_logits`. Their row
 order has Y inverted relative to the published lower-left EF frame. Preserve
@@ -1097,12 +1115,12 @@ Writers no longer generate the redundant `nameID` attribute; HDF5 exposes the
 absolute dataset path as `dataset.name`. Existing explicitly supplied attributes
 remain supported for compatibility with older payloads.
 Numeric arrays of at least 4 KiB (after dtype normalization) use lossless gzip
-compression at level 9 with the shuffle filter by default. Smaller arrays stay
+compression at level 4 with the shuffle filter by default. Smaller arrays stay
 unfiltered to avoid chunk-index overhead exceeding compression savings. Explicit
 dataset storage options override these defaults, including compression for small
 arrays. Scalars and strings remain unfiltered; these writes preserve their
 existing shapes and dtypes.
-Per-beat velocity maps, profiles, and segment masks use gzip level 9. The
+Per-beat velocity maps, profiles, and segment masks use gzip level 4. The
 float32 map and profile writers leave chunks containing only the exact NaN fill
 value unallocated; reading the published datasets returns the same dense shapes
 and values. When the redundant bins represent at least 32 KiB of raw data,
@@ -1121,7 +1139,7 @@ JSON, pass `--copy-hd-passthrough` to the CLI, or pass
 `copy_hd_passthrough=True` to `resolve_run_spec` to retain them.
 The root output attribute records this choice, and the HD source-file path
 remains available when copies are omitted. When enabled, large numeric HD
-pass-through datasets are copied in chunks and recompressed with gzip level 9;
+pass-through datasets are copied in chunks and recompressed with gzip level 4;
 their values, shapes, dtypes, and attributes remain intact. Unsupported or
 small pass-through objects retain their source storage layout.
 

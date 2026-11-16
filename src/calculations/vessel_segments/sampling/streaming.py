@@ -43,6 +43,8 @@ def prepare_segment_chunks(
     When ``include_masked_before_rotation`` is enabled, each chunk also carries
     a companion following the legacy scientific order ``interpolate/filter ->
     mask -> rotate``. Retained result arrays are outside this scratch budget.
+    Parallel temporal chunks differ by at most one frame while staying within
+    the planner's per-worker ceiling.
     Device-resident callbacks should preserve their input backend. If a callback
     fails on a device array, it is retried on the CPU before rotation.
     """
@@ -90,15 +92,24 @@ def prepare_segment_chunks(
         requested_workers=worker_count,
         keep_on_device=keep_on_device,
     )
+    if workers > 1 and frame_count > chunk_frames:
+        # Keep the minimum chunk count permitted by the memory ceiling, but
+        # spread the remainder across chunks instead of leaving a short tail.
+        chunk_count = (frame_count + chunk_frames - 1) // chunk_frames
+        frame_bounds = [index * frame_count // chunk_count for index in range(chunk_count + 1)]
+    else:
+        frame_bounds = [*range(0, frame_count, chunk_frames), frame_count]
+    frame_ranges = list(zip(frame_bounds, frame_bounds[1:]))
     jobs = [
-        (int(ring), int(branch), start, min(start + chunk_frames, frame_count))
+        (int(ring), int(branch), start, stop)
         for ring, branch in valid_indexes
-        for start in range(0, frame_count, chunk_frames)
+        for start, stop in frame_ranges
     ]
     Logger.log(
         "Starting bounded topology segment preparation: "
         f"segments={len(valid_indexes)}, workers={workers}, "
-        f"chunk_frames={chunk_frames}, halo={temporal_halo}, "
+        f"chunk_frames={max((stop-start for start, stop in frame_ranges), default=0)}, "
+        f"chunks_per_segment={len(frame_ranges)}, chunk_limit={chunk_frames}, halo={temporal_halo}, "
         f"transform_mode={transform_mode}, budget={working_memory_mb:.1f} MiB."
     )
 

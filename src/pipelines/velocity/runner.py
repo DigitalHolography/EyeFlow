@@ -19,6 +19,7 @@ from input_output.schema.eyeflow_output import (
 )
 from input_output.writers.h5_output import PipelineH5Output
 from pipeline_engine import ExecutionVariant, ProductSpec, StageGraph, StageSpec
+from pipeline_engine.stage_graph import InputAccess, InputUse
 from pipeline_engine.context import require_managed_runtime
 from pipelines.vessel_inputs import load_vessel_topology_inputs
 from utils.logger import Logger
@@ -147,8 +148,17 @@ def _publish(ctx):
 
 def velocity_graph(*, options=()):
     return StageGraph((
-        StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),)),
-        StageSpec("estimates", _estimates, requires=("inputs",), products=(ProductSpec("estimates"),)),
+        StageSpec("inputs", _inputs, products=(ProductSpec("inputs"),), inputs=(
+            InputUse("hd.metadata", InputAccess.SMALL),
+            InputUse("dv.vessels", InputAccess.SMALL),
+            InputUse("dv.optional_segmentation", InputAccess.SMALL, optional=True),
+        )),
+        StageSpec("estimates", _estimates, requires=("inputs",), products=(ProductSpec("estimates"),), inputs=(
+            InputUse("hd.moment0", InputAccess.SEQUENTIAL, when="doppler_moments"),
+            InputUse("hd.moment2", InputAccess.SEQUENTIAL, when="doppler_moments"),
+            InputUse("hd.band_low", InputAccess.SEQUENTIAL, when="frequency_bands"),
+            InputUse("hd.band_high", InputAccess.SEQUENTIAL, when="frequency_bands"),
+        )),
         StageSpec("cardiac_cycles", _cycles, requires=("inputs", "estimates"),
                   products=(ProductSpec("workflows"),)),
         StageSpec("publish", _publish, requires=("workflows",), products=tuple(

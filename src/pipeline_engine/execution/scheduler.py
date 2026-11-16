@@ -2,12 +2,13 @@
 
 from utils.logger import Logger
 from pipeline_engine.product_exchange import ProductStatus
+from pipeline_engine.execution.dependencies import DependencyAvailability, dependency_availability
 
 
 class CoordinatorScheduler:
     def __init__(
         self, *, pipelines, dag, options, executor, statuses, failures, skips,
-        on_start=None, on_success=None, on_progress=None, registry=None,
+        on_start=None, on_success=None, on_progress=None, registry=None, on_input_eligibility=None,
     ):
         self.pending = list(pipelines)
         self.dag, self.options, self.executor = dag, options, executor
@@ -17,6 +18,28 @@ class CoordinatorScheduler:
         self.total = len(pipelines)
         self.started = 0
         self.registry = registry
+        self.on_input_eligibility = on_input_eligibility
+        self.pipelines = tuple(pipelines)
+        self._last_input_eligibility = None
+
+    def _refresh_input_eligibility(self):
+        if self.on_input_eligibility is None:
+            return
+        impossible = {name for name, state in self.statuses.items()
+                      if dependency_availability(state) is DependencyAvailability.UNAVAILABLE}
+        # Propagate before dispatch, regardless of descriptor order. Product
+        # requirements deliberately do not enter this whole-invocation closure.
+        while True:
+            blocked = {pipeline.name for pipeline in self.pipelines
+                       if set(self._dependencies(pipeline)) & impossible}
+            if blocked <= impossible:
+                break
+            impossible.update(blocked)
+        viable = tuple(p.name for p in self.pipelines
+                       if p.name not in impossible and p.name not in self.completed)
+        if viable != self._last_input_eligibility:
+            self.on_input_eligibility(viable)
+            self._last_input_eligibility = viable
 
     def _dependencies(self, pipeline):
         return self.dag.dependencies_of(pipeline.name, pipeline_options=self.options, include_products=False)
@@ -54,6 +77,7 @@ class CoordinatorScheduler:
             elif outcome.status == "succeeded" and self.on_success:
                 self.on_success(outcome.name)
             self._notify_completion()
+        self._refresh_input_eligibility()
 
     def _start_processes(self):
         for pipeline in tuple(self.pending):
@@ -64,7 +88,9 @@ class CoordinatorScheduler:
                 continue
             if not self._products_ready(pipeline):
                 continue
-            blocked = [name for name in dependencies if self.statuses.get(name) != "succeeded"]
+            blocked = [name for name in dependencies
+                       if dependency_availability(self.statuses.get(name))
+                       is not DependencyAvailability.SATISFIED]
             if blocked:
                 self.pending.remove(pipeline)
                 self.statuses[pipeline.name] = "skipped"
@@ -110,6 +136,7 @@ class CoordinatorScheduler:
         while self.pending or self.executor.running:
             self._collect()
             self._start_processes()
+            self._refresh_input_eligibility()
             selected = self._next_coordinator()
             if selected is not None:
                 self.pending.remove(selected)
@@ -117,6 +144,7 @@ class CoordinatorScheduler:
                 self.started += 1
                 yield self.started, selected
                 self.completed.add(selected.name)
+                self._refresh_input_eligibility()
                 self._finalize(selected, self.failures.get(selected.name) or self.skips.get(selected.name))
             elif self.executor.running:
                 self._collect(wait=True)

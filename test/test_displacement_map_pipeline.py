@@ -139,7 +139,7 @@ class DisplacementMapInputTests(unittest.TestCase):
 
             resolved = HolodopplerSource(
                 RawH5SourceReader(h5file=hd, label="HD"), {}
-            ).named_root_moment_dataset("moment0")
+            ).moment("moment0")
 
             self.assertEqual(expected.name, resolved.name)
 
@@ -152,7 +152,7 @@ class DisplacementMapInputTests(unittest.TestCase):
 
             resolved = HolodopplerSource(
                 RawH5SourceReader(h5file=hd, label="HD"), {}
-            ).named_root_moment_dataset("moment2")
+            ).moment("moment2")
 
             self.assertEqual(expected.name, resolved.name)
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import unittest
+from contextlib import nullcontext
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -61,6 +62,11 @@ class _State:
         self.values[key] = value
 
 
+def _unpublished_output():
+    return SimpleNamespace(available=False,
+        h5=SimpleNamespace(build_arrays=lambda: nullcontext(Mock())))
+
+
 def _context(options, state_values=None, scheduled=None, targeted=None):
     scheduled = set(
         scheduled
@@ -111,7 +117,7 @@ def test_longitudinal_velocity_profiles_require_a_profile_consumer(
         {"velocity_analysis": options},
         scheduled={"velocity_analysis"} if scheduled else {"waveform_shape_metrics"},
     )
-    ctx.output = SimpleNamespace(available=False)
+    ctx.output = _unpublished_output()
     with patch.object(
         analysis_builder,
         "analyze_velocity_segment_profiles",
@@ -157,7 +163,7 @@ def test_only_gradient_edge_flow_requires_transverse_velocity_profiles(
         },
         scheduled={"velocity_analysis", "blood_volume_rate"},
     )
-    ctx.output = SimpleNamespace(available=False)
+    ctx.output = _unpublished_output()
     with patch.object(
         analysis_builder,
         "analyze_velocity_segment_profiles",
@@ -307,7 +313,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
                 dv=SimpleNamespace(filename="dv.h5"),
             ),
             state=SimpleNamespace(raw={}),
-            output=SimpleNamespace(available=False),
+            output=_unpublished_output(),
         )
 
         with patch.object(
@@ -355,7 +361,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
                 dv=SimpleNamespace(filename="dv.h5"),
             ),
             state=SimpleNamespace(raw={}),
-            output=SimpleNamespace(available=False),
+            output=_unpublished_output(),
         )
         with patch.object(
             analysis_builder,

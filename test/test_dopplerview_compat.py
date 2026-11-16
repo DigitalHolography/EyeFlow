@@ -168,7 +168,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 source = HolodopplerSource(
                     RawH5SourceReader(h5file=hd, label="HD"),
                 )
-                moment0, moment2 = source.moment0_dataset(), source.moment2_dataset()
+                moment0, moment2 = source.moment0(), source.moment2()
                 selected_moment0 = np.asarray(moment0)
                 selected_moment2 = np.asarray(moment2)
 

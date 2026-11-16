@@ -2,9 +2,10 @@
 
 import sys
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -127,7 +128,8 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
     def test_pipeline_uses_the_published_disc_mask_with_geometry_fallback(self):
         vessel, disc, source, settings = self._inputs()
         ctx = SimpleNamespace(
-            output=SimpleNamespace(available=False),
+            output=SimpleNamespace(available=False,
+                h5=SimpleNamespace(build_arrays=lambda: nullcontext(Mock()))),
             pipeline_scheduled=lambda name: False,
             option_enabled=lambda *args, **kwargs: False,
             inputs=SimpleNamespace(

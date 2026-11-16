@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 
 from data_manager.handles import FrozenMapping
 
@@ -32,6 +33,31 @@ class ProductSpec:
         object.__setattr__(self, "attrs", _freeze(self.attrs or {}))
 
 
+class InputAccess(str, Enum):
+    METADATA = "metadata"
+    SMALL = "small_array"
+    SEQUENTIAL = "sequential_slices"
+    STREAM = "streaming_blocks"
+    RANDOM = "random_slices"
+
+
+@dataclass(frozen=True, slots=True)
+class InputUse:
+    """Scientific source demand, independent of its physical transport."""
+
+    source: str
+    access: InputAccess
+    optional: bool = False
+    when: str | None = None
+
+    def __post_init__(self):
+        if not isinstance(self.source, str) or not self.source.startswith(("hd.", "dv.")) or len(self.source) < 4:
+            raise ValueError("Input source must be an hd.<field> or dv.<field> semantic key")
+        object.__setattr__(self, "access", InputAccess(self.access))
+        if self.when not in (None, "doppler_moments", "frequency_bands"):
+            raise ValueError(f"Unknown input workflow: {self.when}")
+
+
 @dataclass(frozen=True, slots=True)
 class StageSpec:
     id: str
@@ -42,9 +68,10 @@ class StageSpec:
     after: tuple[str, ...] = ()
     artifact: bool = False
     wait_for_artifacts: bool = False
+    inputs: tuple[InputUse, ...] = ()
 
     def __post_init__(self):
-        for key in ("requires", "products", "optional_requires", "after"):
+        for key in ("requires", "products", "optional_requires", "after", "inputs"):
             object.__setattr__(self, key, tuple(getattr(self, key)))
 
 

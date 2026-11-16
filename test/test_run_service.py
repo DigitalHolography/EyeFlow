@@ -132,6 +132,45 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
     )
 
 
+def test_previous_publication_overlaps_the_next_acquisitions_scientific_work(tmp_path, monkeypatch):
+    import shutil
+    from threading import Event
+
+    inputs = [_write_input(tmp_path / stem, stem) for stem in ('first', 'second')]
+    copying, next_science = Event(), Event()
+    copyfile = shutil.copyfile
+
+    def run(ctx):
+        stem = ctx.output.manager.layout.stem
+        if stem == 'second':
+            assert copying.wait(15), 'Previous output never reached publication'
+            assert not first_output.exists()
+        ctx.output.h5.write('Results/value', 1 if stem == 'first' else 2)
+        if stem == 'second':
+            next_science.set()
+
+    descriptor = PipelineDescriptor(
+        name='overlap', description='overlap', available=True,
+        pipeline_factory=lambda: SimpleNamespace(name='overlap', run=run),
+    )
+    spec = resolve_run_spec(input_paths=inputs, target_names=['overlap'], pipelines=[descriptor])
+    first_output = spec.requests[0].output_manager.path_for(OutputType.H5)
+
+    def copy(local, staging):
+        if staging.parent == first_output.parent:
+            copying.set()
+            assert next_science.wait(15), 'Next scientific execution waited for publication'
+        return copyfile(local, staging)
+
+    monkeypatch.setattr('input_output.writers.h5_publication.shutil.copyfile', copy)
+    result = execute_run(spec)
+    assert result.succeeded, result.failures
+    assert copying.is_set() and next_science.is_set() and len(result.outputs) == 2
+    for expected, path in enumerate(result.outputs, start=1):
+        with h5py.File(path) as output:
+            assert output['Results/value'][()] == expected
+
+
 class RunServiceTests(unittest.TestCase):
     def test_performance_summary_includes_pipeline_stage_and_publication(self) -> None:
         from pipeline_engine import StageGraph, StageSpec
@@ -178,7 +217,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
             )
             with (
-                patch("pipeline_engine.execution.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch("pipeline_engine.io.manager.open_h5", wraps=real_open_h5) as open_input,
                 patch(
                     "input_output.writers.h5_initialization.open_h5",
                     side_effect=AssertionError("Initialization reopened an input"),
@@ -411,6 +450,8 @@ class RunServiceTests(unittest.TestCase):
                 load_velocity_estimation_method=Mock(return_value="bandratio"),
                 load_band_limited_harmonics=Mock(return_value=7),
                 load_copy_hd_passthrough=Mock(return_value=True),
+                load_input_backend=Mock(return_value="direct"),
+                load_input_unknown_transport=Mock(return_value="coordinator"),
             )
             app = SimpleNamespace(
                 input_controller=SimpleNamespace(
@@ -437,6 +478,8 @@ class RunServiceTests(unittest.TestCase):
             self.assertEqual(7, spec.band_limited_harmonics)
             self.assertTrue(spec.copy_hd_passthrough)
             settings_store.load_band_limited_harmonics.assert_called_once_with()
+            self.assertEqual(spec.input_backend, "direct")
+            self.assertEqual(spec.input_unknown_transport, "coordinator")
             settings_store.load_copy_hd_passthrough.assert_called_once_with()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
@@ -757,3 +800,17 @@ class RunServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_batch_reuses_validated_source_paths_without_remote_rediscovery(tmp_path):
+    from input_output.runs.layout import HoloRunLayout
+    holo = _write_input(tmp_path)
+    spec = resolve_run_spec(input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()])
+    assert spec.requests[0].hd_h5.name == "scan_HD_output.h5"
+    messages = []
+    with (patch.object(HoloRunLayout, "_h5_files", side_effect=AssertionError("repeated remote discovery")),
+          Logger.capture_messages(messages.append)):
+        result = execute_run(spec)
+    assert result.succeeded
+    for stage in ("batch_resources", "output_directory_reset", "runtime_setup", "product_storage", "plan_graph_construction"):
+        assert any(f"stage=run/{stage}" in message for message in messages)

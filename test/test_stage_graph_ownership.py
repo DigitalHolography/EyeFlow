@@ -119,6 +119,27 @@ def test_exposed_local_scientific_types_travel_by_small_stable_reference():
         assert storage.metrics.snapshot()["npy_writes"] == 1
 
 
+@pytest.mark.parametrize("values", [np.array([3, 7], dtype=np.int32), np.array([-0., np.nan], dtype=np.float32)])
+def test_small_exposed_arrays_keep_read_only_ownership_across_pickle_protocols(values):
+    import pickle
+    from pipeline_engine.data.storage import ArrayReference
+
+    with ProductStorage() as storage:
+        handle = DataManager(storage).accept(values, transportable=True)
+        assert isinstance(handle.storage, ArrayReference)
+        event_handle = pickle.loads(pickle.dumps(handle, protocol=4))
+        manifest_handle = pickle.loads(pickle.dumps(handle, protocol=5))
+        assert pickle.dumps(event_handle, protocol=5) == pickle.dumps(manifest_handle, protocol=5)
+        consumer = DataManager(storage)
+        consumer.acquire(event_handle)
+        received = consumer.read(event_handle)
+        assert received.dtype == values.dtype and received.tobytes() == values.tobytes()
+        with pytest.raises(ValueError):
+            received[0] = 1
+        with pytest.raises(ValueError):
+            received.flags.writeable = True
+
+
 def test_scientific_result_reads_do_not_rerun_constructors_or_copy_arrays():
     from dataclasses import dataclass, field
     constructed = []

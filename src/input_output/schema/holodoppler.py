@@ -6,7 +6,6 @@ import json
 import re
 from collections.abc import Mapping
 
-import h5py
 from input_output.readers.nodes import is_dataset
 import numpy as np
 
@@ -24,6 +23,11 @@ HD_SPECTOGRAMS_PATH = "spectrograms"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
 HD_MOMENT0_FLAT_FIELD_PATHS = ("moment0ff", "M0FF")
+HD_MOMENT_PATHS = {
+    HD_MOMENT0_PATH: HD_MOMENT0_PATHS,
+    HD_MOMENT2_PATH: HD_MOMENT2_PATHS,
+    "moment0ff": HD_MOMENT0_FLAT_FIELD_PATHS,
+}
 HD_OUTPUT_PASSTHROUGH_PATHS = (
     ("registration", "Meta/registration"),
     ("zernike_coefs_radians", "zernike_coefs_radians"),
@@ -53,73 +57,29 @@ class HolodopplerSource(TypedSource):
         super().__init__(reader, config)
         self._cache_parameters = cache_parameters
 
-    def moment0_dataset(self):
-        return self._moment_dataset(HD_MOMENT0_PATHS)
-
-    def named_root_moment_dataset(self, moment_path: str = HD_MOMENT0_PATH) -> h5py.Dataset:
-        """Resolve a selected root moment, including the legacy M0 alias."""
-        normalized = str(moment_path).replace("\\", "/").strip("/")
-        if not normalized or "/" in normalized:
+    def moment(self, name: str = HD_MOMENT0_PATH, *, required: bool = False):
+        """Return a lazy root moment, resolving canonical and legacy names."""
+        name = str(name).replace("\\", "/").strip("/")
+        if not name or "/" in name:
             raise ValueError("The HoloDoppler moment must be a root dataset name.")
-        candidates = HD_MOMENT0_PATHS if normalized == HD_MOMENT0_PATH else (normalized,)
-        for candidate in candidates:
-            found = self._reader.get(candidate)
-            if found is None:
-                continue
-            if not is_dataset(found) or found.ndim != 3:
-                raise ValueError(
-                    f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
-                    f"got {getattr(found, 'shape', None)}."
-                )
-            return found
-        raise KeyError(
-            "Missing HoloDoppler root moment dataset. Tried: "
-            + ", ".join(repr(candidate) for candidate in candidates)
-        )
+        paths = HD_MOMENT_PATHS.get(name, (name,))
+        return self._reader.dataset(paths, required=required, ndim=3)
 
-    def moment2_dataset(self):
-        return self._moment_dataset(HD_MOMENT2_PATHS)
+    def moment0(self, *, required: bool = False):
+        return self.moment(HD_MOMENT0_PATH, required=required)
 
-    def optional_moment0_dataset(self):
-        """Return the raw zeroth moment when it is present."""
+    def moment2(self, *, required: bool = False):
+        return self.moment(HD_MOMENT2_PATH, required=required)
 
-        return self._optional_moment_dataset(HD_MOMENT0_PATHS)
+    def moment0ff(self, *, required: bool = False):
+        return self.moment("moment0ff", required=required)
 
-    def optional_moment2_dataset(self):
-        """Return the raw second moment when it is present."""
+    def spectrograms(self, *, required: bool = False):
+        """Return lazy (time, freq, y, x) power; legacy groups are unavailable."""
+        return self._reader.dataset(HD_SPECTOGRAMS_PATH, required=required, ndim=4,
+                            kinds="iuf", ignore_groups=True)
 
-        return self._optional_moment_dataset(HD_MOMENT2_PATHS)
-
-    def spectograms_dataset(self):
-        """Return lazy quantitative spectra in exported (time, freq, height, width) order.
-
-        Keep the dataset lazy and in raw export order during source assembly.
-        Gap preprocessing aligns each frame with the EF lower-left (x, y)
-        frame by flipping spatial Y then swapping the two spatial axes.
-        """
-        dataset = self._dataset(HD_SPECTOGRAMS_PATH)
-        if dataset.ndim != 4:
-            raise ValueError(
-                f"HoloDoppler /{HD_SPECTOGRAMS_PATH} must be a 4-D "
-                f"(time, freq, height, width) array, got shape {dataset.shape}."
-            )
-        if dataset.dtype.kind not in "iuf":
-            raise TypeError(
-                f"HoloDoppler /{HD_SPECTOGRAMS_PATH} must contain real numeric "
-                f"band-power values, got dtype {dataset.dtype}."
-            )
-        return dataset
-
-    def optional_spectograms_dataset(self):
-        """Return the optional 4-D dataset, ignoring absent or legacy group exports."""
-        try:
-            return self.spectograms_dataset()
-        except KeyError:
-            # Older HD exports use /spectrograms as a group (longtimes,
-            # singlebeat, parameters), not the new frequency-resolved video.
-            return None
-
-    def frequency_band_datasets(self):
+    def frequency_bands(self):
         """Return the first/last PSD videos sorted by numeric frequency bounds."""
 
         bands = []
@@ -127,10 +87,7 @@ class HolodopplerSource(TypedSource):
             match = HD_BAND_NAME_PATTERN.fullmatch(path)
             if match is None:
                 continue
-            try:
-                self._dataset(path)
-            except KeyError:
-                # A group with a matching name is not a band video.
+            if not is_dataset(self._reader.get(path)):
                 continue
             bands.append((int(match[1]), int(match[2]), path))
         bands.sort()
@@ -143,8 +100,8 @@ class HolodopplerSource(TypedSource):
             )
 
         low_path, high_path = bands[0][2], bands[-1][2]
-        low_frequency = self._frequency_band_dataset(low_path)
-        high_frequency = self._frequency_band_dataset(high_path)
+        low_frequency = self._reader.dataset(low_path, required=True, ndim=3, kinds="iufc")
+        high_frequency = self._reader.dataset(high_path, required=True, ndim=3, kinds="iufc")
         if tuple(low_frequency.shape) != tuple(high_frequency.shape):
             raise ValueError(
                 "HoloDoppler frequency-band datasets must have identical "
@@ -153,10 +110,6 @@ class HolodopplerSource(TypedSource):
                 f"{high_frequency.shape}."
             )
         return low_frequency, high_frequency
-
-    def moment0_flat_field_dataset(self):
-        """Return a precomputed flat-field moment, when exported by Holodoppler."""
-        return self._optional_moment_dataset(HD_MOMENT0_FLAT_FIELD_PATHS)
 
     def sampling_frequency_hz(self) -> float:
         """Resolve positive acquisition sampling frequency without requiring a frame stride."""
@@ -260,7 +213,7 @@ class HolodopplerSource(TypedSource):
     def _parameters(self) -> Mapping[str, object] | None:
         if self._cache_parameters and hasattr(self, "_cached_parameters"):
             return self._cached_parameters
-        raw = self._value(HD_PARAMETERS_KEY, default=None)
+        raw = self._reader.value(HD_PARAMETERS_KEY, default=None)
         if raw is None:
             if self._cache_parameters:
                 self._cached_parameters = None
@@ -292,46 +245,12 @@ class HolodopplerSource(TypedSource):
             pixel_pitch=self.pixel_pitch(),
         )
 
-    def _moment_dataset(self, paths: tuple[str, ...]):
-        path = self._first_path(paths)
-        if path is None:
-            raise KeyError(
-                "Missing Holodoppler moment dataset. Tried: "
-                + ", ".join(repr(candidate) for candidate in paths)
-            )
-        dataset = self._dataset(path)
-        if dataset.ndim != 3:
-            raise ValueError(
-                "Holodoppler moment datasets must be 3-D for lazy processing, "
-                f"got shape {dataset.shape}."
-            )
-        return dataset
-
-    def _optional_moment_dataset(self, paths: tuple[str, ...]):
-        path = self._first_path(paths)
-        if path is None:
-            return None
-        dataset = self._dataset(path)
-        if dataset.ndim != 3:
-            raise ValueError(
-                "Holodoppler flat-field moment datasets must be 3-D for lazy "
-                f"processing, got shape {dataset.shape}."
-            )
-        return dataset
-
-    def _frequency_band_dataset(self, path: str):
-        dataset = self._dataset(path)
-        if dataset.ndim != 3:
-            raise ValueError(
-                f"HoloDoppler frequency-band dataset /{path} must be a "
-                f"3-D (frame, y, x) array, got shape {dataset.shape}."
-            )
-        if not np.issubdtype(dataset.dtype, np.number):
-            raise TypeError(
-                f"HoloDoppler frequency-band dataset /{path} must be "
-                f"numeric, got dtype {dataset.dtype}."
-            )
-        return dataset
-
-    def _first_path(self, paths: tuple[str, ...]) -> str | None:
-        return next((candidate for candidate in paths if candidate in self._reader), None)
+    INPUTS = {
+        "metadata": lambda source: source._reader.get(HD_PARAMETERS_KEY),
+        "moment0": moment0,
+        "moment2": moment2,
+        "moment0ff": moment0ff,
+        "band_low": lambda source: source.frequency_bands()[0],
+        "band_high": lambda source: source.frequency_bands()[1],
+        "spectrograms": spectrograms,
+    }

@@ -75,6 +75,18 @@ def validate_band_limited_harmonics_setting(value: object) -> int:
     return int(value)
 
 
+def validate_input_backend(value: object) -> str:
+    if value not in ("auto", "direct", "replay"):
+        raise ValueError("input_backend must be auto, direct or replay")
+    return value
+
+
+def validate_input_unknown_transport(value: object) -> str:
+    if value not in ("coordinator", "worker"):
+        raise ValueError("input_unknown_transport must be coordinator or worker")
+    return value
+
+
 def validate_copy_hd_passthrough(value: object) -> bool:
     if not isinstance(value, bool):
         raise ValueError("copy_hd_passthrough must be true or false.")
@@ -369,7 +381,15 @@ class AppSettingsStore:
         validate_velocity_workflow_selection(
             settings.get("velocity_estimation_method", DEFAULT_VELOCITY_WORKFLOW_SELECTION)
         )
+        validate_input_backend(settings.get("input_backend", "auto"))
+        validate_input_unknown_transport(settings.get("input_unknown_transport", "coordinator"))
         self.save(settings)
+
+    def load_input_backend(self) -> str:
+        return validate_input_backend(self.load().get("input_backend", "auto"))
+
+    def load_input_unknown_transport(self) -> str:
+        return validate_input_unknown_transport(self.load().get("input_unknown_transport", "coordinator"))
 
     def load_velocity_estimation_method(self) -> str:
         return validate_velocity_workflow_selection(

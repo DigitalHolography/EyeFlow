@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from scipy import ndimage as ndi
 
 from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
@@ -23,6 +24,7 @@ from calculations.vessel_segments.sampling.transforms import (
     resample_rotate_segment,
     rotate_segment_masks,
 )
+from calculations.vessel_segments.sampling import streaming, transforms
 from pipelines.spatial_gradient_moment0.profiles import (
     _spatial_gradient_chain,
 )
@@ -63,6 +65,85 @@ def _assembled(chunks) -> np.ndarray:
     assert values
     assert {(item.ring_index, item.branch_index) for item in values} == {(0, 0)}
     return np.concatenate([np.asarray(item.rotated) for item in values], axis=0)
+
+
+@pytest.mark.parametrize("frames,ceiling,workers,lengths", [
+    (512, 406, 4, [256, 256]),
+    (640, 406, 4, [320, 320]),
+    (10, 4, 3, [3, 3, 4]),
+    (11, 4, 3, [3, 4, 4]),
+    (5, 2, 4, [1, 2, 2]),
+    (17, 1, 4, [1] * 17),
+    (4, 8, 4, [4]),
+    (512, 406, 1, [406, 106]),
+    (0, 1, 4, []),
+])
+def test_parallel_time_ranges_are_balanced_within_memory_ceiling(frames, ceiling, workers, lengths):
+    prepared = _prepared()
+    signal = np.broadcast_to(np.arange(frames, dtype=np.float32)[:, None, None], (frames, 9, 9))
+    # Isolate temporal partitioning from transform cost and machine CPU limits.
+    with (
+        patch.object(streaming, "_bounded_chunk_plan", return_value=(workers, ceiling)),
+        patch.object(streaming, "resample_rotate_segment", side_effect=lambda values, *a, **k: values),
+    ):
+        chunks = list(prepare_segment_chunks(signal, prepared))
+    actual = [item.frame_slice.stop-item.frame_slice.start for item in chunks]
+    assert actual == lengths
+    assert all(0 < length <= ceiling for length in actual)
+    assert sum(actual) == frames
+    assert len(chunks) == (frames + ceiling - 1) // ceiling
+    if workers > 1 and actual:
+        assert max(actual)-min(actual) <= 1
+    if chunks:
+        assert chunks[0].frame_slice.start == 0
+        assert chunks[-1].frame_slice.stop == frames
+        assert all(a.frame_slice.stop == b.frame_slice.start for a, b in zip(chunks, chunks[1:]))
+        np.testing.assert_array_equal(np.concatenate([item.rotated for item in chunks]), signal)
+
+
+def test_device_chunk_planning_preserves_single_worker_ranges():
+    options = dict(work_count=8, frame_count=31, native_side=9, output_side=128,
+        component_count=1, working_memory_mb=8., temporal_halo=0, scratch_array_count=0,
+        interpolated_array_count=1, rotated_array_count=2, requested_workers=4, keep_on_device=True)
+    workers, ceiling = streaming._bounded_chunk_plan(**options)
+    assert workers == 1
+    signal = np.ones((31, 9, 9), dtype=np.float32)
+    with (
+        patch.object(streaming, "_bounded_chunk_plan", return_value=(workers, ceiling)),
+        patch.object(streaming, "optional_cupy_backend", return_value=None),
+        patch.object(streaming, "resample_rotate_segment", side_effect=lambda values, *a, **k: values),
+    ):
+        chunks = list(prepare_segment_chunks(signal, _prepared(), keep_on_device=True))
+    assert [item.frame_slice.start for item in chunks] == list(range(0, 31, ceiling))
+
+
+@pytest.mark.parametrize("mode", ["fused", "sequential", "staged"])
+def test_balancing_preserves_masked_and_unmasked_frames_and_periodic_halo(mode):
+    signal = np.random.default_rng(72).uniform(.5, 4., size=(17, 9, 9)).astype(np.float32)
+    signal[:, 0, :] = np.nan
+    signal[8, 4, 4] = np.nan
+    options = dict(transform_mode=mode, include_masked_before_rotation=True)
+    if mode == "staged":
+        options.update(post_interpolation=_spatial_gradient_chain, temporal_halo=6,
+                       scratch_array_count=7)
+    prepared = _prepared(angle=-31.7)
+    with patch.object(transforms, "optional_cupy_backend", return_value=None):
+        # The serial path retains the original 7/7/3 split. The parallel path
+        # uses 5/6/6, changing where periodic filtering context is needed.
+        with patch.object(streaming, "_bounded_chunk_plan", return_value=(1, 7)):
+            previous = list(prepare_segment_chunks(signal, prepared, **options))
+        with patch.object(streaming, "_bounded_chunk_plan", return_value=(2, 7)):
+            balanced = list(prepare_segment_chunks(signal, prepared, **options))
+    assert [item.frame_slice.stop-item.frame_slice.start for item in balanced] == [5, 6, 6]
+    for name in ("rotated", "rotated_masked"):
+        actual = np.concatenate([getattr(item, name) for item in balanced])
+        expected = np.concatenate([getattr(item, name) for item in previous])
+        assert actual.dtype == expected.dtype == np.dtype(np.float32)
+        np.testing.assert_array_equal(np.isnan(actual), np.isnan(expected))
+        if mode == "staged":
+            np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5, equal_nan=True)
+        else:
+            np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
 
 
 def test_fused_chunks_match_one_chunk_across_budget_boundary() -> None:
@@ -107,6 +188,40 @@ def test_masked_companion_applies_mask_after_interpolation_before_rotation() -> 
         atol=1e-6,
         equal_nan=True,
     )
+
+
+@pytest.mark.parametrize("mode", ["fused", "staged"])
+def test_cpu_masked_and_unmasked_chunks_match_original_nd_affine(mode):
+    prepared = _prepared(angle=-31.7)
+    cube = np.random.default_rng(91).normal(size=(11, 9, 9)).astype(np.float32)
+    cube[:, 0, :] = np.nan
+    cube[3, 4, 4] = np.nan
+    options = dict(
+        working_memory_mb=7.0,
+        include_masked_before_rotation=True,
+        transform_mode=mode,
+    )
+    if mode == "staged":
+        options.update(post_interpolation=_spatial_gradient_chain, temporal_halo=6,
+                       scratch_array_count=7)
+
+    def original_affine(values, matrix, offset, output_shape):
+        return ndi.affine_transform(
+            values, matrix, offset, output_shape=output_shape,
+            order=1, mode="grid-constant", cval=0.0, prefilter=False,
+        )
+
+    with patch.object(transforms, "optional_cupy_backend", return_value=None):
+        with patch.object(transforms, "_affine_transform_cpu", side_effect=original_affine):
+            expected = list(prepare_segment_chunks(cube, prepared, **options))
+        actual = list(prepare_segment_chunks(cube, prepared, **options))
+    assert len(actual) == len(expected)
+    for item, reference in zip(actual, expected):
+        assert item[:3] == reference[:3]
+        for name in ("rotated", "rotated_masked"):
+            values, previous = getattr(item, name), getattr(reference, name)
+            assert values.dtype == previous.dtype == np.dtype(np.float32)
+            np.testing.assert_array_equal(values.view(np.uint32), previous.view(np.uint32))
 
 
 @pytest.mark.parametrize("frame_count", [5, 17])

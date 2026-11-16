@@ -423,7 +423,7 @@ def test_frequency_band_source_requires_two_matching_videos(available_paths, tmp
         hd.create_group("band_9_1_2")
         source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
         with pytest.raises(KeyError) as error:
-            source.frequency_band_datasets()
+            source.frequency_bands()
 
     message = str(error.value)
     assert "frequency_bands" in message
@@ -453,7 +453,7 @@ def test_frequency_band_source_sorts_numeric_ranges_and_preserves_provenance(
             hd.create_dataset(path, data=np.zeros((1, 2, 2)))
         hd.create_group("band_99_0_999")
         source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
-        low, high = source.frequency_band_datasets()
+        low, high = source.frequency_bands()
         assert isinstance(low, h5py.Dataset)
         assert isinstance(high, h5py.Dataset)
         assert low.name == f"/{expected_low}"
@@ -508,7 +508,7 @@ def test_frequency_band_source_validates_rank_dtype_and_shape(
         with h5py.File(hd_path, "r") as hd:
             source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
             with pytest.raises(error_type, match=message):
-                source.frequency_band_datasets()
+                source.frequency_bands()
 
 
 def test_frequency_band_estimator_rejects_spatial_mask_mismatch() -> None:

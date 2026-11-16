@@ -10,7 +10,6 @@ import numpy as np
 from pipeline_engine import ExecutionVariant, PipelineContext
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.writers.h5_output import PipelineH5Output
-from input_output.schema.base import TypedSource
 from input_output.schema.provenance import (
     INHERITED_PROVENANCE_KEYS_ATTR,
     read_dataset_attrs,
@@ -43,11 +42,6 @@ class PipelineContextTests(unittest.TestCase):
                 self.assertIsNone(reader.array("missing", dtype=np.float32, default=None))
                 with self.assertRaises(KeyError):
                     reader.array("missing")
-
-            typed = TypedSource(source)
-            with self.assertRaises(KeyError):
-                typed._array("missing")
-            self.assertIsNone(typed._array("missing", default=None))
 
     def test_output_facade_writes_dataset_attributes(self) -> None:
         with h5py.File("context_output_test.h5", "w", driver="core", backing_store=False) as h5file:

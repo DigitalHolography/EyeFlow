@@ -5,6 +5,15 @@ ready invocations; `ProcessExecutor` owns workers and reaping. Both process and
 coordinator invocations use the same checkpoints and
 [stage executor](pipeline_stage_graphs.md).
 
+`_execute_input` expresses the lifecycle as explicit phases: open sources,
+initialize output, prepare input replay, build declarations, create the existing
+scheduler, execute coordinator jobs, and finalize status/exports. Shared and
+variant invocations have separate helpers; variant registration and status
+persistence are separate from dispatch. Small records group source views,
+preflight declarations and outcome dictionaries. The dictionaries remain shared
+with the scheduler; cleanup still belongs to the caller's `ExitStack` and final
+independent I/O lanes to `IOManager` and retained publication to `AcquisitionCompletion`.
+
 ## Readiness
 
 A descriptor's `graph_factory(options=...)` supplies the same product declarations
@@ -53,10 +62,12 @@ acknowledged value, including rebindings to original input values.
 ## Resource and output lifetime
 
 Accepted products survive later failures; rejected acceptance rolls back its
-records, state and newly copied artifacts. `PendingOutput` retains backing until
+records, state and newly copied artifacts. `AcquisitionCompletion` retains backing until
 consumers, exports and publication finish. Worker cleanup closes its mappings
 without deleting shared backing. Publication uses a destination staging file and
-atomic replacement, preserving the prior output on failure.
+atomic replacement, preserving the prior output on failure. Output materialization
+starts at safe stage commits; finalization drains outstanding writes and reconciles
+metadata without rewriting scientific datasets. See [runtime I/O](runtime_io.md).
 
 Logical completion retains CPU/RAM reservations until actual process exit and
 nonblocking reaping. Each reservation releases once. Cancellation terminates
@@ -64,9 +75,13 @@ workers; cleanup exceptions report failure; repeated close is safe. One
 `ResourceBudget` covers workers, calculations, renderers and file finalizers.
 There are no fixed per-pipeline RAM declarations.
 
-The input service opens each HD/DV source once and reuses bounded local replay
-across workers and source aliases. Native thread policy belongs to process and
-resource initialization.
+The input service owns each read-only HD/DV source and keeps demanded native
+dataset handles open across slabs. Declarative stage inputs select progressive
+local replay or bounded shared-memory streaming. Workers see only completed
+replay extents or exclusive leased blocks, and source aliases share replay.
+See [input ownership and readiness](hdf5_input_subsystem.md) for lifetime and
+cancellation rules. Native thread policy belongs to process and resource
+initialization.
 
 `test_product_exchange_processes.py` covers actual transport, crash recovery,
 receipt loss, acceptance rollback and exit/resource ordering. Reproduce synthetic

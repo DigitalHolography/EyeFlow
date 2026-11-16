@@ -15,7 +15,7 @@ from runtime_process_fixtures import PROCESS_DESCRIPTOR
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
 from pipeline_engine.planning.base import PipelineDescriptor
-from pipeline_engine.data.input_service import InputService
+from pipeline_engine.io.input.service import InputService, InputPolicy
 from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
@@ -35,6 +35,111 @@ def descriptor(name, run, requires=(), **kwargs):
     )
 
 
+@pytest.mark.parametrize("producer_status", [None, "pending", "running", "succeeded", "partial", "failed", "skipped"])
+def test_prefetch_eligibility_agrees_with_dependency_dispatch_and_transitive_skips(producer_status):
+    from pipeline_engine.execution.scheduler import CoordinatorScheduler
+    from pipeline_engine.planning.dag import PipelineDAG
+    from pipeline_engine.product_exchange import ProductExchangeRegistry
+
+    producer = descriptor("producer", lambda ctx: None, execution_mode="process")
+    consumer = descriptor("consumer", lambda ctx: None, ("producer",), execution_mode="process")
+    descendant = descriptor("descendant", lambda ctx: None, ("consumer",), execution_mode="process")
+    # Deliberately reverse the dependency order: eligibility is a closure, not
+    # a traversal that depends on the caller having sorted the descriptors.
+    pipelines = (descendant, consumer, producer)
+    starts, eligibility = [], []
+    scheduler = CoordinatorScheduler(
+        pipelines=pipelines, dag=PipelineDAG(pipelines), options={},
+        executor=SimpleNamespace(start=lambda pipeline: starts.append(pipeline.name) or True),
+        statuses={"producer": producer_status}, failures={}, skips={},
+        registry=ProductExchangeRegistry(), on_input_eligibility=eligibility.append,
+    )
+    scheduler.pending.remove(producer)
+    terminal = producer_status in {"succeeded", "partial", "failed", "skipped"}
+    if terminal:
+        scheduler.completed.add("producer")
+    scheduler._refresh_input_eligibility()
+    if producer_status in {"partial", "failed", "skipped"}:
+        assert eligibility == [()]
+    else:
+        assert set(eligibility[0]) == ({"consumer", "descendant"} if terminal else
+                                       {"producer", "consumer", "descendant"})
+    # Process dispatch must make the same distinction between a waiting producer,
+    # a successful one and a terminal producer that cannot satisfy this edge.
+    scheduler._start_processes()
+    scheduler._start_processes()
+    assert starts == (["consumer"] if producer_status == "succeeded" else [])
+    if producer_status in {"partial", "failed", "skipped"}:
+        assert scheduler.statuses["consumer"] == scheduler.statuses["descendant"] == "skipped"
+
+
+@pytest.mark.parametrize("producer_status", ["partial", "failed", "skipped", "succeeded"])
+@pytest.mark.parametrize("variant", [False, True])
+def test_coordinator_dependency_dispatch_uses_the_prefetch_availability_policy(monkeypatch, producer_status, variant):
+    from pipeline_engine.execution import runtime
+    from pipeline_engine.execution.protocol import InvocationOutcome
+
+    calls = []
+    monkeypatch.setattr(runtime, "_run_pipeline_descriptor", lambda pipeline, **kwargs:
+                        calls.append(pipeline.name) or InvocationOutcome(pipeline.name))
+    pipeline = descriptor("consumer", lambda ctx: None, ("producer",), run_once=True)
+    status = runtime._ExecutionStatus(shared_status={"producer": producer_status})
+    executor = SimpleNamespace(
+        invocation_id=lambda pipeline, *args: pipeline.name,
+        product_inputs=lambda *args: {},
+        acceptance=SimpleNamespace(finalize=lambda *args: None),
+    )
+    artifacts = SimpleNamespace(failures={})
+    if variant:
+        status.execution_variants = [SimpleNamespace(
+            name="moments", state={}, output_namespace="ProcessingMoments", artifact_namespace="moments", provenance={},
+        )]
+        # A branch failure overrides a successful shared ancestor.
+        status.shared_status["producer"] = "succeeded"
+        status.branch_status["moments"] = {"producer": producer_status}
+        arguments = {"variables": {}, "output_manager": SimpleNamespace(for_artifact_namespace=lambda name: None)}
+        succeeded = runtime._run_variant_pipeline(pipeline, ("producer",), arguments, status, executor, artifacts)
+        outcomes = status.branch_status["moments"]
+    else:
+        succeeded = runtime._run_shared_pipeline(pipeline, ("producer",), {}, None, status, executor, artifacts)
+        outcomes = status.shared_status
+    assert succeeded == (producer_status == "succeeded")
+    assert calls == (["consumer"] if succeeded else [])
+    assert outcomes["consumer"] == ("succeeded" if succeeded else "skipped")
+
+
+@pytest.mark.parametrize("producer_status", ["partial", "failed", "skipped"])
+def test_accepted_product_consumers_remain_eligible_after_producer_failure(producer_status):
+    from pipeline_engine.execution.scheduler import CoordinatorScheduler
+    from pipeline_engine.planning.dag import PipelineDAG
+    from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement, ProductExchangeRegistry
+    from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
+
+    graph = StageGraph((StageSpec("produce", lambda ctx: None, products=(ProductSpec("value", exposed=True),)),))
+    producer = descriptor("producer", lambda ctx: graph, graph_factory=lambda **kwargs: graph)
+    consumer = descriptor("consumer", lambda ctx: None, execution_mode="process", product_requires=(
+        ProductRequirement(alias="input", producer_pipeline="producer", product="value"),
+    ))
+    registry = ProductExchangeRegistry()
+    registry.register_invocation(PipelineInvocationId("run", "consumer"))
+    product = ProductId(PipelineInvocationId("run", "producer"), "value")
+    registry.declare(product)
+    registry.accept(product, "accepted immutable handle", "commit")
+    starts, eligibility = [], []
+    scheduler = CoordinatorScheduler(
+        pipelines=(producer, consumer), dag=PipelineDAG((producer, consumer)), options={},
+        executor=SimpleNamespace(start=lambda pipeline: starts.append(pipeline.name) or True),
+        statuses={"producer": producer_status}, failures={}, skips={}, registry=registry,
+        on_input_eligibility=eligibility.append,
+    )
+    scheduler.pending.remove(producer)
+    scheduler.completed.add("producer")
+    scheduler._refresh_input_eligibility()
+    assert eligibility == [("consumer",)]
+    scheduler._start_processes()
+    assert starts == ["consumer"] and scheduler.statuses["consumer"] == "running"
+
+
 def test_source_is_staged_once_and_replayed_read_only(tmp_path):
     source_path = tmp_path / "source.h5"
     original = np.arange(128 * 256, dtype=np.float32).reshape(128, 256)
@@ -44,7 +149,8 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
         source["z_group/video"] = source["video"]
         source["unrequested"] = original
     with h5py.File(source_path) as source, ProductStorage() as storage:
-        service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"))
+        service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"),
+                               policy=InputPolicy(input_backend="replay"))
         first, second = service.client(), service.client()
         try:
             a, b = service.files(first)["hd"], service.files(second)["hd"]
@@ -255,10 +361,10 @@ def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, m
         pipelines=[descriptor("producer", lambda ctx: {"value": 1})],
     )
 
-    def fail_publish(self):
+    def fail_publish(self, local):
         raise OSError("destination unavailable")
 
-    monkeypatch.setattr(OutputModel, "publish", fail_publish)
+    monkeypatch.setattr("input_output.writers.h5_publication.OutputPublisher.publish", fail_publish)
     result = execute_run(spec)
     assert not result.outputs
     assert len(result.failures) == 1
@@ -335,8 +441,11 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         statuses = json.loads(output.attrs["stage_status"])["displacement_map"]
         assert statuses == {
+            "reference": "succeeded",
             "prepare": "succeeded",
             "artery": "skipped" if missing_artery else "succeeded",
             "vein": "succeeded",
+            "artery_video": "skipped" if missing_artery else "succeeded",
+            "vein_video": "succeeded",
             "finalize": "succeeded",
         }
