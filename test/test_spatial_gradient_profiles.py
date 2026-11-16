@@ -68,6 +68,11 @@ class SpatialGradientProfileTests(unittest.TestCase):
                 profile=SimpleNamespace(topology="vein topology")
             ),
         )
+        geometry = retinal_source.segmentation.optic_disc.annulus_geometry((8, 8))
+        artery_topology = SimpleNamespace(ring_settings=geometry)
+        vein_topology = SimpleNamespace(ring_settings=geometry)
+        waveform_context.artery_segments.profile.topology = artery_topology
+        waveform_context.vein_segments.profile.topology = vein_topology
 
         with patch.object(
             profile_module,
@@ -94,10 +99,11 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertEqual("staged", kwargs["transform_mode"])
         self.assertEqual(6, kwargs["temporal_halo"])
         self.assertEqual(
-            {"artery": "artery topology", "vein": "vein topology"},
+            {"artery": artery_topology, "vein": vein_topology},
             kwargs["prepared_topologies"],
         )
         self.assertFalse(kwargs["retain_segment_maps"])
+        self.assertIs(geometry, args[3])
 
     def test_packs_requested_profiles_for_arteries_and_veins(self) -> None:
         unmasked = np.arange(30, dtype=np.float32).reshape(2, 1, 5, 3)

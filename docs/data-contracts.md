@@ -42,8 +42,9 @@ exports or article styling are introduced by the general helpers.
 separate axis-label/tick/legend/title/annotation sizes, borders, tick rotation,
 label/tick padding in points, and optional X/Y data margins. `scaled_fonts()`
 keeps text visually consistent across different canvas widths. The standard
-style uses 10 pt labels/legends, 8 pt ticks, and 0.4 pt borders; the compact
-style retains the 8 pt labels/legends used by velocity and flow signal plots.
+style uses 11 pt labels, ticks, legends, titles, and annotations, and 0.4 pt
+borders; the compact velocity/flow style uses the same 11 pt typography.
+The diagnostic preset retains its former text and line sizes.
 Line widths for signals, secondary curves, references, event markers, and fits
 also come from the style. Envelope color/opacity, analysis-region shading,
 and histogram fill/edge appearance are shared settings. `envelope_kwargs()`,
@@ -98,6 +99,12 @@ waveform/spectral/correlation diagnostics, map colorbars and transverse profile
 maps, and spatial-gradient lumen-size curves. Pipeline code retains canvas
 geometry for diagnostic panels, data limits, units, grids, scientific colors,
 and overlays; styling preserves hidden map axes and borders.
+
+Velocity and BVR cardiac-phase article figures add a thin dashed gray line at
+the temporal `nanmean` of the displayed median beat, independently per vessel.
+The dotted black zero reference and original dispersion envelopes remain.
+All-NaN median beats have no mean reference. Mean references are unlabeled to
+keep the small article canvases clear. These are plotting-only additions.
 
 ## External run layout
 
@@ -724,6 +731,11 @@ at image boundaries without resizing it. The fallback requires valid physical
 calibration; it no longer scales with the image half-diagonal. That fallback
 retains the original vein mask as velocity-background support but disables vein
 measurement in the canonical segmentation.
+
+Annular vessel measurements use independently configured native-pixel size
+and stride, with 50% overlap by default. See [annulus sampling](annulus_sampling.md)
+for geometry, saved-configuration migration, terminal sections, output metadata,
+and the implications of correlated spatial samples.
 
 The two additional vessel arrays must be finite, numeric, two-dimensional and
 aligned with the other DV geometry. `pipelines.vessel_inputs` applies the same

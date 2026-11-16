@@ -1,7 +1,3 @@
 """Velocity-analysis defaults."""
 
-# Number of uniformly spaced radii across the longest lateral FOV dimension.
-NUMBER_OF_RADII_IN_FOV = 25
-SEGMENT_INNER_RADIUS_FRAC = 0.10
-SEGMENT_OUTER_RADIUS_FRAC = 0.35
 CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT = 0.95

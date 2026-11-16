@@ -18,10 +18,15 @@ from calculations.vessel_segments.measurement import (  # noqa: E402
     MaskedArrays,
     SegmentMeasurementSettings,
 )
-from calculations.topology import OpticDisc, section_masks  # noqa: E402
+from calculations.topology import AnnulusGeometry, OpticDisc, section_masks  # noqa: E402
 from calculations.topology.branch_identity import _branch_identity_stages  # noqa: E402
 from pipelines.velocity_analysis.artifacts.branch_identity import (  # noqa: E402
+    _label_image,
+    _labels_with_ring_overlay,
     _labels_with_substack_boxes,
+)
+from pipelines.topology_core.annulus_visualization import (  # noqa: E402
+    annulus_gray_levels, annulus_outline_image,
 )
 from pipelines.velocity_analysis.artifacts.cross_sections import (  # noqa: E402
     export_rotated_mean_pngs,
@@ -45,7 +50,7 @@ class SegmentCenterTests(unittest.TestCase):
         watershed_labels = np.zeros(vessel.shape, dtype=np.int32)
         watershed_labels[:, 1:4] = 1
         watershed_labels[:, 4:8] = 2
-        settings = SimpleNamespace(
+        settings = AnnulusGeometry(
             inner_radius_frac=0.0,
             outer_radius_frac=0.5,
             ring_width_frac=0.5,
@@ -90,7 +95,7 @@ class SegmentCenterTests(unittest.TestCase):
         vein_mask[5:56, 37:44] = True
         optic_disc_mask = np.zeros_like(artery_mask)
         optic_disc_mask[27:34, 27:34] = True
-        ring_settings = SimpleNamespace(
+        ring_settings = AnnulusGeometry(
             inner_radius_frac=0.1,
             outer_radius_frac=0.7,
             ring_width_frac=0.25,
@@ -132,7 +137,7 @@ class SegmentCenterTests(unittest.TestCase):
 
     def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
         labels = np.ones((20, 20), dtype=np.int32)
-        ring_settings = SimpleNamespace(
+        ring_settings = AnnulusGeometry(
             inner_radius_frac=0.0,
             outer_radius_frac=1.0,
             ring_width_frac=0.5,
@@ -160,6 +165,33 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual((20, 20, 3), image.shape)
         np.testing.assert_array_equal(image[4, 4], [255, 255, 0])
         np.testing.assert_array_equal(image[4, 6], [255, 0, 255])
+
+    def test_annulus_outlines_alternate_white_and_gray_at_half_width_stride(self):
+        shape = (101, 121)
+        disc = OpticDisc(None, (55, 40), 12, 12)
+        settings = disc.annulus_geometry(shape, annulus_size=20)
+        labels = np.ones(shape, dtype=np.int32)
+        outlines = annulus_outline_image(shape, disc.center, settings)
+        image = _labels_with_ring_overlay(labels, disc.center, settings)
+
+        np.testing.assert_array_equal(annulus_gray_levels(settings), [255, 128])
+        for radius, gray in ((6, 255), (16, 128), (26, 255), (36, 128), (46, 255)):
+            self.assertEqual(gray, outlines[40, 55 + radius])
+            np.testing.assert_array_equal(image[40, 55 + radius], [gray] * 3)
+        np.testing.assert_array_equal(image[outlines == 0], _label_image(labels)[outlines == 0])
+
+    def test_annulus_shades_follow_overlap_phase_count_and_shared_clipped_boundaries(self):
+        disc = OpticDisc(None, (50, 50), 12, 12)
+        for stride, expected in ((20, [255]), (30, [255]), (10, [255, 128]),
+                                 (5, [255, 213, 170, 128])):
+            with self.subTest(stride=stride):
+                settings = disc.annulus_geometry((101, 101), annulus_size=20, annulus_stride=stride)
+                np.testing.assert_array_equal(annulus_gray_levels(settings), expected)
+
+        settings = AnnulusGeometry(.1, .5, .35, 4, ring_stride_frac=.1)
+        outlines = annulus_outline_image((101, 101), (50, 50), settings)
+        self.assertEqual(213, outlines[50, 85])  # First section clipped to R sets its shade.
+        self.assertEqual(0, outlines[50, 99])
 
     def test_rotated_means_export_to_separate_vessel_subfolders(self) -> None:
         class RecordingOutput:
@@ -218,7 +250,7 @@ class SegmentCenterTests(unittest.TestCase):
         )
 
         corner_radius = np.hypot(255.5, 255.5)
-        self.assertEqual(17, settings.ring_count)
+        self.assertEqual(33, settings.ring_count)
         self.assertAlmostEqual(
             28.0 / corner_radius,
             settings.inner_radius_frac,
@@ -227,6 +259,7 @@ class SegmentCenterTests(unittest.TestCase):
         expected_width = (512.0 / 25.0) / corner_radius
         self.assertAlmostEqual(expected_width, settings.ring_width_frac)
         self.assertAlmostEqual(expected_width, settings.segment_length_frac)
+        self.assertAlmostEqual(expected_width / 2, settings.stride_frac)
 
     def test_number_of_radii_in_fov_controls_pixel_width_and_count(self) -> None:
         settings = OpticDisc(None, (50.0, 50.0), 40, 40).annulus_geometry(
@@ -267,7 +300,7 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertFalse(mask[279, 267])
 
     def test_annulus_pixel_radius_is_independent_of_optic_disc_position(self) -> None:
-        settings = SimpleNamespace(
+        settings = AnnulusGeometry(
             inner_radius_frac=0.0,
             outer_radius_frac=0.5,
             ring_width_frac=0.25,

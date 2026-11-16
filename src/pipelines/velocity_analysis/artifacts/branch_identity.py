@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy import ndimage as ndi
-
-from calculations.topology import AnnulusGeometry, BranchIdentityStages, annulus_mask
+from calculations.topology import AnnulusGeometry, BranchIdentityStages
+from pipelines.topology_core.annulus_visualization import annulus_outline_image
 
 
 def export_branch_identity_stage_pngs(
@@ -96,7 +95,9 @@ def _labels_with_ring_overlay(
     settings: AnnulusGeometry,
 ) -> np.ndarray:
     image = _label_image(labels)
-    image[_ring_boundaries(labels.shape, optic_disc_center, settings)] = (255, 255, 255)
+    outlines = annulus_outline_image(labels.shape, optic_disc_center, settings)
+    selected = outlines > 0
+    image[selected] = outlines[selected, None]
     return image
 
 
@@ -171,24 +172,6 @@ def _ring_box_color(ring_index: int) -> tuple[int, int, int]:
         (64, 255, 192),
     )
     return colors[ring_index % len(colors)]
-
-
-def _ring_boundaries(
-    image_shape: tuple[int, int],
-    optic_disc_center,
-    settings: AnnulusGeometry,
-) -> np.ndarray:
-    boundaries = np.zeros(image_shape, dtype=bool)
-    for ring_index in range(settings.ring_count):
-        ring_inner = settings.inner_radius_frac + ring_index * settings.ring_width_frac
-        ring = annulus_mask(
-            image_shape,
-            optic_disc_center,
-            ring_inner,
-            ring_inner + settings.ring_width_frac,
-        )
-        boundaries |= ring & ~ndi.binary_erosion(ring)
-    return boundaries
 
 
 def _topography_image(topography: np.ndarray) -> np.ndarray:

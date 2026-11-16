@@ -64,8 +64,8 @@ def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, dt_seconds, tim
         left + (np.arange(frames) + 0.5) * (right - left) / frames,
         np.arange(frames) * dt_seconds, atol=1e-14,
     )
-    np.testing.assert_array_equal(ax.get_yticks(), [0, 4, 8, 12, 16, 20, 24, 28, 31])
-    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "8", "16", "24", "-32", "-24", "-16", "-8", "-2"]
+    np.testing.assert_array_equal(ax.get_yticks(), [0, 7, 16, 23, 31])
+    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "14", "-32", "-18", "-2"]
     assert ax.get_xlabel() == "Time (s)"
     assert ax.get_ylabel() == "Frequency (kHz)"
     assert image.origin == "lower"
@@ -85,11 +85,11 @@ def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, dt_seconds, tim
     assert fig.get_figheight() < FIGURE_WIDTH_INCHES / FIGURE_ASPECT_RATIO
     for axis in fig.axes:
         assert all(spine.get_linewidth() == 0.4 for spine in axis.spines.values())
-        assert axis.yaxis.label.get_fontsize() == 10
+        assert axis.yaxis.label.get_fontsize() == 11
         assert axis.yaxis.label.get_fontfamily() == ["Times New Roman"]
-        assert all(label.get_fontsize() == 8 for label in axis.get_xticklabels())
+        assert all(label.get_fontsize() == 11 for label in axis.get_xticklabels())
         assert all(label.get_rotation() == 0 for label in axis.get_xticklabels())
-        assert all(label.get_fontsize() == 8 for label in axis.get_yticklabels())
+        assert all(label.get_fontsize() == 11 for label in axis.get_yticklabels())
         assert all(label.get_rotation() == 0 for label in axis.get_yticklabels())
     fig.set_dpi(320)
     fig.canvas.draw()
@@ -117,9 +117,9 @@ def test_median_labels_signed_khz_without_reordering_or_filling_nan():
     assert zero_line.get_linewidth() == 0.4
     np.testing.assert_array_equal(ax.get_xticks(), [0, 1, 2, 3])
     assert [label.get_text() for label in ax.get_xticklabels()] == ["0", "2", "-4", "-2"]
-    assert all(label.get_fontsize() == 8 for label in ax.get_xticklabels())
+    assert all(label.get_fontsize() == 11 for label in ax.get_xticklabels())
     assert all(label.get_rotation() == 90 for label in ax.get_xticklabels())
-    assert all(label.get_fontsize() == 8 for label in ax.get_yticklabels())
+    assert all(label.get_fontsize() == 11 for label in ax.get_yticklabels())
     assert all(label.get_rotation() == 0 for label in ax.get_yticklabels())
     assert ax.get_xlabel() == "Frequency (kHz)"
     assert ax.get_ylabel() == "Power (a.u.)"
@@ -172,7 +172,7 @@ def test_metric_curves_preserve_phase_coordinates_nan_gaps_and_units(metric, uni
     assert ax.xaxis.label.get_math_fontfamily() == ax.yaxis.label.get_math_fontfamily() == "stix"
     fig.canvas.draw()
     assert all(tick.get_rotation() == 0 for tick in ax.get_xticklabels())
-    assert all(tick.get_fontsize() == 8 for tick in ax.get_xticklabels())
+    assert all(tick.get_fontsize() == 11 for tick in ax.get_xticklabels())
     assert all(spine.get_linewidth() == 0.4 for spine in ax.spines.values())
     np.testing.assert_allclose(fig.get_size_inches(), [
         FIGURE_WIDTH_INCHES, FIGURE_WIDTH_INCHES / FIGURE_ASPECT_RATIO,

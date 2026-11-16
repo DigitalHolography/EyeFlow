@@ -203,6 +203,7 @@ def run_cli(
             input_backend=settings_store.load_input_backend() if input_backend is None else input_backend,
             input_unknown_transport=settings_store.load_input_unknown_transport(),
             band_limited_harmonics=settings_store.load_band_limited_harmonics(),
+            annulus_settings=settings_store.load_annulus_settings(),
             copy_hd_passthrough=(
                 settings_store.load_copy_hd_passthrough()
                 if copy_hd_passthrough is None else copy_hd_passthrough

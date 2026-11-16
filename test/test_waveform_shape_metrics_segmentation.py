@@ -115,6 +115,7 @@ class SegmentationOutputTests(unittest.TestCase):
                 schema.segmentation.vein.mask,
                 schema.segmentation.vein.branch_label_map,
                 schema.segmentation.vein.segment_map,
+                *vars(schema.segmentation.annuli).values(),
             },
             set(outputs),
         )
@@ -179,13 +180,14 @@ class SegmentationOutputTests(unittest.TestCase):
             segment_attrs["annulus_outlines"],
         )
 
-    def test_final_annulus_outline_keeps_the_regular_spacing(self):
+    def test_final_annulus_outline_uses_the_clipped_measurement_boundary(self):
         shape = (101, 101)
         settings = AnnulusGeometry(
             inner_radius_frac=0.1,
             outer_radius_frac=0.5,
             ring_width_frac=0.2,
             ring_count=3,
+            ring_stride_frac=0.15,
         )
 
         outlines = _annulus_outlines(
@@ -195,8 +197,10 @@ class SegmentationOutputTests(unittest.TestCase):
             settings,
         )
 
-        # The last outline is at 0.7 of the half-diagonal, not clipped to 0.5.
-        self.assertTrue(outlines[50, 99])
+        self.assertFalse(outlines[50, 99])
+        self.assertTrue(outlines[50, 85])  # Final annulus is clipped to 0.5.
+        self.assertTrue(outlines[50, 81])  # Second annulus ends at 0.45.
+        self.assertTrue(outlines[50, 67])  # Its independent inner boundary at 0.25.
 
     def test_lumen_diameter_uses_each_vessels_area_and_float32_delta_radius(self):
         image_shape = (4, 4)

@@ -103,11 +103,11 @@ def test_total_masked_edges_flow_uses_centered_periodic_nine_point_window() -> N
 
 def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     topology = SimpleNamespace(
-        valid_segments=np.ones((1, 1), dtype=bool),
+        valid_segments=np.ones((5, 2), dtype=bool),
     )
     profiles = np.broadcast_to(
         np.asarray([0.0, 1.0, 4.0, 9.0, 16.0, 25.0], dtype=np.float32),
-        (1, 1, 3, 6),
+        (5, 2, 3, 6),
     ).copy()
     velocity_segments = SimpleNamespace(
         profile=SimpleNamespace(
@@ -124,7 +124,7 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         profiles,
         cycle_boundaries,
         index_base=0,
-        valid_segments=np.ones((1, 1), dtype=bool),
+        valid_segments=np.ones((5, 2), dtype=bool),
     )
     edge_shape = profile_dataset_value.data.shape[1:]
     edges = {}
@@ -256,10 +256,10 @@ def test_lumen_diameter_distribution_uses_five_micron_bins_and_scaled_gaussian()
         "Median: 30.0 µm",
         "SD: 14.1 µm",
     ]
-    assert all(np.isclose(text.get_fontsize(), 8.0) for text in ax.get_legend().get_texts())
+    assert all(np.isclose(text.get_fontsize(), 11.0) for text in ax.get_legend().get_texts())
     assert not ax.get_legend().get_frame_on()
-    assert np.isclose(ax.xaxis.label.get_fontsize(), 8.0)
-    assert np.isclose(ax.yaxis.label.get_fontsize(), 8.0)
+    assert np.isclose(ax.xaxis.label.get_fontsize(), 11.0)
+    assert np.isclose(ax.yaxis.label.get_fontsize(), 11.0)
     figure_text = [*ax.get_xticklabels(), *ax.get_yticklabels(), *ax.get_legend().get_texts()]
     figure_text.extend((ax.xaxis.label, ax.yaxis.label))
     assert all(text.get_fontfamily() == ["Times New Roman"] for text in figure_text)
@@ -268,6 +268,14 @@ def test_lumen_diameter_distribution_uses_five_micron_bins_and_scaled_gaussian()
     assert all(np.isclose(spine.get_linewidth(), 0.4) for spine in ax.spines.values())
     width, height = fig.get_size_inches()
     assert np.isclose(width / height, LUMEN_DIAMETER_FIGURE_ASPECT_RATIO)
+    fig.set_dpi(320)
+    fig.canvas.draw()
+    legend_box = ax.get_legend().get_window_extent(fig.canvas.get_renderer())
+    legend_bottom = ax.transData.inverted().transform((legend_box.x0, legend_box.y0))[1]
+    assert legend_bottom > max(bar.get_height() for bar in ax.patches)
+    assert not gaussian.get_path().transformed(gaussian.get_transform()).intersects_bbox(
+        legend_box, filled=False,
+    )
 
 
 def test_lumen_diameter_distributions_export_png_and_eps_for_both_vessels() -> None:
@@ -322,8 +330,14 @@ def test_blood_volume_rate_figure_plots_median_and_one_sd_over_beats() -> None:
     assert ax.get_xlabel() == r"Cardiac Phase $t/T$"
     assert ax.get_ylabel() == r"$Q(t)$ (mm³/s)"
     assert ax.get_xlim() == (0.0, 1.0)
-    assert len(ax.lines) == 2
-    zero_line, median_line = ax.lines
+    assert len(ax.lines) == 3
+    zero_line, median_line, mean_line = ax.lines
+    np.testing.assert_allclose(mean_line.get_ydata(), [3.0, 3.0])
+    assert mean_line.get_linestyle() == "--"
+    assert mean_line.get_color() == "0.35"
+    assert mean_line.get_linewidth() == 0.4
+    assert ax.get_legend() is None
+    assert ax.get_legend_handles_labels() == ([], [])
     np.testing.assert_allclose(zero_line.get_ydata(), [0.0, 0.0])
     assert zero_line.get_color() == "black"
     assert zero_line.get_linestyle() == ":"

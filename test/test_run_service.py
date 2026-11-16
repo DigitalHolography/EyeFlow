@@ -452,6 +452,7 @@ class RunServiceTests(unittest.TestCase):
                 load_copy_hd_passthrough=Mock(return_value=True),
                 load_input_backend=Mock(return_value="direct"),
                 load_input_unknown_transport=Mock(return_value="coordinator"),
+                load_annulus_settings=Mock(return_value={"annulus_size": 8.5, "annulus_stride": 2.25}),
             )
             app = SimpleNamespace(
                 input_controller=SimpleNamespace(
@@ -480,6 +481,7 @@ class RunServiceTests(unittest.TestCase):
             settings_store.load_band_limited_harmonics.assert_called_once_with()
             self.assertEqual(spec.input_backend, "direct")
             self.assertEqual(spec.input_unknown_transport, "coordinator")
+            self.assertEqual(spec.annulus_settings, {"annulus_size": 8.5, "annulus_stride": 2.25})
             settings_store.load_copy_hd_passthrough.assert_called_once_with()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()

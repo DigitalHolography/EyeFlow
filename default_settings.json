@@ -40,6 +40,8 @@
     }
   },
   "velocity_estimation_method": "both",
+  "annulus_size": null,
+  "annulus_stride": null,
   "band_ratio_frequency_scale_hz": 1.0,
   "band_limited_harmonics": 12,
   "copy_hd_passthrough": false,

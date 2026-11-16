@@ -20,6 +20,7 @@ from plotting.article import (
     ARTICLE_WIDTH_INCHES as LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
     COMPACT_ARTICLE_STYLE,
     apply_article_style,
+    add_temporal_mean_reference,
     create_article_figure,
     prepare_article_fill_layer,
 )
@@ -363,6 +364,7 @@ def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
         linestyle="-",
         linewidth=COMPACT_ARTICLE_STYLE.signal_line_width,
     )
+    add_temporal_mean_reference(ax, median, label="_nolegend_")
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$")
@@ -414,7 +416,10 @@ def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
             label=_statistic_label("SD", standard_deviation),
         ),
     ]
-    add_legend(ax, COMPACT_ARTICLE_STYLE.legend_layout, handles=statistic_handles)
+    # Reserve space for the larger two-line statistics legend above all bars
+    # and the fitted curve, keeping histogram heights as measurement counts.
+    ax.margins(y=0.75)
+    add_legend(ax, COMPACT_ARTICLE_STYLE.legend_layout, handles=statistic_handles, loc="upper right")
     ax.set_xlabel("Lumen diameter (µm)")
     ax.set_ylabel("Count")
     apply_article_style(fig, COMPACT_ARTICLE_STYLE)

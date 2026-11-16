@@ -19,6 +19,7 @@ from app_settings import (
     validate_copy_hd_passthrough,
     validate_input_backend,
     validate_input_unknown_transport,
+    validate_annulus_settings,
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.readers.h5 import load_h5_sidecar_config
@@ -85,6 +86,7 @@ def run_pipelines_to_output(
     velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
     input_backend: str = "auto",
     input_unknown_transport: str = "coordinator",
+    annulus_settings: Mapping[str, object] | None = None,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None = None,
@@ -97,6 +99,7 @@ def run_pipelines_to_output(
     setup_started = perf_counter()
     Logger.log_perf(f"START stage=run/runtime_setup at={setup_started:.6f}")
     input_backend = validate_input_backend(input_backend)
+    resolved_annulus_settings = validate_annulus_settings(annulus_settings)
     input_unknown_transport = validate_input_unknown_transport(input_unknown_transport)
     resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
@@ -147,6 +150,7 @@ def run_pipelines_to_output(
                     pipeline_options=pipeline_options or {},
                     band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
                     band_limited_harmonics=resolved_harmonics,
+                    annulus_settings=resolved_annulus_settings,
                     copy_hd_passthrough=resolved_copy_hd_passthrough,
                     input_backend=input_backend,
                     input_unknown_transport=input_unknown_transport,
@@ -227,6 +231,7 @@ def _execute_input(
     pipeline_options: Mapping[str, Sequence[str]],
     band_ratio_frequency_scale_hz: float,
     band_limited_harmonics: int,
+    annulus_settings: Mapping[str, object],
     copy_hd_passthrough: bool,
     velocity_workflow_selection: str,
     input_backend: str,
@@ -276,6 +281,7 @@ def _execute_input(
         pipeline_targets=tuple(target_names),
         velocity_workflow_selection=velocity_workflow_selection,
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+        annulus_settings=dict(annulus_settings),
     )
     with Logger.perf_stage("run/scheduler_setup"):
         scheduler = _create_scheduler(
