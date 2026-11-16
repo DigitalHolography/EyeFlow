@@ -14,6 +14,7 @@ from pathlib import Path
 import shutil
 import os
 import struct
+import json
 from math import prod
 
 import numpy as np
@@ -670,6 +671,8 @@ class InputPolicy:
     replay_frames: int = 32
     stream_frames: int = 16
     stream_buffers: int = 2
+    max_future_stream_buffers: int = field(default_factory=lambda: int(
+        os.environ.get("EYEFLOW_FUTURE_STREAM_BUFFERS", "2")))
     max_io_bytes: int = 64 * 2**20
     max_streams: int = 2
     direct_buffers: int = 2
@@ -687,7 +690,7 @@ class InputPolicy:
             raise ValueError("input_backend must be auto, direct or replay")
         if self.unknown_transport not in ("coordinator", "worker"):
             raise ValueError("unknown_transport must be coordinator or worker")
-        for name in ("replay_frames", "stream_frames", "stream_buffers", "max_io_bytes", "max_streams", "direct_buffers",
+        for name in ("replay_frames", "stream_frames", "stream_buffers", "max_future_stream_buffers", "max_io_bytes", "max_streams", "direct_buffers",
                      "max_prefetch_jobs", "prefetch_regions", "max_prefetch_bytes", "bulk_bytes"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -1091,15 +1094,56 @@ class InputService:
     def _set_idle(self, cause=None):
         """Log transitions, not each iteration of the existing request wait."""
         previous = self._idle_period
-        if previous is not None and previous[0] == cause:
+        full = tuple(identity for identity, stream in self._streams.items()
+                     if stream.owner is None and not stream.closing and not stream.error
+                     and stream.next_fill < stream.total and all(
+                         buffer.state is not BufferState.FREE for buffer in stream.buffers)) if cause else ()
+        if previous is not None and previous[0] == cause and previous[2] == full:
             return
         now = perf_counter()
         if previous is not None:
             Logger.log_perf(f"input_idle_end reason={previous[0]} at={now:.6f} "
                             f"wall_seconds={now - previous[1]:.6f}")
-        self._idle_period = None if cause is None else (cause, now)
+        self._idle_period = None if cause is None else (cause, now, full)
         if cause is not None:
-            Logger.log_perf(f"input_idle_begin reason={cause} at={now:.6f} detail={self._idle_detail}")
+            Logger.log_perf(f"input_idle_begin reason={cause} at={now:.6f} "
+                            f"future_full_streams={list(full)} detail={self._idle_detail}")
+
+    def _trace_stream(self, event, stream, **detail):
+        """Development-only lifecycle facts; no additional scheduling or counters."""
+        frame_bytes = prod(stream.shape[1:]) * stream.dtype.itemsize
+        ready = [buffer for buffer in stream.buffers if buffer.state is BufferState.READY]
+        record = dict(event=event, at=perf_counter(),
+            stream=next(identity for identity, item in self._streams.items() if item is stream),
+            dataset=stream.key, owner=stream.owner, buffers=len(stream.buffers),
+            ceiling=self.policy.max_future_stream_buffers, frames_per_buffer=stream.frames,
+            reserved_bytes=stream.reserved, ready_blocks=len(ready),
+            ready_frames=sum(buffer.stop - buffer.start for buffer in ready),
+            ready_bytes=sum((buffer.stop - buffer.start) * frame_bytes for buffer in ready),
+            prefetched_ready_bytes=sum((buffer.stop - buffer.start) * frame_bytes
+                                      for buffer in ready if buffer.speculative), **detail)
+        Logger.log_perf("input_stream_event " + json.dumps(record, separators=(",", ":")))
+
+    def _prefetch_usage(self):
+        # Count committed work too: an active prefetch may overtake queued
+        # future work, whose byte allowance must not be spent a second time.
+        replay_bytes = sum(
+            min(replay.frames, replay.array.shape[0] - r * replay.frames)
+            * prod(replay.array.shape[1:]) * replay.array.dtype.itemsize
+            for replay in self._replays.values()
+            for r, state in enumerate(replay.states)
+            if state in (RegionState.READY, RegionState.QUEUED, RegionState.LOADING)
+            and r not in replay.served)
+        stream_bytes = sum(stream.reserved for stream in self._streams.values() if stream.owner is None)
+        return replay_bytes, stream_bytes
+
+    def _block_stream_growth(self, stream, reason):
+        if stream.growth_blocked_reason != reason:
+            self._metric(f"input_future_stream_growth_blocked_{reason}")
+            stream.growth_blocked_reason = reason
+            self._trace_stream("growth_blocked", stream, reason=reason,
+                               speculative_bytes=sum(self._prefetch_usage()),
+                               speculative_limit=self.policy.max_prefetch_bytes)
 
     def _plan_prefetch(self):
         """Select one operation at a boundary, ordered by imminent first use.
@@ -1120,14 +1164,9 @@ class InputService:
         if perf_counter() < self._plan_retry:
             self._prefetch_idle("constraint", "memory_admission_backoff")
             return
-        replay_bytes = sum(
-            min(replay.frames, replay.array.shape[0] - r * replay.frames)
-            * prod(replay.array.shape[1:]) * replay.array.dtype.itemsize
-            for replay in self._replays.values()
-            for r, state in enumerate(replay.states)
-            if state is RegionState.READY and r not in replay.served)
-        stream_bytes = sum(stream.reserved for stream in self._streams.values() if stream.owner is None)
+        replay_bytes, stream_bytes = self._prefetch_usage()
         unused_bytes = replay_bytes + stream_bytes
+        self.storage.metrics.maximum("input_speculative_peak_bytes", unused_bytes)
         source_order = {key: i for i, key in enumerate(self.manifest)}
         candidates = []
         for key, item in self.manifest.items():
@@ -1151,19 +1190,36 @@ class InputService:
             priority = 2 if active else 3
             pair_order = min(source_order[key], source_order.get(self.pairs.get(key), source_order[key]))
             if item["backend"] != "replay":
-                if key in self._stream_planned or item["access"] - {InputAccess.METADATA} != {InputAccess.STREAM} or any(
-                        stream.key == key for stream in self._streams.values()):
+                existing = next(((identity, stream) for identity, stream in self._streams.items()
+                                 if stream.key == key), None)
+                if existing is not None:
+                    identity, stream = existing
+                    if (stream.owner is not None or stream.closing or stream.error
+                            or stream.next_fill >= stream.total):
+                        continue
+                    if len(stream.buffers) >= self.policy.max_future_stream_buffers:
+                        self._block_stream_growth(stream, "buffer_limit")
+                        continue
+                    capacity = prod(stream.shape) * stream.dtype.itemsize
+                    if unused_bytes + capacity > self.policy.max_prefetch_bytes:
+                        self._block_stream_growth(stream, "speculative_bytes")
+                        blockers.append(("ahead_limit", key, "stream_growth_bytes", capacity))
+                        continue
+                    candidates.append(((priority, *first_use, len(stream.buffers), pair_order,
+                                        source_order[key]), key, None, identity))
+                    continue
+                if key in self._stream_planned or item["access"] - {InputAccess.METADATA} != {InputAccess.STREAM}:
                     continue
                 frames = self._frames(entry, self.policy.stream_frames)
                 capacity = frames * prod(entry.shape[1:]) * entry.dtype.itemsize * min(
-                    self.policy.stream_buffers, self.policy.max_prefetch_jobs)
+                    self.policy.stream_buffers, self.policy.max_future_stream_buffers, self.policy.max_prefetch_jobs)
                 if unused_bytes + capacity > self.policy.max_prefetch_bytes:
                     blockers.append(("ahead_limit", key, "next_stream_pool_bytes", capacity))
                     continue
                 if len(self._streams) >= self.policy.max_streams:
                     blockers.append(("ahead_limit", key, "stream_pool_count", self.policy.max_streams))
                     continue
-                candidates.append(((priority, *first_use, 0, pair_order, source_order[key]), key, None))
+                candidates.append(((priority, *first_use, 0, pair_order, source_order[key]), key, None, None))
                 continue
             replay = self._replays.get(key)
             if replay is not None and replay.error:
@@ -1181,16 +1237,22 @@ class InputService:
             if unused_bytes + size > self.policy.max_prefetch_bytes:
                 blockers.append(("ahead_limit", key, "next_region", region, "needed_bytes", size))
                 continue
-            candidates.append(((priority, *first_use, unused, pair_order, source_order[key]), key, region))
+            candidates.append(((priority, *first_use, unused, pair_order, source_order[key]), key, region, None))
         queued_priority = min((job.priority for job in self._jobs.values()), default=4)
-        for score, key, region in sorted(candidates):
+        for score, key, region, stream_id in sorted(candidates):
             # Reconsider active inputs before an already queued future fill, but
             # do not accumulate peers behind it or reserve the same ahead budget
             # twice. Demand/lookahead remain entirely with the existing queue.
             if score[0] >= queued_priority:
                 break
             try:
-                if region is None:
+                if stream_id is not None:
+                    reason = self._grow_future_stream(stream_id, score[0])
+                    if reason is not None:
+                        blockers.append(("constraint" if reason in ("memory", "allocation") else "ahead_limit",
+                                         key, "stream_growth", reason))
+                        continue
+                elif region is None:
                     self._open_stream(None, *key, None, None, priority=score[0])
                 else:
                     self._queue_region(key, region, score[0])
@@ -1206,6 +1268,7 @@ class InputService:
                 Logger.log_perf(f"input_prefetch_declined dataset={key} reason={exc}")
                 continue
             if self._jobs:
+                self.storage.metrics.maximum("input_speculative_peak_bytes", sum(self._prefetch_usage()))
                 Logger.log_perf(f"input_plan_selection dataset={key} region={region} "
                                 f"priority={score[0]} first_use={score[1:3]} unused_regions={score[3]} "
                                 f"pair={self.pairs.get(key)} reason=imminent_first_use_then_balanced_depth "
@@ -1574,6 +1637,7 @@ class InputService:
                 stream_id, index = args
                 stream = self._owned_stream(identity, stream_id)
                 buffer = stream.buffers[index]
+                self._trace_stream("release", stream, buffer=index, start=buffer.start, stop=buffer.stop)
                 buffer.release()
                 self._fill_free(stream_id)
             elif operation == "stream_close":
@@ -1950,12 +2014,13 @@ class InputService:
         key = self.aliases[slot, path]
         if owner is not None:
             for identity, stream in list(self._streams.items()):
-                if stream.owner is not None or stream.key != key:
+                if stream.owner is not None or stream.closing or stream.key != key:
                     continue
                 # A pool may have shrunk under memory pressure. Smaller blocks
                 # still meet the caller's upper bound and preserve lease semantics.
                 if stream.frames <= frames and stream.frames * frame_bytes <= limit:
                     stream.adopt(owner)
+                    self._trace_stream("adopted", stream)
                     for index, buffer in enumerate(stream.buffers):
                         if buffer.state is BufferState.FILLING:
                             self._enqueue(StreamRead(identity, index), 1)
@@ -1968,7 +2033,8 @@ class InputService:
         if len(self._streams) >= self.policy.max_streams:
             raise MemoryError("Input stream capacity exhausted; close another stream first")
         budget = self.storage.budget
-        count = min(self.policy.stream_buffers, self.policy.max_prefetch_jobs) if owner is None else self.policy.stream_buffers
+        count = min(self.policy.stream_buffers, self.policy.max_future_stream_buffers,
+                    self.policy.max_prefetch_jobs) if owner is None else self.policy.stream_buffers
         while True:
             shape = (frames, *dataset.shape[1:])
             size = int(np.prod(shape)) * dataset.dtype.itemsize
@@ -2015,8 +2081,74 @@ class InputService:
         self._metric("input_stream_buffers_created", len(buffers))
         self.storage.metrics.maximum("input_stream_peak_buffers", sum(len(item.buffers) for item in self._streams.values()))
         self.storage.metrics.maximum("input_stream_peak_bytes", sum(item.reserved for item in self._streams.values()))
+        self._trace_stream("created", self._streams[identity], future=owner is None,
+                           memory_names=[buffer.memory.name for buffer in buffers])
         self._fill_free(identity)
         self._reply(owner, identity)
+
+    def _grow_future_stream(self, identity, priority):
+        """Admit one extra slab; never resize or reuse a borrowed destination."""
+        stream = self._streams[identity]
+        if stream.owner is not None or stream.closing or stream.error:
+            return "inactive"
+        if any(buffer.state is not BufferState.READY for buffer in stream.buffers):
+            return "pending_fill"
+        if sum(job.priority > 0 and self._speculative(job.operation)
+               for job in self._jobs.values()) >= self.policy.max_prefetch_jobs:
+            self._block_stream_growth(stream, "queue_limit")
+            return "queue_limit"
+        size, budget = prod(stream.shape) * stream.dtype.itemsize, self.storage.budget
+        if stream.growth_declined_pressure == 0:
+            self._block_stream_growth(stream, "allocation")
+            return "allocation"
+        if budget is not None:
+            pressure = max(sum(budget.used.values()), budget._observed_increment())
+            if (stream.growth_declined_pressure is not None
+                    and pressure >= stream.growth_declined_pressure):
+                self._block_stream_growth(stream, "memory")
+                return "memory"
+        self._trace_stream("growth_attempt", stream, target_buffers=len(stream.buffers) + 1)
+        if budget is not None:
+            if not budget.reserve_memory(size, "input"):
+                stream.growth_declined_pressure = pressure
+                self._block_stream_growth(stream, "memory")
+                return "memory"
+        try:
+            memory = SharedMemory(create=True, size=size)
+        except BaseException as exc:
+            if budget is not None:
+                budget.release_memory(size, "input")
+            if not isinstance(exc, (OSError, MemoryError)):
+                raise
+            # A failed OS allocation is not retried for this speculative pool.
+            stream.growth_declined_pressure = 0
+            self._block_stream_growth(stream, "allocation")
+            return "allocation"
+        stream.buffers.append(StreamBuffer(memory))
+        stream.priority = priority
+        self._fill_free(identity)
+        if stream.buffers[-1].state is BufferState.FREE:
+            stream.buffers.pop()
+            memory.close()
+            memory.unlink()
+            if budget is not None:
+                budget.release_memory(size, "input")
+            self._block_stream_growth(stream, "queue_limit")
+            return "queue_limit"
+        stream.reserved += size
+        stream.growth_declined_pressure = stream.growth_blocked_reason = None
+        self._metric("input_future_stream_growth_buffers")
+        self._metric("input_future_stream_growth_bytes", size)
+        self._metric("input_stream_reserved_bytes", size)
+        self._metric("input_stream_active_bytes", size)
+        self._metric("input_stream_active_buffers")
+        self._metric("input_stream_buffers_created")
+        self.storage.metrics.maximum("input_stream_peak_buffers", sum(len(s.buffers) for s in self._streams.values()))
+        self.storage.metrics.maximum("input_stream_peak_bytes", sum(s.reserved for s in self._streams.values()))
+        Logger.log_perf(f"input_future_stream_growth stream={identity} dataset={stream.key} "
+                        f"buffers={len(stream.buffers)} reserved_bytes={stream.reserved} "
+                        f"memory_name={memory.name} at={perf_counter():.6f}")
+        return None
 
     def _fill_free(self, identity):
         stream = self._streams[identity]
@@ -2025,9 +2157,10 @@ class InputService:
             if buffer.state is BufferState.FREE and stream.next_fill < total and not stream.error:
                 start = stream.next_fill
                 stop = min(start + stream.frames, total)
+                if not self._enqueue(StreamRead(identity, index), stream.priority):
+                    continue
                 buffer.begin_fill(start, stop)
                 stream.next_fill = stop
-                self._enqueue(StreamRead(identity, index), stream.priority)
 
     def _prepare_stream(self, identity, index, job):
         stream = self._streams.get(identity)
@@ -2067,12 +2200,15 @@ class InputService:
         if result.error:
             buffer.state = BufferState.FAILED
             stream.error = f"Input stream read failed: {result.error}"
+            self._trace_stream("failed", stream, buffer=index, error=stream.error, job=result.token)
         else:
             if info.replay_key is not None:
                 replay = self._replays[info.replay_key]
                 replay.demanded.update(info.regions)
                 self._record_replay_consumption(info.replay_key, info.regions)
             buffer.ready(speculative=info.issued_priority >= 2)
+            self._trace_stream("ready", stream, buffer=index, start=buffer.start, stop=buffer.stop,
+                               speculative=buffer.speculative, job=result.token)
         self._stream_ready(identity)
 
     def _stream_ready(self, identity):
@@ -2096,6 +2232,9 @@ class InputService:
                 self._enqueue(StreamRead(identity, index), 0)
                 return
             buffer.take()
+            self._trace_stream("take", stream, buffer=index, start=buffer.start, stop=buffer.stop,
+                               speculative=buffer.speculative, final=buffer.stop == total,
+                               wait_seconds=perf_counter() - stream.waiting)
             if buffer.speculative:
                 Logger.log_perf(f"input_prefetch_consumed dataset={stream.key} "
                                 f"stream_frames={buffer.start}:{buffer.stop} at={perf_counter():.6f}")
@@ -2114,6 +2253,9 @@ class InputService:
 
     def _close_stream(self, identity):
         stream = self._streams[identity]
+        if not stream.closing:
+            self._trace_stream("closing", stream, error=stream.error,
+                               final_taken=stream.next_take >= stream.total)
         if stream.waiting is not None:
             self._reply(stream.owner, error="Input stream cancelled")
             stream.waiting = None
@@ -2122,6 +2264,7 @@ class InputService:
             self._jobs.pop(("stream", identity, index), None)
         if self._inflight is not None and isinstance(self._inflight, StreamInFlight) and self._inflight.job.operation.stream == identity:
             return  # Reader still owns a destination; completion retires the pool.
+        self._trace_stream("retired", stream, memory_names=[buffer.memory.name for buffer in stream.buffers])
         self._streams.pop(identity)
         unused = sum((buffer.stop - buffer.start) * prod(stream.shape[1:]) * stream.dtype.itemsize
                      for buffer in stream.buffers if buffer.speculative and not buffer.consumed)
@@ -2174,6 +2317,11 @@ class InputService:
                     self._metric(f"input_idle_{reason}_seconds", waited)
                     if cause != reason:
                         self._metric(f"input_idle_{cause}_seconds", waited)
+                    if any(stream.owner is None and not stream.closing and not stream.error
+                           and stream.next_fill < stream.total and all(
+                               buffer.state is not BufferState.FREE for buffer in stream.buffers)
+                           for stream in self._streams.values()):
+                        self._metric("input_idle_future_stream_full_seconds", waited)
                 if request is not None:
                     self._handle(request)
                 if busy and not self.reader.thread.is_alive() and self.reader.completed.empty():

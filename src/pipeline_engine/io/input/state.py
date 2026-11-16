@@ -171,6 +171,10 @@ class StreamState:
     error: str | None = None
     closing: bool = False
 
+    # Retry refused speculative allocation only after memory pressure falls.
+    growth_declined_pressure: int | None = None
+    growth_blocked_reason: str | None = None
+
     def adopt(self, owner):
         if self.owner is not None or self.closing:
             raise RuntimeError("Only an unowned active stream may be adopted")
