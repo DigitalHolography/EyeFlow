@@ -17,6 +17,7 @@ class AnnulusGeometry:
     ring_count: int
     segment_length_frac: float | None = None
     ring_stride_frac: float | None = None
+    clip_outer_radius: bool = True
 
     @property
     def stride_frac(self) -> float:
@@ -95,7 +96,8 @@ def _ring_bounds(
     inner = settings.inner_radius_frac + ring_index * settings.stride_frac
     if length is None:
         length = settings.ring_width_frac
-    return inner, min(settings.outer_radius_frac, inner + length)
+    outer = inner + length
+    return inner, min(settings.outer_radius_frac, outer) if settings.clip_outer_radius else outer
 
 
 def section_bounds(
@@ -113,10 +115,13 @@ def image_half_diagonal(ny: int, nx: int) -> float:
     return float(np.hypot((ny - 1) / 2.0, (nx - 1) / 2.0))
 
 
-def annulus_count(extent_pixels: float, size_pixels: float, stride_pixels: float) -> int:
+def annulus_count(
+    extent_pixels: float, size_pixels: float, stride_pixels: float, *, retain_all: bool = False,
+) -> int:
     """Count starts before the outer limit, preserving useful clipped sections.
 
-    Suppress only an extra overlapping tail thinner than min(1 native pixel,
+    ``retain_all`` keeps every positive terminal section at full sampling density.
+    Otherwise suppress only an extra overlapping tail thinner than min(1 native pixel,
     5% of the size, stride). This keeps deliberately subpixel sampling useful.
     With 50% overlap, even zero-based indices are legacy annuli: retain their
     positive clipped tails even below that threshold. Non-overlapping/gapped
@@ -129,7 +134,7 @@ def annulus_count(extent_pixels: float, size_pixels: float, stride_pixels: float
     count = max(1, int(np.ceil(extent_pixels / stride_pixels)))
     while count and extent_pixels - (count - 1) * stride_pixels <= tolerance:
         count -= 1
-    if count and stride_pixels < size_pixels:
+    if not retain_all and count and stride_pixels < size_pixels:
         remaining = extent_pixels - (count - 1) * stride_pixels
         legacy_position = (
             abs(2 * stride_pixels - size_pixels) <= tolerance and (count - 1) % 2 == 0

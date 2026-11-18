@@ -1,4 +1,6 @@
 """Spawned output ownership, accepted-only writes, backpressure and failures."""
+
+from app_settings import UserSettings
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -152,8 +154,8 @@ def test_runtime_releases_new_storage_when_manager_construction_fails(tmp_path, 
         with pytest.raises(OSError, match='manager could not start'):
             runtime.run_pipelines_to_output(
                 output_manager=output_manager, pipelines=(),
-                holodoppler_h5=None, doppler_vision_h5=None,
-            )
+                holodoppler_h5=None, dopplerview_h5=None,
+             settings=UserSettings(values={}))
         assert len(created) == 1 and created[0]._closed
         assert not created[0].directory.exists()
     finally:
@@ -379,8 +381,8 @@ def test_nonexposed_stage_serializes_before_later_failure_in_same_invocation(tmp
     from pipeline_engine.stage_graph.executor import StageGraphExecutor
     with output(tmp_path) as (model,service):
         manager=OutputManager(HoloRunLayout.from_holo(tmp_path/'scan.holo'))
-        context=PipelineContext(work_h5=model,holodoppler_h5=None,doppler_vision_h5=None,
-            output_manager=manager,pipeline_name='science',variables={})
+        context=PipelineContext(work_h5=model,holodoppler_h5=None,dopplerview_h5=None,
+            output_manager=manager,pipeline_name='science',variables={}, settings=UserSettings(values={}))
         def produce(ctx):
             ctx.dag.handoff('value',np.array([7.,-0.,np.nan]))
             service.drain()

@@ -17,7 +17,6 @@ from data_manager import InvocationResource
 from input_output import EyeFlowOutputPaths
 from pipeline_engine import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.context import require_managed_runtime
-from pipelines.signal_settings import band_limited_harmonics
 from pipelines.topology_core.runner import prepared_topologies
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.runner import velocity
@@ -102,7 +101,7 @@ def _inputs(ctx):
     ctx.require_inputs("hd", "dv")
     retinal = velocity(ctx)
     source = load_velocity_analysis_source_data(ctx)
-    harmonic_count = band_limited_harmonics(ctx)
+    harmonic_count = ctx.settings.band_limited_harmonics
     attrs = _context_attrs(source, retinal, harmonic_count, "eyeflow_velocity_analysis",
                            prepared_topologies(ctx)["artery"].native.ring_settings,
                            retinal.cardiac_cycle_source)

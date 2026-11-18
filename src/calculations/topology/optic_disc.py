@@ -235,11 +235,15 @@ class OpticDisc:
         *,
         annulus_size: float | None = None,
         annulus_stride: float | None = None,
+        number_of_radii_in_half_diagonal: int = 32,
     ) -> AnnulusGeometry:
-        """Derive annuli with independently selected native-pixel size/stride.
+        """Derive full-width annuli with half-diagonal sampling density.
 
-        Explicit legacy counts retain non-overlapping sampling. New defaults
-        retain the historical size max(nx, ny)/25, with half that stride.
+        The count includes intermediate annuli: stride = half-diagonal / count
+        and size = 2 * stride. Starts extend to the farthest image corner from
+        the optic disc, without clipping outer boundaries or dropping tails.
+        Explicit native-pixel size/stride and legacy FOV-count calculation
+        paths remain available with their existing terminal-boundary behavior.
         """
 
         for name, value in (("annulus_size", annulus_size), ("annulus_stride", annulus_stride)):
@@ -249,12 +253,45 @@ class OpticDisc:
             ):
                 raise ValueError(f"{name} must be finite and strictly positive (native pixels).")
         legacy = annulus_size is None and annulus_stride is None and number_of_radii_in_fov is not None
+        count_based = annulus_size is None and annulus_stride is None and not legacy
         if legacy and (isinstance(number_of_radii_in_fov, bool)
                        or not isinstance(number_of_radii_in_fov, Integral) or number_of_radii_in_fov < 1):
             raise ValueError("number_of_radii_in_FOV must be positive and an integer.")
+        if count_based and (
+            isinstance(number_of_radii_in_half_diagonal, bool)
+            or not isinstance(number_of_radii_in_half_diagonal, Integral)
+            or number_of_radii_in_half_diagonal < 1
+        ):
+            raise ValueError("number_of_radii_in_half_diagonal must be positive and an integer.")
         self._required_dimensions("derive annulus geometry")
         ny, nx = _validated_image_shape(image_shape)
         radius_scale = max(image_half_diagonal(ny, nx), 1.0)
+        if count_based:
+            stride = radius_scale / number_of_radii_in_half_diagonal
+            size = 2.0 * stride
+            inner = self.centered_circle_radius_pixels() / radius_scale
+            cx, cy = self.center
+            farthest_radius = float(np.hypot(
+                max(abs(cx), abs(nx - 1 - cx)),
+                max(abs(cy), abs(ny - 1 - cy)),
+            ))
+            # The branch-support mask evaluates distances in float32. Round its
+            # limit outward so a corner cannot disappear through roundoff.
+            outer = float(np.nextafter(
+                np.float32(farthest_radius / radius_scale), np.float32(np.inf),
+            ))
+            count = annulus_count(
+                farthest_radius - inner * radius_scale, size, stride, retain_all=True,
+            )
+            return AnnulusGeometry(
+                inner_radius_frac=inner,
+                outer_radius_frac=outer,
+                ring_width_frac=size / radius_scale,
+                ring_count=count,
+                segment_length_frac=size / radius_scale,
+                ring_stride_frac=stride / radius_scale,
+                clip_outer_radius=False,
+            )
         size = float(annulus_size) if annulus_size is not None else max(nx, ny) / float(
             number_of_radii_in_fov if legacy else 25
         )

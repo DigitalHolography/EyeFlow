@@ -10,6 +10,7 @@ from runtime_limits import thread_allowance
 
 
 def test_run_service_reuses_the_callers_cpu_and_memory_budget(monkeypatch):
+    from app_settings import UserSettings
     from pipeline_engine.execution import run_service
     from pipeline_engine.planning.dag import PipelineExecutionPlan
     from pipeline_engine.resources import current_resources
@@ -19,7 +20,7 @@ def test_run_service_reuses_the_callers_cpu_and_memory_budget(monkeypatch):
         assert current_resources() is budget
         return run_service.RunResult((), ())
     monkeypatch.setattr(run_service, "_execute_batch", execute)
-    spec = run_service.RunSpec(PipelineExecutionPlan((), ()), (), {})
+    spec = run_service.RunSpec(PipelineExecutionPlan((), ()), (), {}, UserSettings(values={}))
     with budget.activate():
         assert run_service.execute_run(spec).succeeded
 

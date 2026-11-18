@@ -12,7 +12,7 @@ def annulus_widths_pixels(
     settings: AnnulusGeometry,
     ring_count: int,
 ) -> np.ndarray:
-    """Return radial widths, including a clipped final annulus."""
+    """Return measured widths; count-based annuli retain their full thickness."""
 
     radius_scale = max(image_half_diagonal(*image_shape), 1.0)
     widths = np.zeros(ring_count, dtype=np.float32)

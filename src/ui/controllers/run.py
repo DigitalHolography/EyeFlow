@@ -37,7 +37,6 @@ class RunController:
         self._stop_after_current_file = Event()
         self._current_file: _FileStarted | None = None
         self._current_pipeline: _PipelineStarted | None = None
-        self._last_input_directory: Path | None = None
         Logger.configure(on_log=self._queue_log)
 
     def _queue_log(self, message: str) -> None:
@@ -70,9 +69,7 @@ class RunController:
             self._add_input_paths(paths)
 
     def _input_dialog_directory(self) -> str:
-        directory = getattr(self, "_last_input_directory", None)
-        if directory is None:
-            directory = self.app.settings_store.load_last_input_directory()
+        directory = self.app.settings.last_input_directory
         if directory is not None and directory.is_dir():
             return str(directory)
         selected = self.app.input_controller.selected_holo_path()
@@ -83,9 +80,9 @@ class RunController:
         return os.getcwd()
 
     def _remember_input_directory(self, directory: Path) -> None:
-        self._last_input_directory = directory.expanduser().resolve()
+        self.app.settings.last_input_directory = directory
         try:
-            self.app.settings_store.save_last_input_directory(self._last_input_directory)
+            self.app.settings.save()
         except OSError as exc:
             self.app.settings_controller.show_settings_warning(
                 "Settings not saved",
@@ -147,15 +144,8 @@ class RunController:
                 pipeline_options=(
                     self.app.pipeline_library_controller.selected_pipeline_options()
                 ),
-                band_ratio_frequency_scale_hz=(
-                    self.app.settings_store.load_band_ratio_frequency_scale_hz()
-                ),
-                velocity_estimation_method=self.app.settings_store.load_velocity_estimation_method(),
-                band_limited_harmonics=self.app.settings_store.load_band_limited_harmonics(),
-                annulus_settings=self.app.settings_store.load_annulus_settings(),
-                copy_hd_passthrough=self.app.settings_store.load_copy_hd_passthrough(),
-                input_backend=self.app.settings_store.load_input_backend(),
-                input_unknown_transport=self.app.settings_store.load_input_unknown_transport(),
+                settings=self.app.settings,
+
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

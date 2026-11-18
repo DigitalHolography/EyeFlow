@@ -27,6 +27,11 @@ def process_fixture(ctx):
                 sleep(0.01)
         ctx.state.set("from_worker", 7)
         ctx.dag.handoff("video", values + 2)
+        ctx.dag.handoff("settings", np.array([
+            ctx.settings.band_ratio_frequency_scale_hz,
+            ctx.settings.band_limited_harmonics,
+            ctx.settings.number_of_radii_in_half_diagonal,
+        ]))
 
     def independent(ctx):
         ctx.dag.handoff("independent", np.array([17]))
@@ -42,7 +47,10 @@ def process_fixture(ctx):
     return StageGraph(
         (
             StageSpec(
-                "source", source, products=(ProductSpec("video", path="Worker/video"),)
+                "source", source, products=(
+                    ProductSpec("video", path="Worker/video"),
+                    ProductSpec("settings", path="Worker/settings"),
+                )
             ),
             StageSpec("optional", optional_failure, requires=("video",)),
             StageSpec(

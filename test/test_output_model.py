@@ -1,5 +1,7 @@
 """Output serialization must preserve metadata and publish atomically."""
 
+from app_settings import UserSettings
+
 from pathlib import Path
 
 import h5py
@@ -228,9 +230,9 @@ def test_nonexposed_handoff_notifies_before_producer_returns_and_survives_later_
         manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
         batches, _ = _observe_committed_datasets(model)
         exposed = []
-        context = PipelineContext(work_h5=model, holodoppler_h5=None, doppler_vision_h5=None,
+        context = PipelineContext(work_h5=model, holodoppler_h5=None, dopplerview_h5=None,
                                   output_manager=manager, pipeline_name="science", variables={},
-                                  on_product_commit=lambda *args: exposed.append(args))
+                                  on_product_commit=lambda *args: exposed.append(args), settings=UserSettings(values={}))
 
         def produce(ctx):
             ctx.dag.handoff("value", np.array([7., -0., np.nan]))

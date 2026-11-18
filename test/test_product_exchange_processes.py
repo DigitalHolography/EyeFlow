@@ -1,5 +1,7 @@
 """Minimal real-process coverage for product transport and acceptance."""
 
+from app_settings import UserSettings
+
 import json
 import multiprocessing
 from contextlib import ExitStack
@@ -78,8 +80,8 @@ def test_accepted_product_survives_producer_crash_and_is_published(tmp_path):
                 output_manager=output,
                 pipelines=descriptors,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
-                copy_hd_passthrough=False,
+                dopplerview_h5=None,
+                settings=UserSettings(values={}),
                 on_finalization_ready=retain,
             )
         assert sync["received"].is_set() and sync["consumer_started"].is_set()

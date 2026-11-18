@@ -1,5 +1,7 @@
 """Local input replay, real processes, partial results and final-only publication."""
 
+from app_settings import UserSettings
+
 import json
 import multiprocessing
 from dataclasses import replace
@@ -243,6 +245,11 @@ def test_final_serialization_preserves_sparse_and_same_file_virtual_storage(tmp_
 @pytest.mark.parametrize("crash", [False, True])
 @pytest.mark.usefixtures("inline_output_service")
 def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, crash):
+    preferences = UserSettings(values={
+        "band_ratio_frequency_scale_hz": 7.5,
+        "band_limited_harmonics": 5,
+        "number_of_radii_in_half_diagonal": 20,
+    })
     source_path = tmp_path / "HD.h5"
     marker = str(tmp_path / "continue")
     values = np.ones((8, 64, 64), dtype=np.float32)
@@ -258,6 +265,8 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
         ctx.state.set("from_main", 5)
 
     def independent(ctx):
+        assert ctx.settings.band_ratio_frequency_scale_hz == 7.5
+        preferences.band_ratio_frequency_scale_hz = 99
         deadline = monotonic() + 20
         while not Path(marker + "-started").exists():
             assert monotonic() < deadline, "Process did not start concurrently"
@@ -296,8 +305,8 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
                     ),
                 ],
                 holodoppler_h5=source_path,
-                doppler_vision_h5=None,
-                copy_hd_passthrough=False,
+                dopplerview_h5=None,
+                settings=preferences,
             )
     finally:
         Logger.reset_current()
@@ -364,7 +373,7 @@ def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, m
         input_paths=[holo],
         target_names=["producer"],
         pipelines=[descriptor("producer", lambda ctx: {"value": 1})],
-    )
+     settings=UserSettings(values={}))
 
     def fail_publish(self, local):
         raise OSError("destination unavailable")
@@ -404,8 +413,8 @@ def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypa
             output_manager=manager,
             pipelines=[PROCESS_DESCRIPTOR, descriptor("safe", lambda ctx: {"safe": 17})],
             holodoppler_h5=None,
-            doppler_vision_h5=None,
-        )
+            dopplerview_h5=None,
+         settings=UserSettings(values={}))
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         assert output["safe"][()] == 17
     assert budget.cpu_used == 0
@@ -439,8 +448,8 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
             output_manager=manager,
             pipelines=[displacement],
             holodoppler_h5=hd_path,
-            doppler_vision_h5=dv_path,
-            copy_hd_passthrough=False,
+            dopplerview_h5=dv_path,
+            settings=UserSettings(values={'copy_hd_passthrough': False}),
         )
     videos = list(manager.dir_for(OutputType.AVI).rglob("*.avi"))
     assert len(videos) == (1 if missing_artery else 2)

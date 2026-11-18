@@ -103,11 +103,6 @@ class TopologyWorkflowTests(unittest.TestCase):
             equal_nan=True,
         )
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_disc_covering_radial_extent_has_no_zero_width_annuli(self):
         vessel = np.ones((11, 11), dtype=bool)
         disc = OpticDisc(None, (5.0, 5.0), 30, 30)
@@ -118,3 +113,7 @@ if __name__ == "__main__":
         self.assertEqual([], list(prepare_segment_chunks(
             np.ones((2, 11, 11), np.float32), prepared,
         )))
+
+
+if __name__ == "__main__":
+    unittest.main()

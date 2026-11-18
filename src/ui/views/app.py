@@ -27,7 +27,7 @@ class AppViewBuilder:
         build_advanced_view(self.app, self.app.advanced_view)
 
     def _build_menu(self) -> None:
-        self.app.ui_mode_var = tk.StringVar(value=self.app.ui_mode)
+        self.app.ui_mode_var = tk.StringVar(value=self.app.settings.ui_mode)
         menu_bar = tk.Menu(self.app)
         view_menu = tk.Menu(menu_bar, tearoff=False)
         view_menu.add_radiobutton(

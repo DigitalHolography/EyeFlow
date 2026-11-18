@@ -20,7 +20,7 @@ class ViewController:
 
     def set_initial_window_size(self) -> None:
         width, height, min_width, min_height = (
-            self.app.settings_controller.window_size_for_mode(self.app.ui_mode)
+            self.app.settings_controller.window_size_for_mode(self.app.settings.ui_mode)
         )
         screen_width = self.app.winfo_screenwidth()
         screen_height = self.app.winfo_screenheight()
