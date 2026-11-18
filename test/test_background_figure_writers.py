@@ -1,5 +1,7 @@
 """Automatic writer capture, immutable snapshots, reports and batch overlap."""
 
+from app_settings import UserSettings
+
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -37,8 +39,8 @@ def _descriptor(name, run, **kwargs):
 def _run(manager, descriptors):
     return run_pipelines_to_output(
         output_manager=manager, pipelines=descriptors,
-        holodoppler_h5=None, doppler_vision_h5=None,
-    )
+        holodoppler_h5=None, dopplerview_h5=None,
+     settings=UserSettings(values={}))
 
 
 def _figure():
@@ -191,7 +193,7 @@ def test_next_file_starts_before_exports_finish_and_completion_logs_are_asynchro
     spec = resolve_run_spec(
         input_paths=[first, second], target_names=["producer"],
         pipelines=[_descriptor("producer", source)],
-    )
+     settings=UserSettings(values={}))
     previous = Logger._current
     Logger.configure(on_log=on_log)
     try:

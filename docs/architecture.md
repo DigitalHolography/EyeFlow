@@ -202,15 +202,40 @@ See [pipeline context](../src/pipelines/AGENTS.md) and
 
 ## Settings lifecycle
 
-`default_settings.json` is the fresh-settings template. `AppSettingsStore` in
-`src/app_settings.py` owns the platform-specific persisted path, loading,
-normalization, import validation, and saving. Catalog-aware normalization adds
+`default_settings.json` is the fresh-settings template. The GUI and CLI share
+the process-wide `user_settings` dataset in `src/app_settings.py`. It loads
+lazily, keeps edits in memory, and provides validated scalar properties plus
+`PipelineVisibilitySettings` and `PipelineOptionsSettings` groups. The GUI's
+`app.settings` references this same dataset. Existing references,
+including individual pipeline option groups, remain current after configuration
+imports and reloads.
+
+```python
+from app_settings import user_settings
+
+user_settings.band_limited_harmonics = 8
+user_settings.pipeline_visibility["velocity_analysis"] = True
+user_settings.pipeline_options["velocity_analysis"]["segments"] = True
+user_settings.save()  # Persist shared edits to the existing settings.json format.
+```
+
+`load()` returns an independent dictionary snapshot; `reload()` explicitly reads
+external file changes. `import_file()` validates and persists a replacement
+before updating the shared dataset. Consumers read properties, edit the dataset,
+and call `save()` to persist it. `AppSettingsStore` retains path
+discovery, JSON persistence, and validation for isolated files; tests and tools
+can also create `UserSettings(path=...)` instances. Settings are shared within
+one process. Runs capture their configuration through `resolve_run_spec` and
+pass it to workers instead of consulting mutable user preferences mid-run.
+The pipeline groups own catalog normalization and selected target/option names;
+front ends do not load individual settings or serialize preferences.
+Catalog-aware normalization adds
 new default-selected pipelines/options to older settings without using old
 files as a complete schema.
 
 The GUI exposes settings through `ui/controllers/settings.py` and pipeline
 selection through `ui/controllers/pipeline_library.py`. The CLI reads the same
-store; `--pipelines` changes target selection. The JSON `velocity_estimation_method` setting selects `doppler_moments`,
+dataset; `--pipelines` changes target selection. The JSON `velocity_estimation_method` setting selects `doppler_moments`,
 `bandratio`, or `both` (the default when absent). The legacy `frequency_bands`
 value is accepted as an alias for `bandratio`. Only selected workflows load
 inputs, estimate velocity, and execute their downstream pipelines. The calibration comes from persisted settings and passes through
@@ -219,7 +244,7 @@ inputs, estimate velocity, and execute their downstream pipelines. The calibrati
 there is no GUI selector. Workflow selection is configured in JSON.
 
 For a new CLI option controlling an existing setting, inspect only
-`src/cli.py`, the relevant `AppSettingsStore` methods/default, the field passed
+`src/cli.py`, the relevant `UserSettings` property/default, the field passed
 to `resolve_run_spec`, and its tests. The GUI matters only if the shared setting
 contract or its presentation must also change.
 

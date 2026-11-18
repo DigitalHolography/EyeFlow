@@ -1,5 +1,7 @@
 """Logical identity, terminal readiness and coordinator ownership boundaries."""
 
+from app_settings import UserSettings
+
 import json
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
@@ -131,7 +133,7 @@ def test_runtime_same_variant_products_are_qualified_and_remain_isolated(tmp_pat
                    descriptor("consumer", lambda ctx: consumer_graph(), graph_factory=consumer_graph,
                        run_once=scope != "same",
                        product_requires=(ProductRequirement(alias="input", producer_pipeline="producer", product="x", variant=scope),))],
-        holodoppler_h5=None, doppler_vision_h5=None)
+        holodoppler_h5=None, dopplerview_h5=None, settings=UserSettings(values={}))
     with h5py.File(final) as result:
         if scope == "unproduced":
             assert "ProcessingMoments/Value" not in result

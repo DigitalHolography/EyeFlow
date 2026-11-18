@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 import json
 import tempfile
 from pathlib import Path
@@ -15,14 +17,14 @@ from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 
 
-@pytest.mark.parametrize("legacy_spectrograms_group,annulus_settings,size,stride", [
-    (False, None, 64 / 25, 64 / 50),
-    (True, None, 64 / 25, 64 / 50),
-    (False, {"annulus_size": 4.25, "annulus_stride": 1.5}, 4.25, 1.5),
-    (False, {"number_of_radii_in_FOV": 8}, 8.0, 8.0),
-])
+@pytest.mark.parametrize("legacy_spectrograms_group,count,size,stride", [
+    (False, 32, np.hypot(31.5, 31.5) / 16, np.hypot(31.5, 31.5) / 32),
+    (True, 32, np.hypot(31.5, 31.5) / 16, np.hypot(31.5, 31.5) / 32),
+    (False, 16,
+     np.hypot(31.5, 31.5) / 8, np.hypot(31.5, 31.5) / 16),
+], ids=["default", "legacy_spectra", "custom_count"])
 def test_frequency_band_run_produces_physical_downstream_outputs(
-    legacy_spectrograms_group, annulus_settings, size, stride,
+    legacy_spectrograms_group, count, size, stride,
 ) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         holo = _write_frequency_band_run(Path(temp_dir))
@@ -58,8 +60,8 @@ def test_frequency_band_run_produces_physical_downstream_outputs(
                 "absolute_waveform_metrics": (),
                 "blood_volume_rate": ("masked_edges",),
             },
-            band_ratio_frequency_scale_hz=2.0,
-            annulus_settings=annulus_settings,
+            settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2.0, 'number_of_radii_in_half_diagonal': count}),
+            
         )
 
         result = execute_run(spec)
@@ -120,6 +122,7 @@ def test_frequency_band_run_produces_physical_downstream_outputs(
             assert artery_flow.shape[-1] == count
             assert file[schema.segmentation.artery.lumen_diameter].shape[-1] == count
             np.testing.assert_allclose(np.diff(bounds[:, 0]), stride, atol=4e-6)
+            np.testing.assert_allclose(np.diff(bounds, axis=1), size, atol=4e-6)
             np.testing.assert_allclose(file[annuli.bounds_fraction][:] * file[annuli.radius_scale_pixels][()],
                                        bounds, rtol=2e-7)
 

@@ -31,7 +31,6 @@ from pipelines.vessel_inputs import load_vessel_topology_inputs
 from utils.logger import Logger
 
 from .gap_masks import gaps_from_m0ff
-from .annulus_sampling import resolve_annulus_geometry
 from .outputs import (
     pack_capillary_analysis_zones,
     pack_gap_mask,
@@ -67,10 +66,9 @@ def _sampling(ctx):
         if inputs.velocity_estimation_method == "frequency_bands"
         else images.moment0
     )
-    ring_settings = resolve_annulus_geometry(
-        ctx,
-        segmentation.optic_disc,
+    ring_settings = segmentation.optic_disc.annulus_geometry(
         tuple(int(size) for size in topology_reference.shape[-2:]),
+        number_of_radii_in_half_diagonal=ctx.settings.number_of_radii_in_half_diagonal,
     )
     prepared = prepare_sampling_plans(
         {

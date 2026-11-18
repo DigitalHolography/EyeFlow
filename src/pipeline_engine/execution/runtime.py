@@ -9,18 +9,8 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from app_settings import (
-    DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    DEFAULT_COPY_HD_PASSTHROUGH,
-    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-    validate_velocity_workflow_selection,
-    selected_velocity_methods,
-    validate_band_limited_harmonics_setting,
-    validate_copy_hd_passthrough,
-    validate_input_backend,
-    validate_input_unknown_transport,
-    validate_annulus_settings,
-)
+from app_settings import UserSettings, selected_velocity_methods, user_settings
+
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.readers.h5 import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
@@ -29,10 +19,7 @@ from input_output.writers.h5 import write_root_attributes
 from input_output.writers.h5_initialization import initialize_output_h5, initialize_acquisition_metadata
 from input_output.writers.h5_output import PipelineH5Output
 from utils.logger import Logger
-from velocity_calibration import (
-    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
-    validate_band_ratio_frequency_scale_hz,
-)
+
 
 from pipeline_engine.planning.base import ExecutionVariant, PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
@@ -80,15 +67,9 @@ def run_pipelines_to_output(
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str] = (),
     pipeline_options: Mapping[str, Sequence[str]] | None = None,
-    band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
-    band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
-    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-    input_backend: str = "auto",
-    input_unknown_transport: str = "coordinator",
-    annulus_settings: Mapping[str, object] | None = None,
+    settings: UserSettings | None = None,
     holodoppler_h5: Path | None,
-    doppler_vision_h5: Path | None,
+    dopplerview_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None = None,
     on_pipeline_success: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
@@ -98,16 +79,7 @@ def run_pipelines_to_output(
     """Run resolved pipelines and write outputs through an OutputManager."""
     setup_started = perf_counter()
     Logger.log_perf(f"START stage=run/runtime_setup at={setup_started:.6f}")
-    input_backend = validate_input_backend(input_backend)
-    resolved_annulus_settings = validate_annulus_settings(annulus_settings)
-    input_unknown_transport = validate_input_unknown_transport(input_unknown_transport)
-    resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
-    resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
-    resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
-
-    resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
-        band_ratio_frequency_scale_hz
-    )
+    settings = (settings if settings is not None else user_settings).for_run()
     with Logger.perf_stage("run/runtime_output_prepare"):
         output_manager.prepare()
     output_h5_path = output_manager.path_for(OutputType.H5)
@@ -148,15 +120,9 @@ def run_pipelines_to_output(
                     pipelines=pipelines,
                     target_names=target_names,
                     pipeline_options=pipeline_options or {},
-                    band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
-                    band_limited_harmonics=resolved_harmonics,
-                    annulus_settings=resolved_annulus_settings,
-                    copy_hd_passthrough=resolved_copy_hd_passthrough,
-                    input_backend=input_backend,
-                    input_unknown_transport=input_unknown_transport,
-                    velocity_workflow_selection=resolved_velocity_selection,
+                    settings=settings,
                     holodoppler_h5=holodoppler_h5,
-                    doppler_vision_h5=doppler_vision_h5,
+                    dopplerview_h5=dopplerview_h5,
                     on_pipeline_start=on_pipeline_start,
                     on_pipeline_success=on_pipeline_success,
                     on_progress=progress,
@@ -229,15 +195,9 @@ def _execute_input(
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
     pipeline_options: Mapping[str, Sequence[str]],
-    band_ratio_frequency_scale_hz: float,
-    band_limited_harmonics: int,
-    annulus_settings: Mapping[str, object],
-    copy_hd_passthrough: bool,
-    velocity_workflow_selection: str,
-    input_backend: str,
-    input_unknown_transport: str,
+    settings: UserSettings,
     holodoppler_h5: Path | None,
-    doppler_vision_h5: Path | None,
+    dopplerview_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
@@ -250,50 +210,46 @@ def _execute_input(
     cleanup. Final output ownership remains with AcquisitionCompletion.
     """
     io = completion.io
-    hd_h5, dv_h5 = io.open_sources(holodoppler_h5, doppler_vision_h5)
+    hd_h5, dv_h5 = io.open_sources(holodoppler_h5, dopplerview_h5)
     _initialize_work_h5(
         work_h5=work_h5, pipelines=pipelines, target_names=target_names,
         pipeline_options=pipeline_options,
-        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-        copy_hd_passthrough=copy_hd_passthrough,
-        velocity_workflow_selection=velocity_workflow_selection,
-        holodoppler_h5=holodoppler_h5, doppler_vision_h5=doppler_vision_h5,
+        settings=settings,
+        holodoppler_h5=holodoppler_h5, dopplerview_h5=dopplerview_h5,
         hd_source_h5=hd_h5, dv_source_h5=dv_h5,
     )
     sources = _prepare_input_replay(
-        io, work_h5, hd_h5, dv_h5, band_limited_harmonics,
-        policy=InputPolicy(input_backend=input_backend, unknown_transport=input_unknown_transport),
+        io, work_h5, hd_h5, dv_h5, settings,
+        policy=InputPolicy(input_backend=settings.input_backend, unknown_transport=settings.input_unknown_transport),
     )
     with Logger.perf_stage("run/plan_graph_construction"):
         plan = _build_execution_plan(pipelines, target_names, pipeline_options)
     sources.service.configure(
-        plan.graphs, {"velocity_workflow_selection": velocity_workflow_selection},
+        plan.graphs, {"velocity_workflow_selection": settings.velocity_estimation_method},
         execution_order=tuple(p.name for p in pipelines),
-        expected_invocations={name: selected_velocity_methods(velocity_workflow_selection)
+        expected_invocations={name: selected_velocity_methods(settings.velocity_estimation_method)
                               for name in plan.variant_dependents},
     )
     status = _ExecutionStatus()
     variables: dict[str, object] = {}
     computation_cache: dict[object, object] = {}
-    settings = InvocationSettings(
+    invocation_settings = InvocationSettings(
         configs=sources.configs, pipeline_options=dict(pipeline_options),
         pipeline_order=tuple(pipeline.name for pipeline in pipelines),
         pipeline_targets=tuple(target_names),
-        velocity_workflow_selection=velocity_workflow_selection,
-        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-        annulus_settings=dict(annulus_settings),
+        run_settings=settings,
     )
     with Logger.perf_stage("run/scheduler_setup"):
         scheduler = _create_scheduler(
             stack=stack, work_h5=work_h5, output_manager=output_manager,
             pipelines=pipelines, pipeline_options=pipeline_options,
             sources=sources, plan=plan, status=status, variables=variables,
-            settings=settings, on_pipeline_start=on_pipeline_start,
+            settings=invocation_settings, on_pipeline_start=on_pipeline_start,
             on_pipeline_success=on_pipeline_success, on_progress=on_progress,
         )
     arguments = _coordinator_arguments(
         work_h5=work_h5, output_h5_path=output_h5_path, output_manager=output_manager,
-        scratch=scratch, sources=sources, settings=settings,
+        scratch=scratch, sources=sources, settings=invocation_settings,
         pipeline_options=pipeline_options, variables=variables,
         computation_cache=computation_cache, background_artifacts=background_artifacts,
     )
@@ -309,7 +265,7 @@ def _execute_input(
     return output_h5_path
 
 
-def _prepare_input_replay(io, work_h5, hd_h5, dv_h5, band_limited_harmonics, *, policy=None) -> _InputSources:
+def _prepare_input_replay(io, work_h5, hd_h5, dv_h5, settings, *, policy=None) -> _InputSources:
     """Register replay cleanup and build the shared typed HD/DV source views."""
     started = perf_counter()
     Logger.log_perf(
@@ -317,7 +273,7 @@ def _prepare_input_replay(io, work_h5, hd_h5, dv_h5, band_limited_harmonics, *, 
     )
     service = io.start_input(policy)
     hd_config = load_h5_sidecar_config(hd_h5, source="hd")
-    write_root_attributes(work_h5, {"band_limited_harmonics": band_limited_harmonics})
+    write_root_attributes(work_h5, {"band_limited_harmonics": settings.band_limited_harmonics})
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
     files = io.files
     shared = PipelineInputs(
@@ -416,9 +372,9 @@ def _coordinator_arguments(
         "output_h5_path": output_h5_path,
         "output_manager": output_manager,
         "holodoppler_h5": sources.files["hd"],
-        "doppler_vision_h5": sources.files["dv"],
+        "dopplerview_h5": sources.files["dv"],
         "holodoppler_config": sources.configs["hd"],
-        "doppler_vision_config": sources.configs["dv"],
+        "dopplerview_config": sources.configs["dv"],
         "shared_inputs": sources.shared,
         "scratch": scratch,
         "variables": variables,
@@ -655,11 +611,9 @@ def _initialize_work_h5(
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
     pipeline_options: Mapping[str, Sequence[str]],
-    band_ratio_frequency_scale_hz: float,
-    copy_hd_passthrough: bool,
-    velocity_workflow_selection: str,
+    settings: UserSettings,
     holodoppler_h5: Path | None,
-    doppler_vision_h5: Path | None,
+    dopplerview_h5: Path | None,
     hd_source_h5=None,
     dv_source_h5=None,
 ) -> None:
@@ -671,21 +625,21 @@ def _initialize_work_h5(
         initialize_output_h5(
             work_h5,
             holodoppler_source_file=(str(holodoppler_h5) if holodoppler_h5 is not None else None),
-            doppler_vision_source_file=(
-                str(doppler_vision_h5) if doppler_vision_h5 is not None else None
+            dopplerview_source_file=(
+                str(dopplerview_h5) if dopplerview_h5 is not None else None
             ),
             holodoppler_source_h5=hd_source_h5,
-            doppler_vision_source_h5=dv_source_h5,
-            copy_hd_passthrough=copy_hd_passthrough,
+            dopplerview_source_h5=dv_source_h5,
+            copy_hd_passthrough=settings.copy_hd_passthrough,
         )
         write_root_attributes(work_h5, {
             "pipeline_targets": list(target_names),
             "pipeline_order": [pipeline.name for pipeline in pipelines],
-            "velocity_estimation_methods": list(selected_velocity_methods(velocity_workflow_selection)),
+            "velocity_estimation_methods": list(selected_velocity_methods(settings.velocity_estimation_method)),
             "velocity_quantity": "physical_velocity",
             "velocity_unit": "mm/s",
-            "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
-            "copy_hd_passthrough": copy_hd_passthrough,
+            "band_ratio_frequency_scale_hz": settings.band_ratio_frequency_scale_hz,
+            "copy_hd_passthrough": settings.copy_hd_passthrough,
             "pipeline_options": json.dumps(
                 {name: list(options) for name, options in pipeline_options.items()},
                 sort_keys=True,

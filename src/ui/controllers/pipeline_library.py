@@ -6,8 +6,6 @@ import tkinter as tk
 from tkinter import ttk
 
 from app_settings import (
-    normalize_pipeline_options,
-    normalize_pipeline_visibility,
     runtime_pipelines_path,
 )
 from pipeline_engine import PipelineDAG, PipelineExecutionPlan
@@ -175,7 +173,7 @@ class PipelineLibraryController:
             pipeline.name
             for pipeline in rows
             if pipeline.available
-            and self.app.pipeline_visibility.get(pipeline.name, False)
+            and self.app.settings.pipeline_visibility.get(pipeline.name, False)
         ]
 
     def selected_pipeline_options(self) -> dict[str, tuple[str, ...]]:
@@ -184,17 +182,7 @@ class PipelineLibraryController:
             "pipeline_rows",
             tuple(getattr(self.app, "pipeline_catalog", {}).values()),
         )
-        return {
-            pipeline.name: tuple(
-                option.name
-                for option in pipeline.options
-                if self.app.pipeline_option_visibility
-                .get(pipeline.name, {})
-                .get(option.name, option.default_enabled)
-            )
-            for pipeline in rows
-            if pipeline.options
-        }
+        return self.app.settings.pipeline_options.selected_options(rows)
 
     def resolve_plan(self, target_names: list[str]) -> PipelineExecutionPlan:
         dag = self.app.pipeline_dag
@@ -279,42 +267,19 @@ class PipelineLibraryController:
         self.update_summary()
 
     def sync_visibility(self, rows: list[PipelineDescriptor]) -> None:
-        visibility, changed = normalize_pipeline_visibility(
-            (pipeline.name for pipeline in rows),
-            self.app.settings_store.load_pipeline_visibility(),
-            missing_defaults={
-                pipeline.name: pipeline.default_selected for pipeline in rows
-            },
-        )
+        changed = self.app.settings.pipeline_visibility.normalize(rows)
+        visibility = self.app.settings.pipeline_visibility
         for pipeline in rows:
             if not pipeline.available and visibility.get(pipeline.name, False):
                 visibility[pipeline.name] = False
                 changed = True
-        self.app.pipeline_visibility = visibility
         self.app.pipeline_required_names = set()
         if changed:
-            self.persist_visibility()
-
-    def persist_visibility(self) -> None:
-        try:
-            self.app.settings_store.save_pipeline_visibility(
-                self.app.pipeline_visibility
-            )
-        except OSError as exc:
-            self.app.settings_controller.show_settings_warning(
-                "Settings not saved",
-                f"Could not save pipeline selection preferences:\n{exc}",
-            )
+            self.app.settings_controller.save_preferences()
 
     def sync_options(self, rows: list[PipelineDescriptor]) -> None:
-        selections, changed = normalize_pipeline_options(
-            {
-                pipeline.name: pipeline.options
-                for pipeline in rows
-                if pipeline.options
-            },
-            self.app.settings_store.load_pipeline_options(),
-        )
+        changed = self.app.settings.pipeline_options.normalize(rows)
+        selections = self.app.settings.pipeline_options
         for pipeline in rows:
             values = selections.get(pipeline.name, {})
             for option in pipeline.options:
@@ -344,31 +309,19 @@ class PipelineLibraryController:
         if downstream_segments and not velocity_segments:
             velocity_values["segments"] = True
             changed = True
-        self.app.pipeline_option_visibility = selections
         if changed:
-            self.persist_options()
-
-    def persist_options(self) -> None:
-        try:
-            self.app.settings_store.save_pipeline_options(
-                self.app.pipeline_option_visibility
-            )
-        except OSError as exc:
-            self.app.settings_controller.show_settings_warning(
-                "Settings not saved",
-                f"Could not save pipeline option preferences:\n{exc}",
-            )
+            self.app.settings_controller.save_preferences()
 
     def set_visibility(self, name: str, visible: bool) -> None:
         pipeline = self.app.pipeline_catalog.get(name)
         if pipeline is not None and not pipeline.available:
             visible = False
         target_value = bool(visible and pipeline is not None and pipeline.available)
-        changed = self.app.pipeline_visibility.get(name) != target_value
+        changed = self.app.settings.pipeline_visibility.get(name) != target_value
         if changed:
-            self.app.pipeline_visibility[name] = target_value
+            self.app.settings.pipeline_visibility[name] = target_value
         if changed:
-            self.persist_visibility()
+            self.app.settings_controller.save_preferences()
         self._refresh_required_pipelines()
         self._sync_pipeline_selection_widgets(set(self.app.pipeline_catalog))
         self.update_summary()
@@ -394,13 +347,13 @@ class PipelineLibraryController:
 
         changed = False
         for target_pipeline_name, target_option_name, target_enabled in changes:
-            pipeline_values = self.app.pipeline_option_visibility.setdefault(
-                target_pipeline_name,
-                {},
-            )
             pipeline = self.app.pipeline_catalog.get(target_pipeline_name)
             if pipeline is None:
                 continue
+            pipeline_values = self.app.settings.pipeline_options.setdefault(
+                target_pipeline_name,
+                {},
+            )
             for affected_name in option_selection_names(
                 pipeline.options,
                 target_option_name,
@@ -416,7 +369,7 @@ class PipelineLibraryController:
                 if var is not None and var.get() != target_enabled:
                     var.set(target_enabled)
         if changed:
-            self.persist_options()
+            self.app.settings_controller.save_preferences()
         self._refresh_required_pipelines()
         self._sync_pipeline_selection_widgets(set(self.app.pipeline_catalog))
         self.update_summary()
@@ -448,7 +401,7 @@ class PipelineLibraryController:
         visibility_vars = getattr(self.app, "pipeline_visibility_vars", {})
         row_widgets = getattr(self.app, "pipeline_row_widgets", {})
         required_names = getattr(self.app, "pipeline_required_names", set())
-        visibility = getattr(self.app, "pipeline_visibility", {})
+        visibility = self.app.settings.pipeline_visibility
         for name in names:
             selected = visibility.get(name, False) or name in required_names
             var = visibility_vars.get(name)
@@ -485,12 +438,14 @@ class PipelineLibraryController:
             for pipeline in self.app.pipeline_rows
         }
         for name, target_value in target_values.items():
-            if self.app.pipeline_visibility.get(name) != target_value:
-                self.app.pipeline_visibility[name] = target_value
+            if self.app.settings.pipeline_visibility.get(name) != target_value:
+                self.app.settings.pipeline_visibility[name] = target_value
                 changed = True
         options_changed = False
         for pipeline in self.app.pipeline_rows:
-            values = self.app.pipeline_option_visibility.setdefault(
+            if not pipeline.options:
+                continue
+            values = self.app.settings.pipeline_options.setdefault(
                 pipeline.name,
                 {},
             )
@@ -504,10 +459,8 @@ class PipelineLibraryController:
                 ).get(option.name)
                 if option_var is not None:
                     option_var.set(visible)
-        if changed:
-            self.persist_visibility()
-        if options_changed:
-            self.persist_options()
+        if changed or options_changed:
+            self.app.settings_controller.save_preferences()
         self._refresh_required_pipelines()
         self._sync_pipeline_selection_widgets(set(target_values))
         self.update_summary()
@@ -640,7 +593,7 @@ class PipelineLibraryController:
         is_available = getattr(pipeline, "available", True)
         var = tk.BooleanVar(
             value=(
-                self.app.pipeline_visibility.get(pipeline.name, False)
+                self.app.settings.pipeline_visibility.get(pipeline.name, False)
                 or pipeline.name in getattr(self.app, "pipeline_required_names", set())
             )
             and is_available
@@ -728,7 +681,7 @@ class PipelineLibraryController:
         option_offset = 1
         for offset, option in enumerate(pipeline.options, start=option_offset):
             option_var = tk.BooleanVar(
-                value=self.app.pipeline_option_visibility
+                value=self.app.settings.pipeline_options
                 .get(pipeline.name, {})
                 .get(option.name, option.default_enabled)
             )
@@ -814,7 +767,7 @@ class PipelineLibraryController:
             pipeline is not None
             and pipeline.available
             and (
-                getattr(self.app, "pipeline_visibility", {}).get(
+                self.app.settings.pipeline_visibility.get(
                     pipeline_name,
                     False,
                 )

@@ -11,7 +11,6 @@ from calculations.math.phase_windows import (
 )
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS, processing_path
-from pipelines.signal_settings import band_limited_harmonics
 from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
@@ -206,7 +205,7 @@ def run_gap_analysis(
                 early_interval=early_interval, late_interval=late_interval,
             ))
     band_limited = band_limit_gap_spectrograms(
-        per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
+        per_beat, timing.cycle_durations_seconds, harmonics=ctx.settings.band_limited_harmonics,
     )
     filtered_attrs = {
         **attrs,

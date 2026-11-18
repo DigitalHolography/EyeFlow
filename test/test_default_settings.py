@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from app_settings import (
-    AppSettingsStore,
+    UserSettings,
     normalize_pipeline_options,
     normalize_pipeline_visibility,
 )
@@ -64,8 +64,9 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
         self.assertEqual(12, settings["band_limited_harmonics"])
         self.assertFalse(settings["copy_hd_passthrough"])
-        self.assertIsNone(settings["annulus_size"])
-        self.assertIsNone(settings["annulus_stride"])
+        self.assertEqual(32, settings["number_of_radii_in_half_diagonal"])
+        self.assertNotIn("annulus_size", settings)
+        self.assertNotIn("annulus_stride", settings)
         self.assertNotIn("number_of_radii_in_FOV", settings)
 
     def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:
@@ -131,14 +132,14 @@ class DefaultSettingsTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            store = AppSettingsStore(path)
+            store = UserSettings(path)
 
             self.assertTrue(
-                store.load_pipeline_visibility()["displacement_profiles"]
+                store.pipeline_visibility["displacement_profiles"]
             )
             self.assertEqual(
                 {"segment_maps": True},
-                store.load_pipeline_options()["displacement_profiles"],
+                store.pipeline_options["displacement_profiles"],
             )
 
     def test_release_defaults_exclude_gradient_and_velocity_profile_outputs(

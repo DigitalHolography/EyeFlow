@@ -1,5 +1,7 @@
 """Committed handoffs, dependency failures and workflow-scoped stage graphs."""
 
+from app_settings import UserSettings
+
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 import json
@@ -29,8 +31,8 @@ def _manager(root):
 
 def _run(manager, descriptors):
     return run_pipelines_to_output(
-        output_manager=manager, pipelines=descriptors, holodoppler_h5=None, doppler_vision_h5=None,
-    )
+        output_manager=manager, pipelines=descriptors, holodoppler_h5=None, dopplerview_h5=None,
+     settings=UserSettings(values={}))
 
 
 def test_resolved_graph_uses_downstream_options_without_reading_acquisition(tmp_path, monkeypatch):

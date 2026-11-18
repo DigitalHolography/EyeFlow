@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 import json
 import struct
 import tempfile
@@ -337,12 +339,12 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                         output_h5_path=output_h5_path,
                         on_product_commit=lambda stage, name, handle: accepted.update({name: handle}),
                         holodoppler_h5=hd,
-                        doppler_vision_h5=dv,
+                        dopplerview_h5=dv,
                         output_manager=manager,
-                        holodoppler_config=None, doppler_vision_config=None,
+                        holodoppler_config=None, dopplerview_config=None,
                         variables={}, pipeline_options={}, pipeline_order=("displacement_map",),
                         pipeline_targets=("displacement_map",), velocity_estimation_method=None,
-                        execution_variant=None, band_ratio_frequency_scale_hz=1,
+                        execution_variant=None, settings=UserSettings(values={'band_ratio_frequency_scale_hz': 1}),
                         on_pipeline_success=None, on_progress=None,
                     )
                 if not fail_video:

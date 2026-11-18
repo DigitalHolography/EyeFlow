@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 import unittest
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -31,7 +33,7 @@ def test_managed_optional_analysis_uses_only_required_calculations(tmp_path, tar
     available, _ = load_pipeline_catalog()
     spec = resolve_run_spec(input_paths=[holo], target_names=[target], pipelines=available,
         pipeline_options={"velocity_analysis": options if target == "velocity_analysis" else (),
-                          "waveform_shape_metrics": options if target == "waveform_shape_metrics" else ()})
+                          "waveform_shape_metrics": options if target == "waveform_shape_metrics" else ()}, settings=UserSettings(values={}))
     with (
         patch.object(analysis_builder, "_build_segments", wraps=analysis_builder._build_segments) as build,
         patch.object(analysis_builder, "prepare_segment_velocity_maps_per_beat", side_effect=AssertionError("disabled maps executed")),

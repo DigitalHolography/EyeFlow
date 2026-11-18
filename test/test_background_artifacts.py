@@ -1,5 +1,7 @@
 """Background exports overlap calculations and respect checkpoints/completion."""
 
+from app_settings import UserSettings
+
 import json
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -56,8 +58,8 @@ def _descriptor(name, run, **kwargs):
 def _run(manager, descriptors):
     return run_pipelines_to_output(
         output_manager=manager, pipelines=descriptors,
-        holodoppler_h5=None, doppler_vision_h5=None,
-    )
+        holodoppler_h5=None, dopplerview_h5=None,
+     settings=UserSettings(values={}))
 
 
 @pytest.mark.parametrize("action", ["finish", "close"])

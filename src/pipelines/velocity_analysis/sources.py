@@ -58,7 +58,7 @@ class VelocityAnalysisSources:
             hd=ctx.inputs.hd.as_holodoppler(),
             dv=ctx.inputs.dv.as_dopplerview(),
             velocity_estimation_method=ctx.velocity_estimation_method,
-            band_ratio_frequency_scale_hz=ctx.band_ratio_frequency_scale_hz,
+            band_ratio_frequency_scale_hz=ctx.settings.band_ratio_frequency_scale_hz,
         )
 
     def load(self, source: RetinalSourceData | None = None) -> VelocityAnalysisSourceData:

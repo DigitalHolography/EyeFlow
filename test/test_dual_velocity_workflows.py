@@ -1,5 +1,7 @@
 """Independent timing/downstream products and workflow failure isolation."""
 
+from app_settings import UserSettings
+
 import json
 from unittest.mock import patch
 
@@ -72,7 +74,7 @@ def _spec(holo, *, artifacts=False, spectra=False):
             "blood_volume_rate": ("masked_edges",),
             "lowrank_waveform_decomposition": (),
         },
-        band_ratio_frequency_scale_hz=2.0,
+        settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2.0}),
     )
 
 
@@ -259,7 +261,7 @@ def test_malformed_spectra_do_not_disable_velocity_or_its_downstream_analysis(tm
     available, _ = load_pipeline_catalog()
     spec = resolve_run_spec(
         input_paths=[holo], target_names=["velocity_analysis", "low_freq_spectra"], pipelines=available,
-        pipeline_options={"velocity_analysis": ()}, band_ratio_frequency_scale_hz=2,
+        pipeline_options={"velocity_analysis": ()}, settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2}),
     )
     result = execute_run(spec)
     assert not result.succeeded
@@ -289,7 +291,7 @@ def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_pa
     spec = resolve_run_spec(
         input_paths=[holo], target_names=["velocity_analysis", "low_freq_spectra"], pipelines=available,
         pipeline_options={"velocity_analysis": ()},
-        band_ratio_frequency_scale_hz=2,
+        settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2}),
     )
     with patch("pipelines.velocity.runner.pack_velocity_outputs", side_effect=pack):
         result = execute_run(spec)

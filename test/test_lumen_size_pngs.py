@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 import tempfile
 import unittest
 import warnings
@@ -77,8 +79,8 @@ class LumenSizePngTests(unittest.TestCase):
                 ctx = PipelineContext(
                     work_h5=work,
                     holodoppler_h5=None,
-                    doppler_vision_h5=None,
-                )
+                    dopplerview_h5=None,
+                 settings=UserSettings(values={}))
                 apply_pipeline_result(ctx, outputs)
             with h5py.File(h5_path, "r") as work:
                 for vessel in ("Artery", "Vein"):

@@ -135,7 +135,7 @@ class SegmentCenterTests(unittest.TestCase):
             self.assertTrue(np.any(valid))
             np.testing.assert_allclose(profile.segment_signal[valid], 1.0)
 
-    def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
+    def test_substack_debug_overlay_uses_gray_box_edges(self) -> None:
         labels = np.ones((20, 20), dtype=np.int32)
         ring_settings = AnnulusGeometry(
             inner_radius_frac=0.0,
@@ -144,7 +144,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=2,
         )
         centers = np.asarray(
-            [[[5.0, 5.0], [7.0, 5.0]], [[np.nan, np.nan], [np.nan, np.nan]]],
+            [[[5.0, 5.0], [7.0, 5.0]], [[12.0, 5.0], [np.nan, np.nan]]],
             dtype=np.float32,
         )
 
@@ -156,15 +156,18 @@ class SegmentCenterTests(unittest.TestCase):
             np.asarray(
                 [
                     [[4, 7, 4, 7], [6, 9, 4, 7]],
-                    [[-1, -1, -1, -1], [-1, -1, -1, -1]],
+                    [[11, 14, 4, 7], [-1, -1, -1, -1]],
                 ],
                 dtype=np.int32,
             ),
         )
 
         self.assertEqual((20, 20, 3), image.shape)
-        np.testing.assert_array_equal(image[4, 4], [255, 255, 0])
-        np.testing.assert_array_equal(image[4, 6], [255, 0, 255])
+        np.testing.assert_array_equal(image[4, 4], [128, 128, 128])
+        np.testing.assert_array_equal(image[4, 6], [128, 128, 128])
+        np.testing.assert_array_equal(image[4, 11], [128, 128, 128])
+        base = _labels_with_ring_overlay(labels, (10.0, 10.0), ring_settings)
+        np.testing.assert_array_equal(image[5, 5], base[5, 5])
 
     def test_annulus_outlines_alternate_white_and_gray_at_half_width_stride(self):
         shape = (101, 121)
@@ -244,19 +247,21 @@ class SegmentCenterTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(output.writes[0][0], rotated_means[0, 0])
 
-    def test_segment_analysis_uses_disc_extent_and_fixed_fov_spacing(self) -> None:
+    def test_segment_analysis_uses_disc_extent_and_half_diagonal_spacing(self) -> None:
         settings = OpticDisc(None, (267.0, 230.0), 55, 69).annulus_geometry(
             (512, 512)
         )
 
         corner_radius = np.hypot(255.5, 255.5)
-        self.assertEqual(33, settings.ring_count)
+        farthest_radius = np.hypot(267, 281)
+        self.assertEqual(int(np.ceil((farthest_radius - 28) / (corner_radius / 32))),
+                         settings.ring_count)
         self.assertAlmostEqual(
             28.0 / corner_radius,
             settings.inner_radius_frac,
         )
-        self.assertEqual(1.0, settings.outer_radius_frac)
-        expected_width = (512.0 / 25.0) / corner_radius
+        self.assertAlmostEqual(farthest_radius / corner_radius, settings.outer_radius_frac, places=6)
+        expected_width = 2 / 32
         self.assertAlmostEqual(expected_width, settings.ring_width_frac)
         self.assertAlmostEqual(expected_width, settings.segment_length_frac)
         self.assertAlmostEqual(expected_width / 2, settings.stride_frac)
@@ -278,7 +283,7 @@ class SegmentCenterTests(unittest.TestCase):
                 (10, 10), number_of_radii_in_fov=0
             )
 
-    def test_annulus_starts_at_optic_disc_and_uses_fixed_fov_extent(self) -> None:
+    def test_annulus_starts_at_optic_disc_and_uses_half_diagonal_extent(self) -> None:
         center = np.asarray([267.0, 230.0])
         settings = OpticDisc(None, center, 55, 69).annulus_geometry((512, 512))
         mask = section_masks(
@@ -293,11 +298,12 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertFalse(mask[257, 267])
         self.assertTrue(mask[258, 267])
 
-        # The first annulus has the configured 0.04 radial spacing.
+        # Width is twice the half-diagonal / 32 stride: about 22.58 pixels.
         self.assertTrue(mask[230, 305])
         self.assertTrue(mask[230, 315])
-        self.assertFalse(mask[230, 316])
-        self.assertFalse(mask[279, 267])
+        self.assertTrue(mask[230, 317])
+        self.assertFalse(mask[230, 318])
+        self.assertFalse(mask[281, 267])
 
     def test_annulus_pixel_radius_is_independent_of_optic_disc_position(self) -> None:
         settings = AnnulusGeometry(

@@ -10,7 +10,10 @@ from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
 
-from app_settings import AppSettingsStore, app_display_name
+from app_settings import (
+    app_display_name,
+    user_settings,
+)
 from pipelines import PipelineDescriptor
 from pipeline_engine import PipelineDAG
 
@@ -39,21 +42,18 @@ class ProcessApp(BaseAppTk):
         super().__init__()
         self.title(app_display_name())
         self.ui_services = UiServices()
-        self.settings_store = AppSettingsStore()
-        Logger.configure(self.settings_store.path)
+        self.settings = user_settings
+        Logger.configure(self.settings.path)
         self._settings_warning_shown = False
         self.settings_controller = SettingsController(self)
         self.settings_controller.ensure_default_settings()
-        self.ui_mode = self.settings_store.load_ui_mode()
         self.pipeline_registry: dict[str, PipelineDescriptor] = {}
         self.pipeline_catalog: dict[str, PipelineDescriptor] = {}
         self.pipeline_dag: PipelineDAG | None = None
         self.pipeline_rows: list[PipelineDescriptor] = []
-        self.pipeline_visibility: dict[str, bool] = {}
         self.pipeline_required_names: set[str] = set()
         self.pipeline_visibility_vars: dict[str, tk.BooleanVar] = {}
         self.pipeline_row_widgets: dict[str, tk.Widget] = {}
-        self.pipeline_option_visibility: dict[str, dict[str, bool]] = {}
         self.pipeline_option_vars: dict[str, dict[str, tk.BooleanVar]] = {}
         self.pipeline_option_widgets: dict[str, list[tk.Widget]] = {}
         self.pipeline_expanded: dict[str, bool] = {}
@@ -98,7 +98,7 @@ class ProcessApp(BaseAppTk):
         self.pipeline_library_controller.register()
         self.progress_controller.reset_run_log()
         self.input_controller.update_minimal_path_labels()
-        self.settings_controller.apply_ui_mode(self.ui_mode, persist=False)
+        self.settings_controller.apply_ui_mode(self.settings.ui_mode, persist=False)
 
 
 def main() -> None:

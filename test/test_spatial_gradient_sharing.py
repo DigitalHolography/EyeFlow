@@ -1,5 +1,7 @@
 """Continuous gradients are shared across methods; beat products stay local."""
 
+from app_settings import UserSettings
+
 import json
 from dataclasses import replace
 from types import SimpleNamespace
@@ -66,9 +68,9 @@ def test_reuses_identical_continuous_arrays_and_preserves_method_specific_beats(
     ) as output:
         cache = {}
         contexts = [PipelineContext(
-            work_h5=output, holodoppler_h5=hd, doppler_vision_h5=None,
+            work_h5=output, holodoppler_h5=hd, dopplerview_h5=None,
             computation_cache=cache, velocity_estimation_method=method,
-        ) for method in ("doppler_moments", "frequency_bands")]
+         settings=UserSettings(values={})) for method in ("doppler_moments", "frequency_bands")]
         with patch.object(
             profiles, "analyze_segment_profiles", wraps=profiles.analyze_segment_profiles,
         ) as analyze:
@@ -84,8 +86,8 @@ def test_reuses_identical_continuous_arrays_and_preserves_method_specific_beats(
 
         # Compare with independent extraction, not just another cache lookup.
         independent = PipelineContext(
-            work_h5=output, holodoppler_h5=hd, doppler_vision_h5=None,
-        )
+            work_h5=output, holodoppler_h5=hd, dopplerview_h5=None,
+         settings=UserSettings(values={}))
         baseline = _extract(independent, source, plans)
         for shared, separate in zip(first, baseline):
             np.testing.assert_array_equal(shared.segment_signal, separate.segment_signal)
@@ -189,8 +191,8 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
     ):
         def run():
             return run_pipelines_to_output(
-                output_manager=manager, holodoppler_h5=path, doppler_vision_h5=None,
-                target_names=("spatial_gradient_moment0",), copy_hd_passthrough=False,
+                output_manager=manager, holodoppler_h5=path, dopplerview_h5=None,
+                target_names=("spatial_gradient_moment0",), settings=UserSettings(values={'copy_hd_passthrough': False}),
                 pipelines=[
                     _descriptor("source", produce, variants=True),
                     _descriptor("spatial_gradient_moment0", gradient, ("source",)),

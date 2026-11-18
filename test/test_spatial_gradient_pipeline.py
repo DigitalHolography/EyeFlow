@@ -1,5 +1,7 @@
 """Tests for the independently selectable spatial-gradient pipeline."""
 
+from app_settings import UserSettings
+
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -99,7 +101,7 @@ class SpatialGradientPipelineTests(unittest.TestCase):
                       patch.object(gradient_runner, "pack_spatial_gradient_profile_outputs", return_value={"gradient": 1})):
                     output = run_pipelines_to_output(output_manager=manager, pipelines=[source,consumer],
                         target_names=[source.name if targeted else consumer.name],
-                        holodoppler_h5=None, doppler_vision_h5=None, copy_hd_passthrough=False)
+                        holodoppler_h5=None, dopplerview_h5=None, settings=UserSettings(values={'copy_hd_passthrough': False}))
                 extract.assert_called_once()
                 self.assertEqual({"gradient": 1}, observed[0].outputs)
                 with h5py.File(output) as file:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 import unittest
 
 import h5py
@@ -203,8 +205,8 @@ class PipelineContextTests(unittest.TestCase):
             ctx = PipelineContext(
                 work_h5=h5file,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
+                dopplerview_h5=None,
+             settings=UserSettings(values={}))
 
             ctx.log("Starting test pipeline...")
 
@@ -222,8 +224,8 @@ class PipelineContextTests(unittest.TestCase):
             ctx = PipelineContext(
                 work_h5=h5file,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
+                dopplerview_h5=None,
+             settings=UserSettings(values={}))
 
             ctx.log("No listener")
 
@@ -237,7 +239,7 @@ class PipelineContextTests(unittest.TestCase):
             ctx = PipelineContext(
                 work_h5=h5file,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
+                dopplerview_h5=None,
                 pipeline_name="velocity_analysis",
                 pipeline_options={
                     "velocity_analysis": ("segments", "quadrants"),
@@ -248,7 +250,7 @@ class PipelineContextTests(unittest.TestCase):
                     "velocity_analysis",
                 ),
                 pipeline_targets=("velocity_analysis",),
-            )
+             settings=UserSettings(values={}))
 
             self.assertTrue(ctx.option_enabled("segments"))
             self.assertTrue(
@@ -276,14 +278,14 @@ class PipelineContextTests(unittest.TestCase):
             default_ctx = PipelineContext(
                 work_h5=h5file,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
+                dopplerview_h5=None,
+             settings=UserSettings(values={}))
             frequency_band_ctx = PipelineContext(
                 work_h5=h5file,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
+                dopplerview_h5=None,
                 velocity_estimation_method="frequency_bands",
-                band_ratio_frequency_scale_hz=2.0,
+                settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2.0}),
             )
 
             self.assertEqual(
@@ -296,16 +298,16 @@ class PipelineContextTests(unittest.TestCase):
             )
             self.assertEqual(
                 2.0,
-                frequency_band_ctx.band_ratio_frequency_scale_hz,
+                frequency_band_ctx.settings.band_ratio_frequency_scale_hz,
             )
 
             with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
                 PipelineContext(
                     work_h5=h5file,
                     holodoppler_h5=None,
-                    doppler_vision_h5=None,
+                    dopplerview_h5=None,
                     velocity_estimation_method="unknown",
-                )
+                 settings=UserSettings(values={}))
             with self.assertRaisesRegex(
                 ValueError,
                 "band_ratio_frequency_scale_hz",
@@ -313,8 +315,8 @@ class PipelineContextTests(unittest.TestCase):
                 PipelineContext(
                     work_h5=h5file,
                     holodoppler_h5=None,
-                    doppler_vision_h5=None,
-                    band_ratio_frequency_scale_hz=np.nan,
+                    dopplerview_h5=None,
+                    settings=UserSettings(values={'band_ratio_frequency_scale_hz': np.nan}),
                 )
 
     def test_execution_variants_are_validated_and_published(self) -> None:
@@ -327,8 +329,8 @@ class PipelineContextTests(unittest.TestCase):
             ctx = PipelineContext(
                 work_h5=h5file,
                 holodoppler_h5=None,
-                doppler_vision_h5=None,
-            )
+                dopplerview_h5=None,
+             settings=UserSettings(values={}))
             variant = ExecutionVariant(
                 name="alternate",
                 state={"result": object()},

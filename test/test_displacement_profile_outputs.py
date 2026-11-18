@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 from types import SimpleNamespace
 
 import numpy as np
@@ -357,7 +359,7 @@ def test_real_process_registration_product_feeds_the_production_profile_graph(tm
     with budget.activate():
         final = run_pipelines_to_output(output_manager=OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo")),
             pipelines=[source, registration, profile], pipeline_options={"displacement_profiles": ("segment_maps",)},
-            holodoppler_h5=hd_path, doppler_vision_h5=dv_path, copy_hd_passthrough=False)
+            holodoppler_h5=hd_path, dopplerview_h5=dv_path, settings=UserSettings(values={'copy_hd_passthrough': False}))
     schema = EyeFlowOutputPaths.active()
     with h5py.File(final) as result:
         for vessel in ("Artery", "Vein"):

@@ -110,9 +110,7 @@ def _labels_with_substack_boxes(
 ) -> np.ndarray:
     """Overlay the actual rotating substacks on the stage-12 label image.
 
-    Box colors identify the ring. Pixels shared by two or more box outlines
-    are magenta, making exact box overlap visible instead of hiding it under
-    the later box drawn.
+    All box outlines use standard gray, including shared edges.
     """
     image = _labels_with_ring_overlay(labels, optic_disc_center, ring_settings)
     centers = np.asarray(segment_centers_xy, dtype=np.float32)
@@ -125,8 +123,7 @@ def _labels_with_substack_boxes(
     ):
         return image
 
-    box_counts = np.zeros(labels.shape, dtype=np.uint8)
-    box_colors = np.zeros((*labels.shape, 3), dtype=np.uint8)
+    boundary = np.zeros(labels.shape, dtype=bool)
     for ring_index in range(
         min(centers.shape[0], int(ring_settings.ring_count))
     ):
@@ -143,35 +140,13 @@ def _labels_with_substack_boxes(
             )
             if x_start >= x_stop or y_start >= y_stop:
                 continue
-            boundary = np.zeros(labels.shape, dtype=bool)
             boundary[y_start, x_start:x_stop] = True
             boundary[y_stop - 1, x_start:x_stop] = True
             boundary[y_start:y_stop, x_start] = True
             boundary[y_start:y_stop, x_stop - 1] = True
-            box_counts[boundary] = np.minimum(box_counts[boundary] + 1, 255)
-            box_colors[boundary] = _ring_box_color(ring_index)
 
-    single_box = box_counts == 1
-    overlapping_boxes = box_counts > 1
-    image[single_box] = box_colors[single_box]
-    image[overlapping_boxes] = (255, 0, 255)
+    image[boundary] = (128, 128, 128)
     return image
-
-
-def _ring_box_color(ring_index: int) -> tuple[int, int, int]:
-    colors = (
-        (255, 255, 0),
-        (0, 255, 255),
-        (255, 128, 0),
-        (0, 255, 0),
-        (255, 64, 192),
-        (64, 192, 255),
-        (255, 64, 64),
-        (128, 255, 64),
-        (192, 64, 255),
-        (64, 255, 192),
-    )
-    return colors[ring_index % len(colors)]
 
 
 def _topography_image(topography: np.ndarray) -> np.ndarray:

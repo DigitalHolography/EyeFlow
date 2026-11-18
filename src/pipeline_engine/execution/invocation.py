@@ -4,7 +4,8 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from time import perf_counter
 
-from app_settings import DEFAULT_VELOCITY_WORKFLOW_SELECTION, VelocityEstimationMethod
+from app_settings import UserSettings, VelocityEstimationMethod
+
 from input_output.artifact_ownership import (
     ArtifactOwnership, ArtifactScope, artifact_transaction, current_artifact_transaction,
 )
@@ -29,9 +30,9 @@ def _run_pipeline_descriptor(
     output_h5_path,
     output_manager: OutputManager,
     holodoppler_h5,
-    doppler_vision_h5,
+    dopplerview_h5,
     holodoppler_config,
-    doppler_vision_config,
+    dopplerview_config,
     shared_inputs: PipelineInputs | None = None,
     scratch: RunArrayStorage | None = None,
     variables: dict[str, object],
@@ -40,15 +41,13 @@ def _run_pipeline_descriptor(
     pipeline_targets: Sequence[str],
     velocity_estimation_method: VelocityEstimationMethod | None,
     execution_variant: ExecutionVariant | None,
-    band_ratio_frequency_scale_hz: float,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
     processing_root: str | None = None,
     output_provenance: Mapping[str, object] | None = None,
     background_artifacts: BackgroundArtifacts | None = None,
     computation_cache: dict[object, object] | None = None,
-    velocity_workflow_selection: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-    annulus_settings: Mapping[str, object] | None = None,
+    settings: UserSettings | None = None,
     product_inputs: Mapping[str, object] | None = None,
     on_product_commit=None,
     product_owner_id=None,
@@ -69,9 +68,9 @@ def _run_pipeline_descriptor(
     ctx = PipelineContext(
         work_h5=work_h5,
         holodoppler_h5=holodoppler_h5,
-        doppler_vision_h5=doppler_vision_h5,
+        dopplerview_h5=dopplerview_h5,
         holodoppler_config=holodoppler_config,
-        doppler_vision_config=doppler_vision_config,
+        dopplerview_config=dopplerview_config,
         shared_inputs=shared_inputs,
         computation_cache=computation_cache,
         scratch=scratch,
@@ -86,9 +85,7 @@ def _run_pipeline_descriptor(
         pipeline_order=pipeline_order,
         pipeline_targets=pipeline_targets,
         velocity_estimation_method=velocity_estimation_method,
-        velocity_workflow_selection=velocity_workflow_selection,
-        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-        annulus_settings=annulus_settings,
+        settings=settings,
         background_artifacts=background_artifacts,
         product_inputs=product_inputs,
         on_product_commit=on_product_commit,

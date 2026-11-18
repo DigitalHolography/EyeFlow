@@ -1,5 +1,7 @@
 """Coordinator admission must keep worker completion collection responsive."""
 
+from app_settings import UserSettings
+
 import json
 import multiprocessing
 from pathlib import Path
@@ -36,8 +38,8 @@ def _run_single_cpu_case(destination):
             output_manager=manager,
             pipelines=[STAGE_COMPLETION_DESCRIPTOR, safe],
             holodoppler_h5=None,
-            doppler_vision_h5=None,
-            copy_hd_passthrough=False,
+            dopplerview_h5=None,
+            settings=UserSettings(values={'copy_hd_passthrough': False}),
         )
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         assert output["Main/value"][()] == 11

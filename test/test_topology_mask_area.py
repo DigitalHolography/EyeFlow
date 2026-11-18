@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from calculations.blood_volume_rate import (
     circular_lumen_flow,
@@ -96,7 +97,8 @@ def test_mask_derived_flow_keeps_equivalent_diameter_model() -> None:
     assert radial_widths.shape == (2,)
 
 
-def test_overlapping_measurements_use_thickness_and_add_histogram_samples(tmp_path):
+@pytest.mark.parametrize("count_based", [False, True])
+def test_overlapping_measurements_use_thickness_and_add_histogram_samples(tmp_path, count_based):
     import h5py
     from input_output.schema import EyeFlowOutputPaths, PixelPitch
     from input_output.writers.h5_output import PipelineH5Output
@@ -109,14 +111,18 @@ def test_overlapping_measurements_use_thickness_and_add_histogram_samples(tmp_pa
     vessel[48:53, 54:98] = True
     disc = OpticDisc(None, (50.0, 50.0), 8, 8)
     legacy_geometry = disc.annulus_geometry(shape, number_of_radii_in_fov=10)
-    geometry = disc.annulus_geometry(shape, annulus_size=10.1)
+    geometry = (disc.annulus_geometry(shape, number_of_radii_in_half_diagonal=32)
+                if count_based else disc.annulus_geometry(shape, annulus_size=10.1))
+    size = geometry.ring_width_frac * np.hypot(50, 50)
     legacy = prepare_sampling_plan(vessel, disc, legacy_geometry)
     prepared = prepare_sampling_plan(vessel, disc, geometry)
     diameters, areas, widths = mask_derived_lumen_geometry((prepared,), pixel_size_mm=0.01)
     legacy_diameters, _, _ = mask_derived_lumen_geometry((legacy,), pixel_size_mm=0.01)
     bounds = geometry.metadata(shape)["annulus_bounds_pixels"]
     np.testing.assert_allclose(widths, np.diff(bounds, axis=1).ravel(), rtol=1e-6)
-    assert np.allclose(widths[:-2], 10.1)  # Never the 5.05-pixel stride.
+    assert np.allclose(widths[:-2], size)  # Measurement thickness, never stride.
+    if count_based:
+        np.testing.assert_allclose(widths, size, rtol=1e-6)
     valid = areas[0] > 0
     np.testing.assert_allclose(diameters[0][valid], (areas[0] * 0.01 / widths)[valid], rtol=1e-6)
     assert np.isfinite(diameters[0]).sum() > np.isfinite(legacy_diameters[0]).sum()
@@ -128,8 +134,8 @@ def test_overlapping_measurements_use_thickness_and_add_histogram_samples(tmp_pa
     schema = EyeFlowOutputPaths.active().segmentation
     with h5py.File(tmp_path / "geometry.h5", "w") as file:
         PipelineH5Output(file).write_many(outputs)
-        assert file[schema.annuli.size][()] == 10.1
-        assert file[schema.annuli.stride][()] == 5.05
+        assert file[schema.annuli.size][()] == pytest.approx(size)
+        assert file[schema.annuli.stride][()] == pytest.approx(size / 2)
         assert file[schema.annuli.count][()] == geometry.ring_count
         np.testing.assert_allclose(file[schema.annuli.bounds_pixels][:], bounds)
         assert file[schema.artery.segment_mask_area].shape[-1] == geometry.ring_count

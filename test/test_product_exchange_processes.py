@@ -1,5 +1,7 @@
 """Cross-process recovery through actual transport, ownership and publication."""
 
+from app_settings import UserSettings
+
 import json
 import multiprocessing
 from contextlib import ExitStack
@@ -75,7 +77,7 @@ def test_real_spawn_product_survives_producer_crash_and_final_publication(tmp_pa
             run_pipelines_to_output(output_manager=output, pipelines=descriptors,
                 pipeline_options={"exchange_producer": (mode,),
                                   "exchange_consumer": ("required_only",) if required_only else ()},
-                holodoppler_h5=None, doppler_vision_h5=None, copy_hd_passthrough=False,
+                holodoppler_h5=None, dopplerview_h5=None, settings=UserSettings(values={'copy_hd_passthrough': False}),
                 on_finalization_ready=retain)
         assert budget.cpu_used == 0
         assert budget.used["transient"] == 0

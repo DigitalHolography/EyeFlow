@@ -1,5 +1,7 @@
 """Shared spectral scheduling, timing fallback, and failure isolation."""
 
+from app_settings import UserSettings
+
 import json
 from dataclasses import replace
 from types import SimpleNamespace
@@ -92,7 +94,7 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
             _descriptor("consumer", lambda ctx: {"ProcessingMoments/Consumer/value": 42},
                         dag_requires=("velocity",)),
         ],
-    )
+     settings=UserSettings(values={}))
 
 
 @pytest.mark.parametrize("moments,bands,expected", [

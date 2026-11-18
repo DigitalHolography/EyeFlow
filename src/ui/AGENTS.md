@@ -17,8 +17,8 @@ CLI.
   requirements; it delegates actual resolution to `PipelineDAG`.
 - `controllers/run.py` builds a `RunSpec`, starts execution off the UI thread,
   and translates callbacks/results into UI state.
-- `controllers/settings.py` imports settings and switches view mode through
-  `AppSettingsStore`.
+- `controllers/settings.py` imports settings, saves preferences, and switches
+  view mode through the shared `app.settings` dataset.
 - progress, resources, and view controllers isolate their named concerns.
 - `services.py` contains UI-facing services; `widgets.py` contains reusable
   widgets.
@@ -38,7 +38,9 @@ Pipeline library visibility is user selection, not resolved execution order.
 Required hidden or visible dependencies come from the plan and should be shown
 as required rather than persisted as user-selected targets.
 
-Settings persistence goes through `AppSettingsStore`. An imported settings file
+Settings reads and edits use the shared `UserSettings` instance at `app.settings`.
+Persist edits with `save()`; pipeline groups own selection normalization.
+An imported settings file
 is validated before replacing active settings. Do not write JSON directly from
 a controller.
 
@@ -72,7 +74,7 @@ Directory expansion delegates to `input_output.runs.discovery`, which accepts
 matching HD/DV run directories without `.holo` markers, including the selected
 directory itself. Keep folder recognition and path identities out of the UI.
 The file and folder pickers share `last_input_directory`, persisted through
-`AppSettingsStore`. Remember the chosen folder before expanding it into runs;
+`UserSettings.last_input_directory`. Remember the chosen folder before expanding it into runs;
 appending inputs and Clear must not reset the picker's location. Cancel leaves
 it unchanged, and an unavailable saved folder falls back to the selected input
 directory, then the working directory.
