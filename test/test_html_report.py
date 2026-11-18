@@ -78,6 +78,14 @@ def test_html_report_copies_current_content_without_pdf_dependency() -> None:
     assert "Vein Mask-Derived Blood-Volume Rate" in document
     assert "Minimum filtered velocity" in document
     assert "Lumen diameter SD" in document
+    assert document.count('class="paired-graphs"') == 2
+    assert "grid-template-columns: minmax(0, 3fr) minmax(0, 2fr)" in document
+    artery_pair = document.split('class="paired-graphs">', 1)[1].split(
+        "</div>", 1
+    )[0]
+    assert "Artery Velocity Distribution over Time" in artery_pair
+    assert "Artery Branch Identity and Sampling Regions" in artery_pair
+    assert "Artery Lumen-Diameter Distribution" not in artery_pair
     assert "72.5 bpm" in document
     assert "mm.s⁻¹" in document
     assert "mm³.s⁻¹" in document

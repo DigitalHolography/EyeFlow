@@ -117,20 +117,23 @@ def _analysis_column(
     vessel: str,
 ) -> str:
     vessel_title = vessel.title()
-    figures = "".join(
+    figures = tuple(
         _artifact_figure(
             f"{vessel_title} {title}",
             load_analysis_artifact(png_dir, folder_name, kind, vessel),
         )
         for kind, title in ANALYSIS_GRAPH_TITLES.items()
     )
+    paired_figures = "".join(figures[:2])
+    remaining_figures = "".join(figures[2:])
     summary = _summary_block(
         f"{vessel_title} Summary", analysis_summary_rows(report, vessel)
     )
     return f"""
 <article class="vessel-column">
   <h3>{vessel_title}</h3>
-  {figures}
+  <div class="paired-graphs">{paired_figures}</div>
+  {remaining_figures}
   <section class="summary-card">{summary}</section>
 </article>
 """
@@ -254,6 +257,13 @@ h4 { font-size: 1rem; margin-bottom: 12px; }
   border-radius: 8px;
   background: #fff;
 }
+.paired-graphs {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 14px;
+}
+.paired-graphs .graph-card { min-width: 0; }
+.paired-graphs .graph-card figcaption { font-size: 0.85rem; }
 .graph-card figcaption {
   margin-bottom: 12px;
   font-weight: 600;
@@ -296,6 +306,9 @@ h4 { font-size: 1rem; margin-bottom: 12px; }
 @media (max-width: 850px) {
   .vessel-grid, .summary-grid { grid-template-columns: 1fr; }
   .report-section { padding: 18px; }
+}
+@media (max-width: 520px) {
+  .paired-graphs { grid-template-columns: 1fr; }
 }
 @media print {
   :root { background: white; }

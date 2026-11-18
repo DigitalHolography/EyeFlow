@@ -121,7 +121,7 @@ def plot_filtered_velocity(
 
 
 def _plot_unfiltered_velocity(ax, values: np.ndarray | None) -> None:
-    """Add a robust raw-signal envelope and mark phase-wise IQR outliers."""
+    """Add the robust raw-signal envelope and its phase-wise median."""
     if values is None:
         return
     samples = np.asarray(values, dtype=float)
@@ -130,8 +130,7 @@ def _plot_unfiltered_velocity(ax, values: np.ndarray | None) -> None:
     if not np.any(np.isfinite(samples)):
         return
     phase = np.arange(samples.shape[1], dtype=float) / samples.shape[1]
-    quantiles = _phase_quantiles(samples, (10.0, 25.0, 50.0, 75.0, 90.0))
-    lower, first_quartile, median, third_quartile, upper = quantiles
+    lower, median, upper = _phase_quantiles(samples, (10.0, 50.0, 90.0))
     envelope_valid = np.isfinite(lower) & np.isfinite(upper)
     if np.any(envelope_valid):
         ax.fill_between(
@@ -143,21 +142,6 @@ def _plot_unfiltered_velocity(ax, values: np.ndarray | None) -> None:
         phase, median, color="black", linestyle=(0, (3, 2)),
         linewidth=0.9, label="Unfiltered median", zorder=1,
     )
-
-    interquartile_range = third_quartile - first_quartile
-    low_fence = first_quartile - 1.5 * interquartile_range
-    high_fence = third_quartile + 1.5 * interquartile_range
-    finite = np.isfinite(samples)
-    outlier = finite & (
-        (samples < low_fence[None, :]) | (samples > high_fence[None, :])
-    )
-    beat_indexes, phase_indexes = np.nonzero(outlier)
-    if beat_indexes.size:
-        ax.scatter(
-            phase[phase_indexes], samples[beat_indexes, phase_indexes],
-            s=10, facecolors="none", edgecolors="black", linewidths=0.55,
-            label="Unfiltered IQR outlier", zorder=2,
-        )
 
 
 def _phase_quantiles(samples: np.ndarray, quantiles) -> np.ndarray:

@@ -36,10 +36,19 @@ VELOCITY_GRAPH_WIDTH = 0.39
 VELOCITY_GRAPH_HEIGHT = (
     VELOCITY_GRAPH_WIDTH * 21 / (29.7 * ARTICLE_ASPECT_RATIO)
 )
-SECOND_PAGE_GRAPH_WIDTH = 0.41
+SECOND_PAGE_GRAPH_WIDTH = 0.45
 SECOND_PAGE_GOLDEN_HEIGHT = (
     SECOND_PAGE_GRAPH_WIDTH * 21 / (29.7 * ARTICLE_ASPECT_RATIO)
 )
+SECOND_PAGE_PAIRED_GAP = 0.015
+SECOND_PAGE_PAIRED_AVAILABLE_WIDTH = (
+    SECOND_PAGE_GRAPH_WIDTH - SECOND_PAGE_PAIRED_GAP
+)
+SECOND_PAGE_HISTOGRAM_WIDTH = SECOND_PAGE_PAIRED_AVAILABLE_WIDTH * 0.60
+SECOND_PAGE_BRANCH_WIDTH = (
+    SECOND_PAGE_PAIRED_AVAILABLE_WIDTH - SECOND_PAGE_HISTOGRAM_WIDTH
+)
+SECOND_PAGE_PAIRED_HEIGHT = 0.165
 
 def build_velocity_bvr_pages(
     report: ReportData, folder_name: str, png_dir: Path | None,
@@ -121,20 +130,34 @@ def _vessel_analysis_page(
     fig.patch.set_facecolor("white")
     _add_page_header(fig, folder_name, "Vessel Geometry and Blood-Volume Rate")
     for column, vessel in enumerate(("artery", "vein")):
-        left = 0.055 + column * 0.48
+        left = 0.035 + column * 0.48
         graph_specs = (
-            (0.750, 0.130, "histogram"),
-            (0.590, 0.130, "branch_identity"),
-            (0.380, SECOND_PAGE_GOLDEN_HEIGHT, "lumen_diameter"),
-            (0.170, SECOND_PAGE_GOLDEN_HEIGHT, "blood_volume_rate"),
+            (
+                left, 0.715, SECOND_PAGE_HISTOGRAM_WIDTH,
+                SECOND_PAGE_PAIRED_HEIGHT, "histogram",
+            ),
+            (
+                left + SECOND_PAGE_HISTOGRAM_WIDTH + SECOND_PAGE_PAIRED_GAP,
+                0.715, SECOND_PAGE_BRANCH_WIDTH,
+                SECOND_PAGE_PAIRED_HEIGHT, "branch_identity",
+            ),
+            (
+                left, 0.455, SECOND_PAGE_GRAPH_WIDTH,
+                SECOND_PAGE_GOLDEN_HEIGHT, "lumen_diameter",
+            ),
+            (
+                left, 0.225, SECOND_PAGE_GRAPH_WIDTH,
+                SECOND_PAGE_GOLDEN_HEIGHT, "blood_volume_rate",
+            ),
         )
-        for bottom, height, kind in graph_specs:
+        for graph_left, bottom, width, height, kind in graph_specs:
             _add_artifact_image(
-                fig, (left, bottom, SECOND_PAGE_GRAPH_WIDTH, height),
+                fig, (graph_left, bottom, width, height),
                 png_dir, folder_name, kind, vessel,
-                f"{vessel.title()} {ANALYSIS_GRAPH_TITLES[kind]}",
+                _analysis_graph_title(vessel, kind),
+                compact=kind in {"histogram", "branch_identity"},
             )
-        value_ax = fig.add_axes((left, 0.003, SECOND_PAGE_GRAPH_WIDTH, 0.150))
+        value_ax = fig.add_axes((left, 0.015, SECOND_PAGE_GRAPH_WIDTH, 0.180))
         value_ax.axis("off")
         _draw_second_page_summary(
             value_ax, report, vessel, show_title=(vessel == "artery")
@@ -150,6 +173,8 @@ def _add_artifact_image(
     kind: str,
     vessel: str,
     title: str,
+    *,
+    compact: bool = False,
 ) -> None:
     ax = fig.add_axes(bounds)
     ax.axis("off")
@@ -161,7 +186,20 @@ def _add_artifact_image(
         )
     else:
         _show_report_image(ax, image, zoom=1.0)
-    ax.set_title(title, **GRAPH_TITLE_STYLE)
+    title_style = dict(GRAPH_TITLE_STYLE)
+    if compact:
+        title_style["fontsize"] = 7.5
+    ax.set_title(title, **title_style)
+
+
+def _analysis_graph_title(vessel: str, kind: str) -> str:
+    """Keep narrow paired-graph headings readable without dropping context."""
+    title = f"{vessel.title()} {ANALYSIS_GRAPH_TITLES[kind]}"
+    if kind == "histogram":
+        return title.replace(" over ", "\nover ")
+    if kind == "branch_identity":
+        return title.replace(" and ", "\nand ")
+    return title
 
 
 def _draw_second_page_summary(

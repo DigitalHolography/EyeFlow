@@ -334,11 +334,10 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 {line.get_label() for line in plot.lines},
             )
             self.assertTrue(all(line.get_color() == "black" for line in plot.lines))
-            raw_outliers = next(
-                collection for collection in plot.collections
-                if collection.get_label() == "Unfiltered IQR outlier"
-            )
-            self.assertEqual(1, len(raw_outliers.get_offsets()))
+            self.assertFalse(any(
+                collection.get_label() == "Unfiltered IQR outlier"
+                for collection in plot.collections
+            ))
             self.assertIsNone(plot.get_legend())
             self.assertFalse(
                 any(
@@ -475,9 +474,11 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             self.assertIn("Vessel Geometry and Blood-Volume Rate", labels)
             titles = [ax.get_title() for ax in pages[1].axes]
             for vessel in ("Artery", "Vein"):
-                self.assertIn(f"{vessel} Velocity Distribution over Time", titles)
                 self.assertIn(
-                    f"{vessel} Branch Identity and Sampling Regions", titles
+                    f"{vessel} Velocity Distribution\nover Time", titles
+                )
+                self.assertIn(
+                    f"{vessel} Branch Identity\nand Sampling Regions", titles
                 )
                 self.assertIn(f"{vessel} Lumen-Diameter Distribution", titles)
                 self.assertIn(
@@ -514,11 +515,11 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             self.assertIn("1.60", value_text)
             branch_axes = [
                 ax for ax in pages[1].axes
-                if "Branch Identity and Sampling Regions" in ax.get_title()
+                if "Branch Identity" in ax.get_title()
             ]
             histogram_axes = [
                 ax for ax in pages[1].axes
-                if "Velocity Distribution over Time" in ax.get_title()
+                if "Velocity Distribution" in ax.get_title()
             ]
             lumen_axes = [
                 ax for ax in pages[1].axes
@@ -532,6 +533,10 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 ax for ax in pages[1].axes
                 if any(text.get_text() == "Median BVR" for text in ax.texts)
             ]
+            self.assertEqual(2, len(histogram_axes))
+            self.assertEqual(2, len(branch_axes))
+            self.assertEqual(2, len(lumen_axes))
+            self.assertEqual(2, len(rate_axes))
             self.assertEqual(2, len(summaries))
             self.assertEqual(
                 1,
@@ -544,9 +549,25 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             for histogram_ax, branch_ax, lumen_ax, rate_ax, summary in zip(
                 histogram_axes, branch_axes, lumen_axes, rate_axes, summaries,
             ):
-                self.assertAlmostEqual(0.130, histogram_ax.get_position().height)
-                self.assertAlmostEqual(0.130, branch_ax.get_position().height)
-                self.assertAlmostEqual(0.150, summary.get_position().height)
+                histogram_center = (
+                    histogram_ax.get_position().y0
+                    + histogram_ax.get_position().y1
+                ) / 2
+                branch_center = (
+                    branch_ax.get_position().y0
+                    + branch_ax.get_position().y1
+                ) / 2
+                self.assertAlmostEqual(histogram_center, branch_center)
+                self.assertLess(
+                    histogram_ax.get_position().x1,
+                    branch_ax.get_position().x0,
+                )
+                self.assertGreater(
+                    histogram_ax.get_position().width,
+                    branch_ax.get_position().width,
+                )
+                self.assertAlmostEqual(0.180, summary.get_position().height)
+                self.assertGreater(histogram_ax.get_position().y0, lumen_ax.get_position().y0)
                 self.assertGreater(branch_ax.get_position().y0, lumen_ax.get_position().y0)
                 self.assertGreater(lumen_ax.get_position().y0, rate_ax.get_position().y0)
                 self.assertLess(summary.get_position().y1, rate_ax.get_position().y0)
