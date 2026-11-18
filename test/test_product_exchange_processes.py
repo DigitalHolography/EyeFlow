@@ -139,7 +139,7 @@ def test_failed_artifact_acceptance_keeps_prior_commit_and_releases_resources(
             manager=manager,
             budget=budget,
             state={},
-            settings=InvocationSettings({}, {}, (), (), "both", 1),
+            settings=InvocationSettings({}, {}, (), ()),
             acceptance=acceptance,
             registry=registry,
             run_id=identity.run_id,

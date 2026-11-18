@@ -3,7 +3,7 @@
 EyeFlow configures annular sampling with one positive integer:
 
 ```json
-{"number_of_radii_in_half_diagonal": 32}
+{"number_of_radii_in_half_diagonal": 42}
 ```
 
 The count includes intermediate annuli. For an image `(ny, nx)`, let
@@ -57,7 +57,7 @@ and its position relative to the corners.
 ## Saved configurations and explicit calculation APIs
 
 Application settings read `number_of_radii_in_half_diagonal` directly, with
-default 32 when absent. The same scalar passes through the run specification
+default 42 when absent. The same scalar passes through the run specification
 and worker context. JSON loading and saving do not migrate or rewrite annulus
 preferences; old count names and size/stride fields are not used.
 
@@ -90,34 +90,18 @@ values and window sizes may change naturally. Global calculations independent
 of annuli and full-field displacement registration, fields, magnitude maps and
 videos are unchanged.
 
-Resolved geometry is published once under `/Segmentation/Annuli/`:
-
-| Dataset suffix | Meaning |
-| --- | --- |
-| `Size/value` | Nominal thickness in native pixels |
-| `Stride/value` | Starting-boundary displacement in native pixels |
-| `Count/value` | Derived annulus count |
-| `BoundsPixels/value` | `(radius, boundary)` actual native-pixel bounds |
-| `BoundsFraction/value` | Matching fractional half-diagonal bounds |
-| `RadiusScalePixels/value` | Conversion scale in pixels |
-| `OutlineIntensity/value` | Shared uint8 monochrome outline image, lower-left `(x, y)` |
-
 The annulus diagnostic images cycle outline shades over the overlapping stride
 phases (`ceil(size / stride)`, bounded by the available annuli). At the default
 50% overlap, annulus 1 is white (255), annulus 2 gray (128), annulus 3 white,
 and so on. Denser overlap adds intermediate gray levels; adjacent/gapped
 sampling has a single white phase. Both boundaries use the same annulus shade.
 Shared boundaries and raster collisions retain the earliest annulus's
-shade. The innermost optic-disc boundary is white. `OutlineIntensity` stores the
-same overlay on a black (0) background with palette and boundary-policy
-attributes. Branch/segment label maps retain their existing numeric label codes;
-the grayscale image is a separate visualization, not a measurement mask.
-
-Boundary columns are inner then outer; indices are zero-based. Geometry is
-serialized with the existing float32 numeric policy. `DeltaRadius` retains its
-existing NaN convention for sections without any vessel support. The explicit
-boundary datasets remain available even for empty vessel sections. Velocity
-provenance also describes the actual resolved annuli.
+shade. The innermost optic-disc boundary is white. These outlines are used in
+diagnostic images; annulus geometry and outline intensity are not written as a
+separate `/Segmentation/Annuli/` HDF5 group. Branch/segment label maps retain
+their existing numeric label codes; the grayscale image is a separate
+visualization, not a measurement mask. Velocity provenance describes the
+resolved annuli.
 
 Sampling density and the farthest corner determine annular work and radial array sizes.
 Existing CPU/GPU temporal chunk budgets, sparse/compressed HDF5 storage and

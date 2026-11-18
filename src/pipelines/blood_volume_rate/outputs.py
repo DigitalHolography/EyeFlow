@@ -34,7 +34,7 @@ from pipelines.profile_outputs import profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
 BLOOD_VOLUME_RATE_ENVELOPE_GRAY = COMPACT_ARTICLE_STYLE.envelope_color
-PAGE_TWO_ARTIFACT_AXES_BOUNDS = (0.20, 0.22, 0.75, 0.75)
+PAGE_TWO_ARTIFACT_AXES_BOUNDS = (0.25, 0.25, 0.70, 0.70)
 
 
 def pack_gradient_edge_outputs(

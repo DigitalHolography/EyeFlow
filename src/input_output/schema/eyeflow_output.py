@@ -85,17 +85,6 @@ class LateralitySegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
-class AnnulusSegmentationOutputPaths:
-    size: str
-    stride: str
-    count: str
-    bounds_pixels: str
-    bounds_fraction: str
-    radius_scale_pixels: str
-    outline_intensity: str
-
-
-@dataclass(frozen=True)
 class SegmentationOutputPaths:
     optic_disc: OpticDiscSegmentationOutputPaths
     artery: VesselSegmentationOutputPaths
@@ -105,7 +94,6 @@ class SegmentationOutputPaths:
     gaps: str
     gaps_legacy: str
     gaps_from_m0ff: str
-    annuli: AnnulusSegmentationOutputPaths
 
 
 @dataclass(frozen=True)
@@ -212,15 +200,6 @@ class EyeFlowOutputPaths:
 
 def _segmentation_paths(root: str) -> SegmentationOutputPaths:
     return SegmentationOutputPaths(
-        annuli=AnnulusSegmentationOutputPaths(
-            size=f"{root}/Annuli/Size/value",
-            stride=f"{root}/Annuli/Stride/value",
-            count=f"{root}/Annuli/Count/value",
-            bounds_pixels=f"{root}/Annuli/BoundsPixels/value",
-            bounds_fraction=f"{root}/Annuli/BoundsFraction/value",
-            radius_scale_pixels=f"{root}/Annuli/RadiusScalePixels/value",
-            outline_intensity=f"{root}/Annuli/OutlineIntensity/value",
-        ),
         optic_disc=OpticDiscSegmentationOutputPaths(
             mask=f"{root}/OpticDisc/Mask/value",
             height=f"{root}/OpticDisc/Height/value",

@@ -45,7 +45,7 @@ def test_resolved_graph_uses_downstream_options_without_reading_acquisition(tmp_
     available, _ = load_pipeline_catalog()
     options = {"velocity_analysis": (), "absolute_waveform_metrics": ("segments",)}
     plan = PipelineDAG(available).resolve_targets(("absolute_waveform_metrics",), pipeline_options=options)
-    spec = RunSpec(plan, (), options)
+    spec = RunSpec(plan, (), options, settings=UserSettings(values={}))
     monkeypatch.setattr(h5py, "File", lambda *args, **kwargs: pytest.fail("Preflight read scientific input"))
     graph = resolve_execution_graph(spec)
     stages = next(item["stages"] for item in graph["pipelines"] if item["id"] == "velocity_analysis")

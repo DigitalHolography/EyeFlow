@@ -109,13 +109,13 @@ are `uint8` 0/1 with `original_class="bool"`, `unit="1"`, and `(x, y)` axes.
 The numerical operations and fallback parameters live in
 `calculations/topology/` and `pipelines/topology_core/`.
 
-Annular vessel measurements use `number_of_radii_in_half_diagonal` (default 32,
+Annular vessel measurements use `number_of_radii_in_half_diagonal` (default 42,
 including intermediate annuli). Stride is the image half-diagonal divided by
 this count, and thickness is twice the stride. Starts extend to the farthest
 image corner from the optic-disc center; outer boundaries retain full thickness.
 See [annulus sampling](annulus_sampling.md)
-for geometry, saved-configuration migration, terminal sections, output metadata,
-and the implications of correlated spatial samples.
+for geometry, saved-configuration migration, terminal sections, diagnostic
+imagery, and the implications of correlated spatial samples.
 
 The hidden `low_freq_spectra` pipeline runs once after scheduled velocity work
 when `/spectrograms` is available. Shared products use

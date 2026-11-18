@@ -172,7 +172,7 @@ class PipelineContext:
             ),
         )
         self.state = PipelineState(variables)
-        self.settings = settings if settings is not None else user_settings.for_run()
+        self.settings = (settings if settings is not None else user_settings).for_run()
         # Pure, completed computations may be reused across execution variants.
         # This per-input memo is separate from transactional pipeline products:
         # callers own compatibility keys and must store only immutable successes.
