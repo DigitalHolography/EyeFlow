@@ -17,14 +17,13 @@ from pipeline_engine.execution.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 
 
-@pytest.mark.parametrize("legacy_spectrograms_group,count,size,stride", [
-    (False, 32, np.hypot(31.5, 31.5) / 16, np.hypot(31.5, 31.5) / 32),
-    (True, 32, np.hypot(31.5, 31.5) / 16, np.hypot(31.5, 31.5) / 32),
-    (False, 16,
-     np.hypot(31.5, 31.5) / 8, np.hypot(31.5, 31.5) / 16),
+@pytest.mark.parametrize("legacy_spectrograms_group,count", [
+    (False, 42),
+    (True, 42),
+    (False, 16),
 ], ids=["default", "legacy_spectra", "custom_count"])
 def test_frequency_band_run_produces_physical_downstream_outputs(
-    legacy_spectrograms_group, count, size, stride,
+    legacy_spectrograms_group, count,
 ) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         holo = _write_frequency_band_run(Path(temp_dir))
@@ -112,19 +111,9 @@ def test_frequency_band_run_produces_physical_downstream_outputs(
 
             artery_flow = output.get(schema.blood_volume_rate.artery.masked_edges)
             assert artery_flow.attrs["unit"] == "mm^3/s"
-            annuli = schema.segmentation.annuli
-            # HD's embedded count cannot override defaults or explicit new settings.
-            assert file[annuli.size][()] == pytest.approx(size)
-            assert file[annuli.stride][()] == pytest.approx(stride)
-            count = int(file[annuli.count][()])
-            bounds = file[annuli.bounds_pixels][:]
-            assert bounds.shape == (count, 2)
+            assert "Segmentation/Annuli" not in file
+            count = file[schema.segmentation.artery.lumen_diameter].shape[-1]
             assert artery_flow.shape[-1] == count
-            assert file[schema.segmentation.artery.lumen_diameter].shape[-1] == count
-            np.testing.assert_allclose(np.diff(bounds[:, 0]), stride, atol=4e-6)
-            np.testing.assert_allclose(np.diff(bounds, axis=1), size, atol=4e-6)
-            np.testing.assert_allclose(file[annuli.bounds_fraction][:] * file[annuli.radius_scale_pixels][()],
-                                       bounds, rtol=2e-7)
 
             absolute_root = output.get(schema.absolute_waveform_metrics_root)
             assert _dataset_count(absolute_root) > 0

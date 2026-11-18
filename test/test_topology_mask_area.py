@@ -103,8 +103,6 @@ def test_overlapping_measurements_use_thickness_and_add_histogram_samples(tmp_pa
     from input_output.schema import EyeFlowOutputPaths, PixelPitch
     from input_output.writers.h5_output import PipelineH5Output
     from pipelines.topology_core.outputs import pack_topology_outputs
-    from pipelines.topology_core.annulus_visualization import annulus_outline_image
-    from input_output.schema.serialization import serialize_spatial_image
 
     shape = (101, 101)
     vessel = np.zeros(shape, dtype=bool)
@@ -134,20 +132,8 @@ def test_overlapping_measurements_use_thickness_and_add_histogram_samples(tmp_pa
     schema = EyeFlowOutputPaths.active().segmentation
     with h5py.File(tmp_path / "geometry.h5", "w") as file:
         PipelineH5Output(file).write_many(outputs)
-        assert file[schema.annuli.size][()] == pytest.approx(size)
-        assert file[schema.annuli.stride][()] == pytest.approx(size / 2)
-        assert file[schema.annuli.count][()] == geometry.ring_count
-        np.testing.assert_allclose(file[schema.annuli.bounds_pixels][:], bounds)
+        assert "Segmentation/Annuli" not in file
         assert file[schema.artery.segment_mask_area].shape[-1] == geometry.ring_count
         np.testing.assert_allclose(file[schema.artery.lumen_diameter][:][valid],
                                    diameters[0][valid] / 0.01, rtol=1e-6)
         assert file[schema.artery.delta_radius].shape == (geometry.ring_count,)
-        outline = file[schema.annuli.outline_intensity]
-        assert outline.dtype == np.uint8
-        assert outline.shape == shape[::-1]
-        expected_outline = annulus_outline_image(shape, disc.center, geometry)
-        np.testing.assert_array_equal(outline[:], serialize_spatial_image(expected_outline))
-        np.testing.assert_array_equal(outline.attrs["annulus_gray_levels"], [255, 128])
-        np.testing.assert_array_equal(outline.attrs["dimDesc"], ["x", "y"])
-        assert outline.attrs["image_origin"] == "lower_left"
-        assert outline.attrs["shared_boundary_policy"] == "earliest_annulus_wins"

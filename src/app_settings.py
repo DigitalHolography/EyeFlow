@@ -27,7 +27,7 @@ DEFAULT_SETTINGS_FILENAME = "default_settings.json"
 # Application fallback; calculations own their independent API default.
 DEFAULT_BAND_LIMITED_HARMONICS_SETTING = 12
 DEFAULT_COPY_HD_PASSTHROUGH = False
-DEFAULT_NUMBER_OF_RADII_IN_HALF_DIAGONAL = 32
+DEFAULT_NUMBER_OF_RADII_IN_HALF_DIAGONAL = 42
 LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')

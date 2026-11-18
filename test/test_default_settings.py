@@ -64,7 +64,7 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
         self.assertEqual(12, settings["band_limited_harmonics"])
         self.assertFalse(settings["copy_hd_passthrough"])
-        self.assertEqual(32, settings["number_of_radii_in_half_diagonal"])
+        self.assertEqual(42, settings["number_of_radii_in_half_diagonal"])
         self.assertNotIn("annulus_size", settings)
         self.assertNotIn("annulus_stride", settings)
         self.assertNotIn("number_of_radii_in_FOV", settings)

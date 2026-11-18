@@ -732,13 +732,13 @@ calibration; it no longer scales with the image half-diagonal. That fallback
 retains the original vein mask as velocity-background support but disables vein
 measurement in the canonical segmentation.
 
-Annular vessel measurements use `number_of_radii_in_half_diagonal` (default 32,
+Annular vessel measurements use `number_of_radii_in_half_diagonal` (default 42,
 including intermediate annuli). Stride is the image half-diagonal divided by
 this count, and thickness is twice the stride. Starts extend to the farthest
 image corner from the optic-disc center; outer boundaries retain full thickness.
 See [annulus sampling](annulus_sampling.md)
-for geometry, saved-configuration migration, terminal sections, output metadata,
-and the implications of correlated spatial samples.
+for geometry, saved-configuration migration, terminal sections, diagnostic
+imagery, and the implications of correlated spatial samples.
 
 The two additional vessel arrays must be finite, numeric, two-dimensional and
 aligned with the other DV geometry. `pipelines.vessel_inputs` applies the same

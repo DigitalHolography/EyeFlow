@@ -115,7 +115,6 @@ class SegmentationOutputTests(unittest.TestCase):
                 schema.segmentation.vein.mask,
                 schema.segmentation.vein.branch_label_map,
                 schema.segmentation.vein.segment_map,
-                *vars(schema.segmentation.annuli).values(),
             },
             set(outputs),
         )

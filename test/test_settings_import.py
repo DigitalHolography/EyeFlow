@@ -22,7 +22,7 @@ from ui.controllers.settings import SettingsController
 
 
 @pytest.mark.parametrize("settings,count", [
-    ({}, 32),
+    ({}, 42),
     ({"number_of_radii_in_half_diagonal": 16}, 16),
 ])
 def test_saved_radius_count_and_default(tmp_path, settings, count):
