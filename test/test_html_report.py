@@ -74,6 +74,9 @@ def test_html_report_copies_current_content_without_pdf_dependency() -> None:
     assert "scan &amp; eye" in document
     assert 'id="velocity"' in document
     assert 'id="vessel-analysis"' in document
+    assert 'class="report-section"' not in document
+    assert "break-after" not in document
+    assert "270mm" not in document
     assert "Artery Per-Beat Velocity" in document
     assert "Vein Mask-Derived Blood-Volume Rate" in document
     assert "Minimum filtered velocity" in document

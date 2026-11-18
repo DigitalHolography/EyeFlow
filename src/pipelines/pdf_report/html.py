@@ -66,7 +66,7 @@ def build_velocity_bvr_html(
     <h1>Velocity and Blood-Volume Rate</h1>
   </header>
   <main>
-    <section class="report-section" id="velocity">
+    <section id="velocity">
       <h2>Velocity</h2>
       <div class="vessel-grid">{velocity_columns}</div>
       <section class="summary-card wide-summary">
@@ -77,7 +77,7 @@ def build_velocity_bvr_html(
         <div class="summary-grid">{velocity_summary}</div>
       </section>
     </section>
-    <section class="report-section" id="vessel-analysis">
+    <section id="vessel-analysis">
       <h2>Vessel Geometry and Blood-Volume Rate</h2>
       <div class="vessel-grid">{analysis_columns}</div>
     </section>
@@ -215,7 +215,7 @@ _STYLES = """
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   color: #171717;
-  background: #ececec;
+  background: white;
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -233,13 +233,11 @@ h1 { margin-bottom: 0; font-size: clamp(1.6rem, 3vw, 2.5rem); }
 h2 { font-size: 1.5rem; margin-bottom: 24px; }
 h3 { font-size: 1.2rem; }
 h4 { font-size: 1rem; margin-bottom: 12px; }
-.report-section {
-  margin-bottom: 28px;
-  padding: 28px;
-  background: white;
-  border: 1px solid #d8d8d8;
-  border-radius: 12px;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 6%);
+main { padding-bottom: 48px; }
+main > section { padding-block: 24px 40px; }
+main > section + section {
+  padding-top: 48px;
+  border-top: 1px solid #d8d8d8;
 }
 .vessel-grid, .summary-grid {
   display: grid;
@@ -305,25 +303,9 @@ h4 { font-size: 1rem; margin-bottom: 12px; }
 .summary-block td { font-weight: 700; text-align: right; }
 @media (max-width: 850px) {
   .vessel-grid, .summary-grid { grid-template-columns: 1fr; }
-  .report-section { padding: 18px; }
 }
 @media (max-width: 520px) {
   .paired-graphs { grid-template-columns: 1fr; }
-}
-@media print {
-  :root { background: white; }
-  .report-header, main { width: 100%; }
-  .report-header { padding-top: 10px; }
-  .report-section {
-    min-height: 270mm;
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    break-after: page;
-  }
-  .report-section:last-child { break-after: auto; }
-  .graph-card { break-inside: avoid; }
 }
 """
 
