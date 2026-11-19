@@ -133,7 +133,7 @@ def _mask_background_map(
     color: str | None = None,
     cmap: str | None = None,
     values: np.ndarray | None = None,
-) -> Path:
+) -> list[Path]:
     fig, ax = _plt().subplots(figsize=(4.0, 4.0))
     ax.imshow(_finite_image(background), cmap="gray")
     mask = mask.astype(bool)
@@ -148,7 +148,7 @@ def _mask_background_map(
     ax.axis("off")
     ax.set_aspect("equal")
     apply_article_style(fig)
-    return writer.save_figure(fig, suffix, dpi=180)
+    return writer.save_figure_pair(fig, suffix, dpi=180)
 
 def _velocity_gradient_values(
     velocity_avg: np.ndarray,

@@ -1,4 +1,4 @@
-"""Velocity-map, histogram, and combined visualization PNG exporters."""
+"""Velocity-map, histogram, and combined visualization exporters."""
 
 from __future__ import annotations
 
@@ -95,7 +95,8 @@ def _export_flow_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Pat
         "histogramVelocityvein.png",
         "vein",
     )
-    paths.extend([hist_artery, hist_vein])
+    paths.extend(hist_artery)
+    paths.extend(hist_vein)
     paths.append(_combined_plot(writer, ctx, flow_rgb, velocity_map))
     return paths
 
@@ -106,7 +107,7 @@ def _histogram_plot(
     mask: np.ndarray,
     suffix: str,
     vessel: str,
-) -> Path:
+) -> list[Path]:
     if velocity_map is None:
         velocity_map = _display_velocity(
             np.asarray(
@@ -131,7 +132,7 @@ def _histogram_plot(
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(ctx.velocity_axis_label)
     _style_axes(ax)
-    return writer.save_figure(fig, suffix)
+    return writer.save_figure_pair(fig, suffix)
 
 def _vessel_histogram_colormap(vessel: str):
     return _matlab_vessel_colormap(vessel)

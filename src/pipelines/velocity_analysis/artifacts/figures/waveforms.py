@@ -10,7 +10,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     mean_period_seconds,
 )
 from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import (
-    pulse_metric_from_signal,
+    pulse_metric_from_cycles,
 )
 from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import (
     ArterialWaveformAnalysis,
@@ -45,48 +45,33 @@ def _unit_corrected_velocity_signal(
 
 
 def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    peaks = ctx.cycle_boundary_indexes
-    unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
-        ctx,
-        "artery",
-    )
-    unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
-        ctx,
-        "vein",
-    )
-    cycles = paired_vessel_cycles(
-        unit_corrected_retinal_artery_velocity_signal,
-        unit_corrected_retinal_vein_velocity_signal,
-        peaks,
-        60,
-    )
     paths: list[Path] = []
-    for suffix_prefix, signal_values in (
-        ("v_artery", unit_corrected_retinal_artery_velocity_signal),
-        ("v_vein", unit_corrected_retinal_vein_velocity_signal),
-    ):
-        cycle = cycles.artery if suffix_prefix == "v_artery" else cycles.vein
-        if cycle is None:
+    for vessel in ("artery", "vein"):
+        suffix_prefix = f"v_{vessel}"
+        result = getattr(ctx.per_beat_result, f"{vessel}_filtered", None)
+        signal = getattr(result, "signal", None)
+        beats = getattr(signal, "velocity_signal_per_beat", None)
+        beats = None if beats is None else _display_velocity(beats)
+        if beats is None or beats.ndim != 2 or not all(beats.shape):
             _log(ctx, f"Skipping RI/PI plots for {suffix_prefix}; insufficient beats.")
             continue
+        mean_cycle = np.mean(np.asarray(beats, dtype=float), axis=0)
+        phase = np.arange(mean_cycle.size, dtype=float) / mean_cycle.size
         for metric_name in ("RI", "PI"):
-            metric = pulse_metric_from_signal(
-                signal_values,
-                peaks,
+            metric = pulse_metric_from_cycles(
+                beats,
                 metric_name,
-                samples=60,
+                beat_axis=0,
             )
-            if metric is None:
-                continue
             path = _ri_pi_plot(
-                    writer,
-                    f"{metric_name}_{suffix_prefix}.png",
-                    ctx.time,
-                    signal_values,
-                    metric,
-                    metric_name,
-                    ctx.velocity_semantics,
-                )
+                writer,
+                f"{metric_name}_{suffix_prefix}.png",
+                phase,
+                mean_cycle,
+                metric,
+                metric_name,
+                ctx.velocity_semantics,
+            )
             paths.append(path)
             if metric_name == "RI":
                 writer.register_artifact("ri", suffix_prefix.removeprefix("v_"), path)
@@ -126,7 +111,7 @@ def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
 def _ri_pi_plot(
     writer: FigureWriter,
     suffix: str,
-    time: np.ndarray,
+    phase: np.ndarray,
     values: np.ndarray,
     metric,
     metric_name: str,
@@ -134,13 +119,13 @@ def _ri_pi_plot(
 ) -> Path:
     semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(7.0, 4.0))
-    ax.plot(time[: values.size], values, color="k", linewidth=STYLE.signal_line_width)
+    ax.plot(phase, values, color="k", linewidth=STYLE.signal_line_width)
     for y, label in (
         (metric.maximum, f"{metric.maximum:.1f}{semantics.value_suffix}"),
         (metric.minimum, f"{metric.minimum:.1f}{semantics.value_suffix}"),
     ):
         ax.axhline(y, color="0.45", linestyle="--", linewidth=STYLE.reference_line_width)
-        ax.text(time[-1], y, label, ha="right", va="bottom", backgroundcolor="w")
+        ax.text(phase[-1], y, label, ha="right", va="bottom", backgroundcolor="w")
     if metric_name == "PI":
         ax.axhline(metric.mean, color="0.45", linestyle="--", linewidth=STYLE.reference_line_width)
     ax.text(
@@ -150,7 +135,8 @@ def _ri_pi_plot(
         transform=ax.transAxes,
         backgroundcolor="w",
     )
-    ax.set_xlabel("Time (s)")
+    ax.set_xlim(0, 1)
+    ax.set_xlabel("Cardiac phase")
     ax.set_ylabel(semantics.axis_label)
     _style_axes(ax)
     return writer.save_figure(fig, suffix)

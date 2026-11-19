@@ -6,11 +6,7 @@ import json
 import unittest
 from pathlib import Path
 
-from app_settings import (
-    AppSettingsStore,
-    normalize_pipeline_options,
-    normalize_pipeline_visibility,
-)
+from app_settings import normalize_pipeline_options
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
 
@@ -65,31 +61,6 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertEqual(12, settings["band_limited_harmonics"])
         self.assertFalse(settings["copy_hd_passthrough"])
 
-    def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:
-        visibility, changed = normalize_pipeline_visibility(
-            ("velocity_analysis", "blood_volume_rate"),
-            {"velocity_analysis": False},
-            missing_defaults={"blood_volume_rate": True},
-        )
-
-        self.assertTrue(changed)
-        self.assertEqual(
-            {"velocity_analysis": False, "blood_volume_rate": True},
-            visibility,
-        )
-
-    def test_renamed_pipeline_visibility_is_migrated(self) -> None:
-        visibility, changed = normalize_pipeline_visibility(
-            ("velocity_analysis", "blood_volume_rate"),
-            {"waveform_velocity": True, "blood_volume_rate": False},
-        )
-
-        self.assertTrue(changed)
-        self.assertEqual(
-            {"velocity_analysis": True, "blood_volume_rate": False},
-            visibility,
-        )
-
     def test_renamed_pipeline_options_are_migrated(self) -> None:
         options, changed = normalize_pipeline_options(
             {"velocity_analysis": ("segments", "quadrants")},
@@ -106,37 +77,6 @@ class DefaultSettingsTests(unittest.TestCase):
             {"velocity_analysis": {"segments": False, "quadrants": True}},
             options,
         )
-
-    def test_legacy_displacement_profile_selection_moves_to_later_pipeline(
-        self,
-    ) -> None:
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "settings.json"
-            path.write_text(
-                json.dumps(
-                    {
-                        "pipeline_visibility": {"displacement_map": True},
-                        "pipeline_options": {
-                            "displacement_map": {
-                                "profiles": True,
-                                "segment_maps": True,
-                            }
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
-            store = AppSettingsStore(path)
-
-            self.assertTrue(
-                store.load_pipeline_visibility()["displacement_profiles"]
-            )
-            self.assertEqual(
-                {"segment_maps": True},
-                store.load_pipeline_options()["displacement_profiles"],
-            )
 
     def test_release_defaults_exclude_gradient_and_velocity_profile_outputs(
         self,

@@ -20,9 +20,29 @@ class PulseMetricData:
 
 def pulse_metric(cycle: np.ndarray, metric_name: str) -> PulseMetricData:
     values = np.asarray(cycle, dtype=np.float32).reshape(-1)
-    metric_name = str(metric_name).upper()
-    if metric_name not in {"RI", "PI", "PR"}:
-        raise ValueError(f"Unsupported pulse metric '{metric_name}'.")
+    return _pulse_metric(values, metric_name)
+
+
+def pulse_metric_from_cycles(
+    cycles: np.ndarray,
+    metric_name: str,
+    *,
+    beat_axis: int = 0,
+) -> PulseMetricData:
+    """Calculate a pulse metric from the mean of phase-aligned beats."""
+    values = np.asarray(cycles, dtype=float)
+    metric_name = _metric_name(metric_name)
+    if values.size == 0:
+        return PulseMetricData(metric_name, np.nan, np.nan, np.nan, np.nan)
+    cycle = np.mean(values, axis=beat_axis)
+    if cycle.size == 0 or not np.all(np.isfinite(cycle)):
+        return PulseMetricData(metric_name, np.nan, np.nan, np.nan, np.nan)
+    return _pulse_metric(np.asarray(cycle).reshape(-1), metric_name)
+
+
+def _pulse_metric(values: np.ndarray, metric_name: str) -> PulseMetricData:
+    metric_name = _metric_name(metric_name)
+    values = np.asarray(values).reshape(-1)
     if values.size == 0 or not np.any(np.isfinite(values)):
         return PulseMetricData(metric_name, np.nan, np.nan, np.nan, np.nan)
 
@@ -34,18 +54,21 @@ def pulse_metric(cycle: np.ndarray, metric_name: str) -> PulseMetricData:
     with np.errstate(divide="ignore", invalid="ignore"):
         if metric_name == "RI":
             value = float(np.divide(np.float64(excursion), np.float64(maximum)))
-            if value < 0:
-                value = 0.0
-            if value > 1:
-                value = 1.0
+            value = float(np.clip(value, 0.0, 1.0))
         elif metric_name == "PI":
             value = float(np.divide(np.float64(excursion), np.float64(mean)))
-            if value < 0:
-                value = 0.0
+            value = max(value, 0.0)
         else:
             value = float(np.divide(np.float64(maximum), np.float64(minimum)))
 
     return PulseMetricData(metric_name, value, maximum, minimum, mean)
+
+
+def _metric_name(metric_name: str) -> str:
+    metric_name = str(metric_name).upper()
+    if metric_name not in {"RI", "PI", "PR"}:
+        raise ValueError(f"Unsupported pulse metric '{metric_name}'.")
+    return metric_name
 
 
 def pulse_metric_from_signal(

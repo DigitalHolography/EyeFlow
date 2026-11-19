@@ -18,7 +18,6 @@ from input_output.readers.frame_sequences import FrameReplay, FrameSequence, loa
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from input_output.writers.sidecars import write_json_file
 from input_output.writers.png import write_cv_png_file
-from utils.logger import Logger
 from runtime_limits import cap_parallel_jobs
 
 try:
@@ -27,6 +26,7 @@ except ImportError:
     cv2 = None
 
 from .constants import PDE_REGISTRATION_METHODS
+from .logging import logged_stage
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (
     photometric_confidence,
@@ -112,10 +112,12 @@ def create_retinal_motion_map(
     )
     with frame_context as replay:
         if raw_reference is None:
-            reference_raw, actual_reference_count = compute_mean_reference(
-                replay, args.max_frames,
-                on_progress=_FrameProgress(f"{log_label}: mean reference", frame_capacity),
-            )
+            with logged_stage(
+                f"{log_label} mean reference", frames=frame_capacity,
+            ):
+                reference_raw, actual_reference_count = compute_mean_reference(
+                    replay, args.max_frames,
+                )
         else:
             reference_raw, actual_reference_count = raw_reference
             if reference_raw.shape != (sequence.height, sequence.width) or not 0 < actual_reference_count <= frame_capacity:
@@ -223,19 +225,19 @@ def create_retinal_motion_map(
                     if frame is not None:
                         pending.append(executor.submit(register_frame, frame))
 
-        progress = _FrameProgress(f"{log_label}: registration", frame_capacity)
         try:
-            for frame_index, raw_field in registered_frames():
-                raw_field[analysis_mask == 0] = 0.0
-                previous_registration_field = raw_field.copy()
+            with logged_stage(
+                f"{log_label} registration", frames=frame_capacity,
+            ):
+                for _frame_index, raw_field in registered_frames():
+                    raw_field[analysis_mask == 0] = 0.0
+                    previous_registration_field = raw_field.copy()
 
-                for median_field in median_buffer.push(raw_field):
+                    for median_field in median_buffer.push(raw_field):
+                        append_temporally_filtered(median_field)
+
+                for median_field in median_buffer.finish():
                     append_temporally_filtered(median_field)
-
-                progress(frame_index, frame_capacity)
-
-            for median_field in median_buffer.finish():
-                append_temporally_filtered(median_field)
         except BaseException:
             caches.close()
             raise
@@ -247,15 +249,17 @@ def create_retinal_motion_map(
         output_video.parent.mkdir(parents=True, exist_ok=True)
         display_minimum, display_maximum = (None, None)
         if render_video:
-            display_minimum, display_maximum = write_magnitude_avi(
-                output_video, caches.magnitude, frame_count=caches.count,
-                valid_mask=analysis_mask > 0, fps=sequence.fps,
-                normalization=args.normalization,
-                low_percentile=args.low_percentile, high_percentile=args.high_percentile,
-                fixed_maximum=args.fixed_max_px, gamma=args.gamma,
-                visualization_sigma=args.visualization_sigma,
-                on_progress=_FrameProgress(f"{log_label}: magnitude video", caches.count),
-            )
+            with logged_stage(
+                f"{log_label} magnitude video", frames=caches.count,
+            ):
+                display_minimum, display_maximum = write_magnitude_avi(
+                    output_video, caches.magnitude, frame_count=caches.count,
+                    valid_mask=analysis_mask > 0, fps=sequence.fps,
+                    normalization=args.normalization,
+                    low_percentile=args.low_percentile, high_percentile=args.high_percentile,
+                    fixed_maximum=args.fixed_max_px, gamma=args.gamma,
+                    visualization_sigma=args.visualization_sigma,
+                )
 
         metadata = {
             "input": str(args.input.resolve()),
@@ -355,43 +359,18 @@ def render_retinal_motion_map_video(
         mask = cv2.imread(str(args.output_dir / "analysis_mask.png"), cv2.IMREAD_GRAYSCALE)
         if mask is None:
             raise ValueError("Displacement artifact mask is unavailable.")
-        minimum, maximum = write_magnitude_avi(
-            magnitude_video_path, magnitude, frame_count=metadata["frames"],
-            valid_mask=mask > 0, fps=metadata["fps"], normalization=args.normalization,
-            low_percentile=args.low_percentile, high_percentile=args.high_percentile,
-            fixed_maximum=args.fixed_max_px, gamma=args.gamma,
-            visualization_sigma=args.visualization_sigma,
-            on_progress=_FrameProgress(f"{log_label}: magnitude video", metadata["frames"]),
-        )
+        with logged_stage(
+            f"{log_label} magnitude video", frames=metadata["frames"],
+        ):
+            minimum, maximum = write_magnitude_avi(
+                magnitude_video_path, magnitude, frame_count=metadata["frames"],
+                valid_mask=mask > 0, fps=metadata["fps"], normalization=args.normalization,
+                low_percentile=args.low_percentile, high_percentile=args.high_percentile,
+                fixed_maximum=args.fixed_max_px, gamma=args.gamma,
+                visualization_sigma=args.visualization_sigma,
+            )
     finally:
         magnitude._mmap.close()
     metadata.update(display_minimum_px=float(minimum), display_maximum_px=float(maximum))
     write_json_file(metadata_path, metadata)
     return magnitude_video_path
-
-
-class _FrameProgress:
-    """Emit a small number of app-log updates for frame-based work."""
-
-    def __init__(self, label: str, total: int, *, interval_percent: int = 20):
-        self.label = str(label)
-        self.total = max(0, int(total))
-        self.interval_percent = int(interval_percent)
-        self._next_percent = self.interval_percent
-        Logger.log_info(f"{self.label} started ({self.total} frames).")
-
-    def __call__(self, completed: int, total: int) -> None:
-        total = max(0, int(total))
-        completed = max(0, min(int(completed), total))
-        if total == 0:
-            return
-        percent = min(100, int(completed * 100 / total))
-        if percent < self._next_percent and completed < total:
-            return
-        Logger.log_info(
-            f"{self.label}: {percent}% ({completed}/{total} frames)."
-        )
-        self._next_percent = min(
-            101,
-            (percent // self.interval_percent + 1) * self.interval_percent,
-        )

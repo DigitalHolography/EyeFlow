@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
+from pipelines.blood_volume_rate.runner import blood_volume_rate_graph
+from pipelines.blood_volume_rate.selection import selected_blood_volume_rate_methods
 from pipelines.velocity_analysis.runner import _segments_required
 
 
@@ -81,3 +83,19 @@ def test_each_bvr_family_requests_canonical_segment_analysis() -> None:
 
     assert _segments_required(Context(("gradient_edges",)))
     assert _segments_required(Context(("masked_edges",)))
+
+
+def test_pdf_report_forces_only_mask_derived_bvr() -> None:
+    class Selection:
+        def options_for(self, _name):
+            return frozenset()
+
+        def pipeline_scheduled(self, name):
+            return name == "pdf_report"
+
+    selection = Selection()
+
+    assert selected_blood_volume_rate_methods(selection) == {"masked_edges"}
+    assert {stage.id for stage in blood_volume_rate_graph(selection=selection).stages} == {
+        "inputs", "masked_edges", "signals", "lumen_distributions",
+    }

@@ -15,6 +15,7 @@ from pipelines.velocity_analysis import velocity_analysis
 
 from .outputs import (export_blood_volume_rate_signals, export_lumen_diameter_distributions,
                       pack_gradient_edge_outputs, pack_mask_derived_outputs)
+from .selection import selected_blood_volume_rate_methods
 
 
 def _inputs(ctx):
@@ -59,8 +60,9 @@ def _lumen_distributions(ctx):
         pixel_pitch_m=ctx.output.h5.read(schema.segmentation.pixel_pitch_m))
 
 
-def blood_volume_rate_graph(*, options=()):
-    branches = [name for name in ("gradient_edges", "masked_edges") if name in options]
+def blood_volume_rate_graph(*, options=(), selection=None):
+    methods = selected_blood_volume_rate_methods(selection, options=options)
+    branches = [name for name in ("gradient_edges", "masked_edges") if name in methods]
     if not branches:
         return StageGraph(())
     stages = [StageSpec("inputs", _inputs, products=(ProductSpec("analysis"),))]
@@ -77,4 +79,6 @@ def blood_volume_rate_graph(*, options=()):
 
 def run_blood_volume_rate(ctx):
     require_managed_runtime(ctx, "blood_volume_rate")
-    return blood_volume_rate_graph(options=ctx.options_for("blood_volume_rate"))
+    return blood_volume_rate_graph(
+        options=ctx.options_for("blood_volume_rate"), selection=ctx,
+    )

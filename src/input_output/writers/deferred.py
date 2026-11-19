@@ -57,7 +57,7 @@ def export_figure_writes(snapshot, manager, *, errors=()):
     from matplotlib import pyplot as plt
 
     from .article import render_article_figure_pair
-    from .png import write_png_file
+    from .png import render_figure_pair, write_png_file
 
     paths = []
     for source in sorted(Path(snapshot).glob("*.pickle")):
@@ -74,6 +74,8 @@ def export_figure_writes(snapshot, manager, *, errors=()):
                 with matplotlib.rc_context(rc):
                     if kind == "article_pair":
                         render_article_figure_pair(payload, targets, **kwargs)
+                    elif kind == "figure_pair":
+                        render_figure_pair(payload, targets, **kwargs)
                     else:
                         payload.savefig(targets[0], **kwargs)
             finally:

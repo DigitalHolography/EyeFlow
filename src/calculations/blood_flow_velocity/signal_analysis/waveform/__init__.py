@@ -16,7 +16,12 @@ from .cycles import (
     mean_period_seconds,
     padded_cycle,
 )
-from .metrics import PulseMetricData, pulse_metric, pulse_metric_from_signal
+from .metrics import (
+    PulseMetricData,
+    pulse_metric,
+    pulse_metric_from_cycles,
+    pulse_metric_from_signal,
+)
 from .morphology import (
     ArterialWaveformAnalysis,
     VenousWaveformAnalysis,
@@ -45,6 +50,7 @@ __all__ = [
     "padded_cycle",
     "paired_vessel_cycles",
     "pulse_metric",
+    "pulse_metric_from_cycles",
     "pulse_metric_from_signal",
     "rescale",
     "safe_indexes",

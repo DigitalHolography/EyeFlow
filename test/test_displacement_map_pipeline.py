@@ -30,6 +30,7 @@ from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.execution.invocation import _run_pipeline_descriptor
 from data_manager import DataManager
 from pipelines.displacement_map import registration
+from pipelines.displacement_map.logging import logged_stage
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
     LABELED_VESSELS_PATH,
@@ -41,6 +42,20 @@ from pipelines.displacement_map.runner import (
     resolve_retina_masks,
     run_displacement_map,
 )
+from utils.logger import Logger
+
+
+def test_displacement_stage_logging_is_timed_without_percentage_updates() -> None:
+    messages = []
+
+    with Logger.capture_messages(messages.append), logged_stage(
+        "displacement registration", frames=2,
+    ):
+        pass
+
+    assert messages[0] == "Starting displacement registration (2 frames)..."
+    assert messages[1].startswith("Completed displacement registration in ")
+    assert not any("%" in message for message in messages)
 
 
 class DisplacementRegistrationTests(unittest.TestCase):

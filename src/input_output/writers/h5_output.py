@@ -94,16 +94,22 @@ class PipelineH5Output:
             self.set_attrs(self.provenance)
         for path, value in metrics.items():
             target = self._path(path)
-            in_workflow = bool(
-                self.processing_root and target.startswith(self.processing_root + "/")
-            )
             write_value_dataset(self.file, target, value)
-            if in_workflow:
-                dataset = self.file[target]
-                # References in dataset attributes use the same workflow namespace.
-                for key, attr in list(dataset.attrs.items()):
-                    if isinstance(attr, str) and attr.lstrip("/").startswith("ProcessingMoments/"):
-                        set_attr_safe(dataset, key, self._path(attr))
+            if self.processing_root is None:
+                continue
+            in_workflow = target.startswith(self.processing_root + "/")
+            dataset = self.file[target]
+            # References in dataset attributes use the same workflow namespace.
+            for key, attr in list(dataset.attrs.items()):
+                if not isinstance(attr, str):
+                    continue
+                reference = attr.lstrip("/")
+                if in_workflow and reference.startswith("ProcessingMoments/"):
+                    set_attr_safe(dataset, key, self._path(attr))
+                elif reference.startswith("ProcessingWidth/SpatialGradient/Moments/"):
+                    mapped = self._path(attr)
+                    if mapped != reference:
+                        set_attr_safe(dataset, key, mapped)
 
     def set_attr(self, key: str, value: Any) -> None:
         if self._write_guard is not None:

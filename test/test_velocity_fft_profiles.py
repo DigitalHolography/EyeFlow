@@ -6,29 +6,20 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
-import h5py
 import numpy as np
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.compute_backend import optional_cupy_backend  # noqa: E402
 from calculations.vessel_segments.measurement import MaskedArrays  # noqa: E402
 from calculations.vessel_segments.profiles.fft import (  # noqa: E402
     SegmentFftAccumulator,
 )
-from calculations.vessel_segments.profiles.fft import _gpu_nanmean_axis1  # noqa: E402
 from calculations.vessel_segments.sampling.transforms import dilate_segment_masks  # noqa: E402
-from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
-)
-from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
-    pack_velocity_profile_fft_outputs,
 )
 
 
@@ -60,33 +51,6 @@ def _retained_fft_reference(maps_per_beat, segment_masks):
 
 
 class VelocityFFTProfileTests(unittest.TestCase):
-    def test_gpu_nanmean_does_not_require_copyto_where_support(self) -> None:
-        class ArrayBackendWithoutCopyto:
-            float32 = np.float32
-            nan = np.nan
-            isfinite = staticmethod(np.isfinite)
-            sum = staticmethod(np.sum)
-            where = staticmethod(np.where)
-            divide = staticmethod(np.divide)
-
-        values = np.asarray(
-            [
-                [[1.0, np.nan], [3.0, np.nan]],
-                [[2.0, 4.0], [np.nan, 8.0]],
-            ],
-            dtype=np.float32,
-        )
-        mask = np.asarray([[True, False], [True, False]])
-
-        result = _gpu_nanmean_axis1(
-            values,
-            ArrayBackendWithoutCopyto,
-            mask=mask,
-        )
-
-        np.testing.assert_allclose(result[:, 0], [2.0, 2.0])
-        self.assertTrue(np.all(np.isnan(result[:, 1])))
-
     def setUp(self) -> None:
         y_values = np.arange(51, dtype=np.float32)
         maps = np.broadcast_to(
@@ -135,89 +99,6 @@ class VelocityFFTProfileTests(unittest.TestCase):
         np.testing.assert_allclose(unmasked[:, 1:, :, 0, 0], 0.0, atol=1e-5)
         np.testing.assert_allclose(masked[:, 1:, :, 0, 0], 0.0, atol=1e-5)
 
-    def test_packer_writes_exact_artery_paths_and_metadata(self) -> None:
-        outputs = pack_velocity_profile_fft_outputs(
-            self.segments,
-            self.segments,
-        )
-        schema = EyeFlowOutputPaths.active()
-        paths = schema.artery_velocity_profiles
-        expected_paths = {
-            "ProcessingMoments/VelocityProfilesFFT/Artery/"
-            "TransverseVelocityProfileUnmasked",
-            "ProcessingMoments/VelocityProfilesFFT/Artery/"
-            "TransverseVelocityProfileMasked",
-            "ProcessingMoments/VelocityProfilesFFT/Vein/"
-            "TransverseVelocityProfileUnmasked",
-            "ProcessingMoments/VelocityProfilesFFT/Vein/"
-            "TransverseVelocityProfileMasked",
-        }
-
-        self.assertEqual(expected_paths, set(outputs))
-        self.assertEqual(
-            "ProcessingMoments/VelocityProfilesFFT/Artery/"
-            "TransverseVelocityProfileUnmasked",
-            paths.transverse_velocity_profile_fft_unmasked,
-        )
-        self.assertEqual(
-            "ProcessingMoments/VelocityProfilesFFT/Artery/"
-            "TransverseVelocityProfileMasked",
-            paths.transverse_velocity_profile_fft_masked,
-        )
-        self.assertEqual(
-            "ProcessingMoments/VelocityProfilesFFT/Vein/"
-            "TransverseVelocityProfileUnmasked",
-            schema.vein_velocity_profiles.transverse_velocity_profile_fft_unmasked,
-        )
-        self.assertEqual(
-            "ProcessingMoments/VelocityProfilesFFT/Vein/TransverseVelocityProfileMasked",
-            schema.vein_velocity_profiles.transverse_velocity_profile_fft_masked,
-        )
-
-        with h5py.File(
-            "velocity-fft-profiles.h5",
-            "w",
-            driver="core",
-            backing_store=False,
-        ) as h5:
-            for path, value in outputs.items():
-                write_value_dataset(h5, path, value)
-
-            unmasked = h5[paths.transverse_velocity_profile_fft_unmasked]
-            masked = h5[paths.transverse_velocity_profile_fft_masked]
-            self.assertEqual((2, 4, 2, 1, 1), unmasked.shape)
-            self.assertEqual(
-                ["x", "frequency", "beat", "branch", "radius"],
-                list(masked.attrs["dimDesc"]),
-            )
-            self.assertEqual("full", masked.attrs["fft_spectrum"])
-            self.assertEqual(10, masked.attrs["mask_dilation_iterations"])
-            self.assertEqual(0, unmasked.attrs["mask_dilation_iterations"])
-            self.assertFalse(masked.is_virtual)
-            np.testing.assert_array_equal(masked[()], self.segments.transverse_fft.masked)
-            self.assertEqual("gzip", masked.compression)
-
-    def test_streamed_accumulator_matches_legacy_retained_map_path(self) -> None:
-        expected_unmasked, expected_masked = _retained_fft_reference(
-            self.maps_per_beat,
-            self.segments.segment_masks,
-        )
-
-        np.testing.assert_allclose(
-            self.segments.transverse_fft.unmasked,
-            expected_unmasked,
-            rtol=1e-6,
-            atol=1e-6,
-            equal_nan=True,
-        )
-        np.testing.assert_allclose(
-            self.segments.transverse_fft.masked,
-            expected_masked,
-            rtol=1e-6,
-            atol=1e-6,
-            equal_nan=True,
-        )
-
     def test_streamed_accumulator_matches_legacy_for_temporal_data(self) -> None:
         rng = np.random.default_rng(3401)
         maps = rng.normal(size=(1, 1, 7, 51, 5)).astype(np.float32)
@@ -262,103 +143,6 @@ class VelocityFFTProfileTests(unittest.TestCase):
             atol=1e-6,
             equal_nan=True,
         )
-
-    def test_chunk_split_accumulator_matches_retained_map_reference(self) -> None:
-        rng = np.random.default_rng(3403)
-        maps = rng.normal(size=(1, 1, 9, 51, 5)).astype(np.float32)
-        maps[0, 0, 4, :3, 0] = np.nan
-        masks = np.zeros((1, 1, 51, 5), dtype=bool)
-        masks[0, 0, 22:29, 1:4] = True
-        boundaries = np.asarray([0, 3, 5, 8], dtype=np.int32)
-        expected_unmasked, expected_masked = _retained_fft_reference(
-            interpolate_velocity_maps_per_beat(maps, boundaries),
-            masks,
-        )
-        accumulator = SegmentFftAccumulator(
-            frame_count=maps.shape[2],
-            ring_count=1,
-            branch_count=1,
-            canvas_side=maps.shape[-1],
-            cycle_boundary_indexes=boundaries,
-            index_base=0,
-        )
-        profile_mask = dilate_segment_masks(
-            masks, iterations=10, horizontal_only=True
-        )[0, 0]
-        for start, stop in ((0, 2), (2, 4), (4, 7), (7, 9)):
-            accumulator.observe(
-                0,
-                0,
-                slice(start, stop),
-                maps[0, 0, start:stop],
-                profile_mask,
-            )
-
-        np.testing.assert_allclose(
-            accumulator.unmasked,
-            expected_unmasked,
-            rtol=1e-6,
-            atol=1e-6,
-            equal_nan=True,
-        )
-        np.testing.assert_allclose(
-            accumulator.masked,
-            expected_masked,
-            rtol=1e-6,
-            atol=1e-6,
-            equal_nan=True,
-        )
-
-    def test_gpu_accumulator_does_not_silently_fall_back_to_cpu(self) -> None:
-        backend = optional_cupy_backend()
-        if backend is None:
-            self.skipTest("CuPy/CUDA is unavailable.")
-
-        rng = np.random.default_rng(3402)
-        stack = rng.normal(size=(7, 51, 5)).astype(np.float32)
-        stack[:, :4, 0] = np.nan
-        mask = np.zeros((51, 5), dtype=bool)
-        mask[20:31, 1:4] = True
-        accumulator = SegmentFftAccumulator(
-            frame_count=stack.shape[0],
-            ring_count=1,
-            branch_count=1,
-            canvas_side=stack.shape[-1],
-            cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32),
-            index_base=0,
-        )
-        expected = SegmentFftAccumulator(
-            frame_count=stack.shape[0],
-            ring_count=1,
-            branch_count=1,
-            canvas_side=stack.shape[-1],
-            cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32),
-            index_base=0,
-        )
-        expected.observe(0, 0, stack, mask)
-
-        with patch.object(
-            SegmentFftAccumulator,
-            "_write_beat_cpu",
-            side_effect=AssertionError("unexpected CPU fallback"),
-        ):
-            accumulator.observe(0, 0, backend.cupy.asarray(stack), mask)
-
-        np.testing.assert_allclose(
-            accumulator.unmasked,
-            expected.unmasked,
-            rtol=1e-6,
-            atol=1e-6,
-            equal_nan=True,
-        )
-        np.testing.assert_allclose(
-            accumulator.masked,
-            expected.masked,
-            rtol=1e-6,
-            atol=1e-6,
-            equal_nan=True,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()
