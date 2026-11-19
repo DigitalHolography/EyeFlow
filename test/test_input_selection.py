@@ -34,7 +34,10 @@ class _Var:
 
 @pytest.fixture(scope="module", autouse=True)
 def tcl_interpreter():
-    return tk.Tcl()
+    try:
+        return tk.Tcl()
+    except tk.TclError as exc:
+        pytest.skip(f"Tcl runtime is unavailable: {exc}")
 
 
 def _app():

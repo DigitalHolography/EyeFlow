@@ -1,4 +1,4 @@
-"""Systole-index PNG exporters."""
+"""Systole-index figure exporters."""
 
 from __future__ import annotations
 
@@ -9,7 +9,12 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
-from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import (
+    ARTICLE_ASPECT_RATIO,
+    DIAGNOSTIC_ARTICLE_STYLE as STYLE,
+)
+from plotting.colors import opaque_on_background
+from plotting.units import display_unit
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -28,74 +33,73 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
         _log(ctx, "Skipping systole index PNGs; no beat indices are available.")
         return []
     artery = _display_velocity(_vector(ctx.velocity.continuous("artery")))
-    artery_deriv = _display_velocity(_vector(ctx.velocity.derivative("artery")))
     vein = _display_velocity(_vector(ctx.velocity.continuous("vein")))
-    vein_deriv = _display_velocity(_vector(ctx.velocity.derivative("vein")))
     maxima, minima = _cycle_extrema(artery, peaks)
-    paths = [
+    artifact_groups = [
         _systole_plot(
             writer,
             "find_systoles_indices_artery.png",
             ctx.time,
             artery,
-            artery_deriv,
             peaks,
             maxima,
             minima,
             ctx.velocity_axis_label,
-            ctx.velocity_semantics,
+            "Artery Systole Indices",
         ),
         _systole_plot(
             writer,
             "find_systoles_indices_vein.png",
             ctx.time,
             vein,
-            vein_deriv,
             peaks,
             maxima,
             minima,
             ctx.velocity_axis_label,
-            ctx.velocity_semantics,
+            "Vein Systole Indices",
         ),
     ]
-    writer.register_artifact("systole", "artery", paths[0])
-    writer.register_artifact("systole", "vein", paths[1])
-    return paths
+    for vessel, artifact_paths in zip(("artery", "vein"), artifact_groups):
+        writer.register_artifact(
+            "systole", vessel,
+            next(path for path in artifact_paths if path.suffix.lower() == ".png"),
+        )
+    return [path for artifact_paths in artifact_groups for path in artifact_paths]
 
 def _systole_plot(
     writer: FigureWriter,
     suffix: str,
     time: np.ndarray,
     filtered: np.ndarray,
-    derivative: np.ndarray,
     peaks: np.ndarray,
     maxima: np.ndarray,
     minima: np.ndarray,
-    velocity_label: str = "Velocity (mm/s)",
-    velocity_semantics=None,
-) -> Path:
-    fig, ax = _plt().subplots(figsize=(7.5, 4.0))
-    derivative_ax = ax.twinx()
-    derivative_ax.plot(
-        time[: derivative.size],
-        derivative,
-        color="0.55",
+    velocity_label: str = f"Velocity ({display_unit('mm/s')})",
+    title: str = "Systole Indices",
+) -> list[Path]:
+    fig, ax = _plt().subplots(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
+    ax.plot(
+        time[: filtered.size], filtered, color="black",
         linewidth=STYLE.secondary_line_width,
     )
-    ax.plot(time[: filtered.size], filtered, color="k", linewidth=STYLE.secondary_line_width)
-    for indexes, color in ((peaks, "k"), (maxima, "tab:red"), (minima, "tab:blue")):
+    for indexes, marker_color in (
+        (peaks, "k"), (maxima, "tab:red"), (minima, "tab:blue")
+    ):
         valid = indexes[(indexes >= 0) & (indexes < filtered.size)]
         if valid.size:
-            ax.scatter(time[valid], filtered[valid], color=color, s=28, zorder=3)
+            ax.scatter(
+                time[valid], filtered[valid], color=marker_color, s=28, zorder=3
+            )
             for idx in valid:
-                ax.axvline(time[idx], color=color, linestyle="--", linewidth=STYLE.event_line_width, alpha=0.75)
+                ax.axvline(
+                    time[idx],
+                    color=opaque_on_background(marker_color, opacity=0.75),
+                    linestyle="--", linewidth=STYLE.event_line_width,
+                )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(velocity_label)
-    derivative_ax.set_ylabel(
-        "Relative velocity index rate (s⁻¹)"
-        if getattr(velocity_semantics, "unit", "mm/s") == "1"
-        else "Acceleration (mm/s²)"
-    )
     _style_axes(ax)
-    _style_axes(derivative_ax)
-    return writer.save_figure(fig, suffix)
+    ax.set_title(
+        title, fontsize=10, fontfamily="sans-serif", fontweight="normal"
+    )
+    return writer.save_figure_pair(fig, suffix)

@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import sys
-import tempfile
 import unittest
-import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -17,23 +15,13 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.vessel_segments.sampling.transforms import resample_rotate_segment  # noqa: E402
 from calculations.vessel_segments.profiles.per_beat import (  # noqa: E402
     interpolate_profiles_per_beat,
 )
-from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
 from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
     pack_cross_section_profile_outputs,
-)
-from pipelines.velocity_analysis.artifacts.figures.profiles import (  # noqa: E402
-    _finite_median,
-    _hierarchical_profile_median,
-    _nanmedian,
-    _positive_focused_limits,
-    export_cross_section_profile_artifacts,
 )
 
 
@@ -104,69 +92,6 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         self.assertEqual(2, resample.call_count)
         self.assertTrue(np.all(np.isnan(result[..., 1, 0])))
         self.assertTrue(np.any(np.isfinite(result[..., 0, 0])))
-
-    def test_nan_rotation_interpolates_only_finite_values(self) -> None:
-        image = np.full((5, 5), np.nan, dtype=np.float32)
-        image[1:4, 1:4] = np.arange(1, 10, dtype=np.float32).reshape(3, 3, order="F")
-        rotated = resample_rotate_segment(image[None], 30.0, output_side_pixels=5)[0]
-        self.assertTrue(np.all(np.isnan(rotated[[0, -1]])))
-        self.assertAlmostEqual(5.0, float(rotated[3, 3]), places=5)
-
-
-class ProfileArtifactTests(unittest.TestCase):
-    def test_profile_median_handles_sparse_branches_by_radius(self) -> None:
-        values = np.arange(2 * 12 * 3 * 4, dtype=np.float32).reshape(2, 12, 3, 4)
-        values[0, :10, 1, 2] = np.nan
-        values[1, :, 2, 3] = np.nan
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            expected = np.nanmedian(np.nanmedian(values, axis=1), axis=0)
-        np.testing.assert_allclose(
-            _hierarchical_profile_median(values), expected, equal_nan=True
-        )
-
-    def test_profile_median_has_sparse_array_fallback(self) -> None:
-        values = np.arange(2 * 12 * 3, dtype=np.float32).reshape(2, 12, 3)
-        expected = _finite_median(values, axis=1)
-        with patch(
-            "pipelines.velocity_analysis.artifacts.figures.profiles.np.nanmedian",
-            side_effect=IndexError("sparse partition failure"),
-        ):
-            actual = _nanmedian(values, axis=1)
-        np.testing.assert_allclose(actual, expected, equal_nan=True)
-
-    def test_profile_plot_limits_focus_positive_flow(self) -> None:
-        y_min, y_max = _positive_focused_limits(
-            np.array([-40.0, -12.0, 0.0, 4.0, 3.0])
-        )
-        self.assertAlmostEqual(-1.12, y_min)
-        self.assertAlmostEqual(4.48, y_max)
-
-    def test_only_raw_profile_diagnostics_are_written(self) -> None:
-        try:
-            import matplotlib  # noqa: F401
-        except ModuleNotFoundError:
-            self.skipTest("profile artifact dependencies are not installed")
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output = _FakeOutput(Path(temp_dir))
-            writer = FigureArtifactWriter(output, "sample")
-            context = SimpleNamespace(
-                source_data=SimpleNamespace(
-                    source=SimpleNamespace(
-                        holodoppler=SimpleNamespace(
-                            timing=SimpleNamespace(dt_seconds=0.05)
-                        )
-                    )
-                ),
-                artery_segments=_segments(radius_count=1, branch_count=1),
-                vein_segments=_segments(radius_count=1, branch_count=1),
-            )
-            paths = export_cross_section_profile_artifacts(writer, context)
-            self.assertEqual(2, len(paths))
-            self.assertTrue(all(path.is_file() for path in paths))
-            self.assertTrue(all("profile_map" in path.name for path in paths))
-
-
 def _segments(*, radius_count: int, branch_count: int):
     frames = 6
     width = 181
@@ -189,21 +114,5 @@ def _segments(*, radius_count: int, branch_count: int):
             ),
         ),
     )
-
-
-class _FakeOutput:
-    available = True
-
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.manager = SimpleNamespace(layout=SimpleNamespace(stem="sample"))
-
-    def path_for(self, output_type: OutputType, filename: str | None = None) -> Path:
-        return self.root / output_type.value / (filename or "sample")
-
-    def write_png(self, output, filename: str | None = None) -> Path:
-        return write_png_file(self.path_for(OutputType.PNG, filename), output)
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from plotting.article import ARTICLE_DPI
+from plotting.headless import close_figure
 
 from .eps import EpsArtifactWriter
 from .png import PngArtifactWriter
@@ -25,8 +26,6 @@ def save_article_figure_pair(
     This function owns figure cleanup, including on export failure. Callers
     apply article styling before export. Generic PNG/EPS writers are unchanged.
     """
-    from matplotlib import pyplot as plt
-
     try:
         basename = Path(str(name).replace("\\", "/"))
         if basename.suffix.lower() in {".png", ".eps"}:
@@ -35,11 +34,12 @@ def save_article_figure_pair(
             PngArtifactWriter(output, stem).path(f"{basename}.png"),
             EpsArtifactWriter(output, stem).path(f"{basename}.eps"),
         ]
-        if not defer_write("article_pair", fig, paths, dpi=dpi):
-            render_article_figure_pair(fig, paths, dpi=dpi)
+        missing = [path for path in paths if not path.exists()]
+        if missing and not defer_write("article_pair", fig, missing, dpi=dpi):
+            render_article_figure_pair(fig, missing, dpi=dpi)
         return paths
     finally:
-        plt.close(fig)
+        close_figure(fig)
 
 
 def render_article_figure_pair(fig, paths, *, dpi):
@@ -51,7 +51,10 @@ def render_article_figure_pair(fig, paths, *, dpi):
     fig.canvas.draw()
     fig.set_layout_engine("none")
     canvas_bounds = fig.bbox_inches.frozen()
-    for path, format_name in zip(paths, ("png", "eps")):
+    for path in paths:
+        format_name = Path(path).suffix.lower().lstrip(".")
+        if format_name not in {"png", "eps"}:
+            raise ValueError(f"Unsupported article figure format: {path}")
         fig.savefig(
             path, format=format_name, dpi=dpi, bbox_inches=canvas_bounds,
             pad_inches=0, transparent=False,

@@ -244,7 +244,14 @@ def _optional_artifact_export(label):
 
 def _segments_required(ctx) -> bool:
     """Return whether the canonical segment analysis must run."""
-    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for("blood_volume_rate"):
+    from pipelines.blood_volume_rate.selection import (
+        selected_blood_volume_rate_methods,
+    )
+
+    if (
+        ctx.pipeline_scheduled("blood_volume_rate")
+        and selected_blood_volume_rate_methods(ctx)
+    ):
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True

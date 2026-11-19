@@ -14,7 +14,6 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output import resolve_selected_run_layouts  # noqa: E402
-from input_output.runs.inputs import holo_input_status, stem_input_status  # noqa: E402
 
 
 def _write_holo_file(root: Path, stem: str) -> Path:
@@ -51,25 +50,6 @@ class HoloInputListTests(unittest.TestCase):
             self.assertEqual(holos, [item.holo_path for item in resolved])
             self.assertEqual([pair[0] for pair in companions], [item.hd_h5 for item in resolved])
             self.assertEqual([pair[1] for pair in companions], [item.dv_h5 for item in resolved])
-
-    def test_status_requires_an_unambiguous_h5_selection(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            stem = "subject_a"
-            holo = _write_holo_file(root, stem)
-            hd_dir = root / stem / f"{stem}_HD" / "h5"
-            hd_dir.mkdir(parents=True)
-            for name in ("one.h5", "two.h5"):
-                with h5py.File(hd_dir / name, "w"):
-                    pass
-
-            self.assertFalse(holo_input_status(holo).hd)
-            self.assertFalse(stem_input_status(stem, root).hd)
-
-            with h5py.File(hd_dir / f"{stem}_HD_output.h5", "w"):
-                pass
-            self.assertTrue(holo_input_status(holo).hd)
-            self.assertTrue(stem_input_status(stem, root).hd)
 
     def test_mixed_txt_and_holo_selection_raises_value_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

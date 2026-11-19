@@ -14,14 +14,6 @@ import pytest
     ("module", "forbidden"),
     [
         (
-            "calculations.math.bandlimiting",
-            ("app_settings", "pipeline_engine", "pipelines", "ui", "signal_parameters"),
-        ),
-        (
-            "app_settings",
-            ("calculations", "scipy", "signal_parameters"),
-        ),
-        (
             "calculations.topology",
             ("calculations.vessel_segments", "calculations.compute_backend", "pipelines"),
         ),

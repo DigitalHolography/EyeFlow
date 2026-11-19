@@ -12,6 +12,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from calculations.compute_backend import optional_cupy_backend
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     DEFAULT_COPY_HD_PASSTHROUGH,
@@ -214,19 +215,20 @@ def execute_run(
     from pipeline_engine.resources import ResourceBudget, current_resources
 
     Logger.log_perf(f"START pipeline=run variant=shared stage=batch at={started_at:.6f}")
-    with Logger.perf_stage("run/budget_create"):
-        budget = current_resources() or ResourceBudget()
-    with ExitStack() as startup:
-        with Logger.perf_stage("run/batch_resources"):
-            startup.enter_context(budget.activate())
-        with ArtifactWorkers() as workers, ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
-        ) as completions:
-            result = _execute_batch(
-                spec, workers, completions, on_file_start=on_file_start,
-                on_pipeline_start=on_pipeline_start, on_progress=on_progress,
-                should_stop=should_stop,
-            )
+    with _batch_compute_backend():
+        with Logger.perf_stage("run/budget_create"):
+            budget = current_resources() or ResourceBudget()
+        with ExitStack() as startup:
+            with Logger.perf_stage("run/batch_resources"):
+                startup.enter_context(budget.activate())
+            with ArtifactWorkers() as workers, ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
+            ) as completions:
+                result = _execute_batch(
+                    spec, workers, completions, on_file_start=on_file_start,
+                    on_pipeline_start=on_pipeline_start, on_progress=on_progress,
+                    should_stop=should_stop,
+                )
     finished_at = perf_counter()
     elapsed_seconds = finished_at - started_at
     Logger.log_perf(
@@ -235,6 +237,28 @@ def execute_run(
     )
     Logger.log_info(f"Total app execution time: {elapsed_seconds:.3f} s")
     return result
+
+
+@contextmanager
+def _batch_compute_backend():
+    """Resolve automatic GPU availability once before any batch output is reset."""
+
+    configured = os.environ.get("EYEFLOW_COMPUTE_BACKEND")
+    preference = (configured or "auto").strip().lower()
+    backend = optional_cupy_backend()
+    if preference != "auto" or backend is not None:
+        yield
+        return
+
+    os.environ["EYEFLOW_COMPUTE_BACKEND"] = "cpu"
+    Logger.log_info("No usable CuPy/CUDA backend detected; using CPU for this batch.")
+    try:
+        yield
+    finally:
+        if configured is None:
+            os.environ.pop("EYEFLOW_COMPUTE_BACKEND", None)
+        else:
+            os.environ["EYEFLOW_COMPUTE_BACKEND"] = configured
 
 
 def _execute_batch(

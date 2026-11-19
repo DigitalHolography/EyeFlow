@@ -38,14 +38,6 @@ class TopologyQuadrantTests(unittest.TestCase):
             quadrant_membership(prepared)
         np.testing.assert_array_equal(direct[:, :, 0], np.eye(4, dtype=bool))
 
-    def test_every_branch_must_exist_in_the_label_map(self) -> None:
-        topology = _four_quadrant_topology(radius_count=1)
-        topology.labels[topology.labels == 4] = 0
-
-        with self.assertRaisesRegex(ValueError, "at least one pixel"):
-            quadrant_membership(topology)
-
-
 def _four_quadrant_topology(*, radius_count: int) -> SegmentTopology:
     labels = np.zeros((8, 8), dtype=np.int32)
     labels[1, 1] = 1

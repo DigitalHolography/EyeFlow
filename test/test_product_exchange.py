@@ -17,6 +17,8 @@ from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.stage_graph.journal import StageJournal
 from pipeline_engine.data.storage import ProductStorage
 
+pytestmark = pytest.mark.usefixtures("inline_output_service")
+
 
 def test_identity_variants_and_finalization_do_not_overwrite_accepted_products():
     registry = ProductExchangeRegistry()

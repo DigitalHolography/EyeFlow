@@ -18,6 +18,9 @@ from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.deferred import save_figure_file
 from input_output.writers.eps import EpsArtifactWriter
+
+
+pytestmark = pytest.mark.usefixtures("inline_output_service")
 from input_output.writers.png import FigureArtifactWriter
 from pipeline_engine.planning.base import PipelineDescriptor
 from pipeline_engine.execution.run_service import execute_run, resolve_run_spec

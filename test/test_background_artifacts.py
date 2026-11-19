@@ -23,6 +23,9 @@ from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.planning.base import PipelineDescriptor, pipeline, registerPipeline
 from pipeline_engine.context import PipelineOutput
+
+
+pytestmark = pytest.mark.usefixtures("inline_output_service")
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 from pipelines.low_freq_spectra.artifacts import export_spectrogram_figures
 from pipelines.low_freq_spectra.figure_export import (

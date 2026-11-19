@@ -1,114 +1,53 @@
-# Pipeline execution and product exchange
+# Coordinator and process execution
 
-`runtime.py` owns an input run and its variants. `CoordinatorScheduler` chooses
-ready invocations; `ProcessExecutor` owns workers and reaping. Both process and
-coordinator invocations use the same checkpoints and
-[stage executor](pipeline_stage_graphs.md).
+`pipeline_engine.execution.runtime` owns the resolved run, shared input
+service, output model, resource budget, accepted products, and final
+publication. GUI and CLI enter through `execution.run_service`.
 
-`_execute_input` expresses the lifecycle as explicit phases: open sources,
-initialize output, prepare input replay, build declarations, create the existing
-scheduler, execute coordinator jobs, and finalize status/exports. Shared and
-variant invocations have separate helpers; variant registration and status
-persistence are separate from dispatch. Small records group source views,
-preflight declarations and outcome dictionaries. The dictionaries remain shared
-with the scheduler; cleanup still belongs to the caller's `ExitStack` and final
-independent I/O lanes to `IOManager` and retained publication to `AcquisitionCompletion`.
+## Scheduling and inputs
 
-## Readiness
+Pipeline declarations may set `execution_mode="process"`; coordinator execution
+is the default. Dependency-ready work can overlap across processes and the
+coordinator. Process entry points must be importable registered pipelines.
+The current process path starts with displacement registration and its later
+profile/map analysis. Variant descendants retain coordinator execution.
+`pipeline_engine/execution/scheduler.py`, `worker.py`, `process_executor.py`,
+and `protocol.py` own dispatch and bounded event queues.
 
-A descriptor's `graph_factory(options=...)` supplies the same product declarations
-for preflight and execution. A `ProductRequirement` adds producer closure to the
-global DAG without requiring successful whole-invocation completion:
+The coordinator opens HD/DV sources once. Workers request data through
+`pipeline_engine/io/input/` rather than reopening source HDF5 files. Requested numeric
+datasets are staged in bounded reads to local, read-only `.npy` files and
+reused; unrequested datasets are not copied. `EYEFLOW_SCRATCH_DIR` may select
+a local scratch directory. Network scratch is rejected, and exhaustion fails
+explicitly. Input mappings and worker files remain alive until their consumers
+finish.
 
-```python
-ProductRequirement(
-    alias="registration", producer_pipeline="displacement_map",
-    product="registered_fields", variant="shared",
-)
-```
+## Commits, failures, and resources
 
-Product identity is `(run_id, pipeline, variant, product)`. `shared` selects the
-unqualified producer; `same` selects the consuming workflow. Variant identities
-are bound when the workflow producer publishes them.
+`OutputModel` holds HDF5 groups, attributes, and payload references before
+final serialization. Managed checkpoints journal changed records only.
+Stage handoffs commit their declared products atomically; later failures keep
+accepted products and discard uncommitted changes. State checkpoints track
+bindings, so committed mutable objects must not be edited in place. A worker
+publishes closed local snapshots by acknowledged queue event; an abrupt exit
+retains its last acknowledged snapshot. Unpublished work cannot be recovered.
 
-The registry tracks `PENDING`, `AVAILABLE` and `FAILED`. Admission waits for all
-required products to resolve, whole dependencies, and CPU/RAM availability.
-Failed products skip dependent stages while independent branches run. Producer
-termination fails its unproduced products. Whole-pipeline dependencies still
-require successful completion. Displacement profiles use early registration
-products while retaining whole dependencies on topology and velocity workflows.
+A shared batch budget admits compute, input storage, retained arrays, and
+rendering. Automatic GPU selection is probed once before any run output is
+replaced; an unavailable automatic CuPy/CUDA backend pins the batch and spawned
+workers to CPU. Explicit CuPy selection fails before execution. Resource
+admission considers CPU availability and RAM reservations, with local spill
+for large retained arrays. Admission estimates are not OS-enforced memory
+limits. `resources.py` owns current thresholds; measure representative input
+and scratch usage before tuning them.
 
-## Delivery and acceptance
+Reports wait for required artifact jobs and read the assembled output view.
+The coordinator writes the accepted HDF5 locally, copies to a destination-side
+staging file, and renames it to the final path. Incomplete runs can publish
+accepted products with failure status. Analysis of the next input may overlap
+the preceding input's export and publication; batch return waits for all
+started inputs.
 
-1. A stage locally commits its product and output.
-2. The worker closes an incremental manifest in run-owned storage, then queues
-   its reference and small metadata. Large arrays stay outside IPC queues.
-3. The receiver queues the event and returns a correlated `TransportReceipt`.
-   Only this receipt advances the worker's delivery cursor; it does not enable
-   downstream readiness.
-4. The coordinator's `ProductAcceptance` validates producer/commit identity,
-   storage, output paths and artifacts. One existing output transaction accepts
-   records, changed state bindings and files before publishing registry handles.
-5. Ready consumers may start while the producer continues. Finalization joins
-   exports and publishes HDF5 through `h5_publication.py`.
-
-Serialization, delivery or receipt failure ends the worker explicitly. Already
-accepted commits survive, including a commit whose receipt was lost. Incomplete
-manifests are removed; staged backing stays run-owned until cleanup. Replayed
-commit IDs are idempotent; conflicting replays fail. Status-only events avoid
-repeated scientific snapshots. State deltas compare bindings against their last
-acknowledged value, including rebindings to original input values.
-
-## Resource and output lifetime
-
-Accepted products survive later failures; rejected acceptance rolls back its
-records, state and newly copied artifacts. `AcquisitionCompletion` retains backing until
-consumers, exports and publication finish. Worker cleanup closes its mappings
-without deleting shared backing. Publication uses a destination staging file and
-atomic replacement, preserving the prior output on failure. Output materialization
-starts at safe stage commits; finalization drains outstanding writes and reconciles
-metadata without rewriting scientific datasets. See [runtime I/O](runtime_io.md).
-
-Logical completion retains CPU/RAM reservations until actual process exit and
-nonblocking reaping. Each reservation releases once. Cancellation terminates
-workers; cleanup exceptions report failure; repeated close is safe. One
-`ResourceBudget` covers workers, calculations, renderers and file finalizers.
-There are no fixed per-pipeline RAM declarations.
-
-The input service owns each read-only HD/DV source and keeps demanded native
-dataset handles open across slabs. Declarative stage inputs select progressive
-local replay or bounded shared-memory streaming. Workers see only completed
-replay extents or exclusive leased blocks, and source aliases share replay.
-See [input ownership and readiness](hdf5_input_subsystem.md) for lifetime and
-cancellation rules. Native thread policy belongs to process and resource
-initialization.
-
-`test_product_exchange_processes.py` covers actual transport, crash recovery,
-receipt loss, acceptance rollback and exit/resource ordering. Reproduce synthetic
-copy, manifest, IPC and RSS measurements with
-`python scripts/benchmark_execution_ownership.py --processes`.
-
-## Performance diagnostics
-
-Run logs use `[PERF]` records with `perf_counter()` timestamps and durations in
-seconds. Pipeline and stage records identify the pipeline, execution variant,
-and stage; stage timings distinguish callback work from CPU admission,
-dependency dispatch, and artifact waits. Handoff records split snapshots,
-packing, and output commits. Aggregate storage metrics report source staging,
-array copying, serialization, and final HDF5 publication.
-
-Background artifact records separate snapshot preparation, admission/renderer
-queueing, rendering, file copies, and publication. `stage_timings` and
-`artifact_timings` remain the authoritative persisted timing data. The run-end
-summary sorts the slowest pipeline/stage/artifact spans and estimates accounted
-wall time as the interval union of stage and artifact spans; nested and
-concurrent spans are therefore not added together. The remainder is reported
-as unaccounted wall time, commonly including setup and finalization.
-
-The shared `Logger` shows `DEBUG` and `PERF` records by default in development,
-and only `INFO`/`WARNING`/`ERROR` records in frozen builds. Set
-`EYEFLOW_DIAGNOSTICS=1` to enable diagnostic records in a packaged build;
-`EYEFLOW_PERF_LOGGING=1` independently enables performance records;
-`EYEFLOW_LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING`, or `ERROR` as a minimum
-severity. Startup configuration is inherited by spawned workers and artifact
-renderers, so filtering is consistent across the run and UI.
+For per-product dependencies and artifact ownership, see
+[stage graphs](pipeline_stage_graphs.md). Tests for process spawn, input replay,
+crash recovery, and final publication start in `test/test_parallel_coordinator.py`.

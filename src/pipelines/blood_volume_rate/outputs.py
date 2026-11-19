@@ -24,7 +24,7 @@ from plotting.article import (
     prepare_article_fill_layer,
 )
 from input_output.schema import EyeFlowOutputPaths
-from plotting.formatting import add_legend
+from plotting.units import display_unit
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.h5_storage import profile_h5_options
 from input_output.schema.output_payload import payload_array as _metric_data
@@ -33,6 +33,7 @@ from pipelines.profile_outputs import profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
 BLOOD_VOLUME_RATE_ENVELOPE_GRAY = COMPACT_ARTICLE_STYLE.envelope_color
+PAGE_TWO_ARTIFACT_AXES_BOUNDS = (0.20, 0.22, 0.75, 0.75)
 
 
 def pack_gradient_edge_outputs(
@@ -366,14 +367,12 @@ def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$")
-    ax.set_ylabel(r"$Q(t)$ (mm³/s)")
-    apply_article_style(fig, COMPACT_ARTICLE_STYLE)
+    ax.set_ylabel(rf"$Q(t)$ ({display_unit('mm^3/s')})")
+    _apply_page_two_artifact_layout(fig, ax)
     return fig
 
 
 def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
-    from matplotlib.lines import Line2D
-
     fig, ax = create_article_figure(
         width=LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
         aspect_ratio=LUMEN_DIAMETER_FIGURE_ASPECT_RATIO,
@@ -405,20 +404,17 @@ def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
             linewidth=COMPACT_ARTICLE_STYLE.fit_line_width,
         )
 
-    statistic_handles = [
-        Line2D([], [], color="none", label=_statistic_label("Median", median)),
-        Line2D(
-            [],
-            [],
-            color="none",
-            label=_statistic_label("SD", standard_deviation),
-        ),
-    ]
-    add_legend(ax, COMPACT_ARTICLE_STYLE.legend_layout, handles=statistic_handles)
     ax.set_xlabel("Lumen diameter (µm)")
     ax.set_ylabel("Count")
-    apply_article_style(fig, COMPACT_ARTICLE_STYLE)
+    _apply_page_two_artifact_layout(fig, ax)
     return fig
+
+
+def _apply_page_two_artifact_layout(fig, ax) -> None:
+    """Give the lumen and BVR artifacts exactly the same visible plot bounds."""
+    apply_article_style(fig, COMPACT_ARTICLE_STYLE)
+    fig.set_layout_engine("none")
+    ax.set_position(PAGE_TWO_ARTIFACT_AXES_BOUNDS)
 
 
 def _lumen_diameter_histogram_edges(values: np.ndarray) -> np.ndarray:
@@ -431,12 +427,6 @@ def _lumen_diameter_histogram_edges(values: np.ndarray) -> np.ndarray:
         upper = lower + width
     bin_count = max(1, round((upper - lower) / width))
     return lower + np.arange(bin_count + 1, dtype=np.float64) * width
-
-
-def _statistic_label(name: str, value: float) -> str:
-    if not np.isfinite(value):
-        return f"{name}: n/a"
-    return f"{name}: {value:.1f} µm"
 
 
 def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None:

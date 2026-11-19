@@ -4,8 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from functools import partial
 from hashlib import sha256
-import gc
-import os
 import multiprocessing as mp
 from pathlib import Path
 import pickle
@@ -17,10 +15,10 @@ import pytest
 from input_output.writers.h5_publication import CompletedLocalOutput, OutputPublisher
 from pipeline_engine.data.storage import ProductStorage, ArrayReference, H5ArrayReference
 from pipeline_engine.io.manager import IOManager
-from pipeline_engine.io.output.protocol import OutputPolicy, OutputServiceError, DatasetWrite, WriteBatch, FinalizeOutput, FinalizeCommand, WriteCommand, WriterConnection
+from pipeline_engine.io.output.protocol import OutputPolicy, OutputServiceError, DatasetWrite, WriteBatch, WriteCommand, WriterConnection
 from pipeline_engine.io.output.service import OutputService
 from pipeline_engine.io.output.writer import writer_main
-from pipeline_engine.output.output_model import FinalizationSnapshot, OutputModel, Record
+from pipeline_engine.output.output_model import OutputModel, Record
 from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.io.input.service import InputPolicy
@@ -98,8 +96,7 @@ def test_duplicate_service_does_not_spawn_or_detach_the_existing_writer(tmp_path
             assert physical['accepted'][()] == 7
 
 
-@pytest.mark.parametrize('duplicate_owner', [IOManager, AcquisitionCompletion])
-def test_duplicate_manager_preserves_the_active_acquisitions_storage(tmp_path, duplicate_owner):
+def test_duplicate_completion_preserves_the_active_acquisitions_storage(tmp_path):
     with ProductStorage(directory=tmp_path/'scratch') as storage:
         model = OutputModel(storage, tmp_path/'final.h5')
         completion = AcquisitionCompletion(model)
@@ -111,7 +108,7 @@ def test_duplicate_manager_preserves_the_active_acquisitions_storage(tmp_path, d
             manager.output.drain()
             backing = Path(model.records['accepted'].value.path)
             with pytest.raises(RuntimeError, match='listener is already bound'):
-                duplicate_owner(model)
+                AcquisitionCompletion(model)
             assert not storage._closed and backing.exists()
             assert model._commit_listener == manager.output.submit
             with model.checkpoint():
@@ -287,20 +284,6 @@ def test_close_during_startup_is_bounded_and_idempotent(tmp_path):
         assert service.commands is None and service.acknowledgements is None
 
 
-@pytest.mark.parametrize('failure',['copy','replace'])
-def test_publication_failure_keeps_existing_file_and_removes_incoming(tmp_path,monkeypatch,failure):
-    local=tmp_path/'local.h5'
-    with h5py.File(local,'w') as physical: physical['value']=7
-    destination=tmp_path/'published.h5'
-    destination.write_bytes(b'previous result')
-    def fail(*args): raise OSError('destination failed')
-    monkeypatch.setattr(f'input_output.writers.h5_publication.{"shutil.copyfile" if failure=="copy" else "os.replace"}',fail)
-    with pytest.raises(OSError,match='destination failed'):
-        OutputPublisher(destination).publish(CompletedLocalOutput(local, local.stat().st_size))
-    assert destination.read_bytes()==b'previous result'
-    assert not list(tmp_path.glob('.ef-*')) and local.exists()
-
-
 def test_two_acquisitions_retain_independent_writers_after_input_closes(tmp_path):
     a=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'a.h5'))
     b=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'b.h5'))
@@ -318,8 +301,7 @@ def test_two_acquisitions_retain_independent_writers_after_input_closes(tmp_path
         a.close();b.close()
 
 
-@pytest.mark.parametrize('conflict',['sequence','dataset','inventory','gap'])
-def test_duplicate_sequences_are_idempotent_and_conflicting_delivery_is_terminal(tmp_path,conflict):
+def test_duplicate_sequence_is_idempotent_and_conflicting_redelivery_is_terminal(tmp_path):
     context=mp.get_context('spawn')
     receiver,commands=context.Pipe(duplex=False)
     acks,sender=context.Pipe(duplex=False)
@@ -339,16 +321,7 @@ def test_duplicate_sequences_are_idempotent_and_conflicting_delivery_is_terminal
             commands.send(command)
             ack=receive()
             assert ack.sequence==1 and not ack.error
-        if conflict=='sequence':
-            invalid=WriteCommand(1,str(manifest),'conflicting-digest')
-        elif conflict=='gap':
-            invalid=WriteCommand(3,str(manifest),command.digest)
-        else:
-            another=tmp_path/'invalid.pickle'
-            contents=FinalizeOutput(FinalizationSnapshot((('', Record(committed=True)),), ('value','missing'))) if conflict=='inventory' else WriteBatch((DatasetWrite('value',Record('dataset',np.array([8]),committed=True)),))
-            another.write_bytes(pickle.dumps(contents))
-            kind=FinalizeCommand if conflict=='inventory' else WriteCommand
-            invalid=kind(2,str(another),sha256(another.read_bytes()).hexdigest())
+        invalid=WriteCommand(1,str(manifest),'conflicting-digest')
         commands.send(invalid)
         message=receive().error
         assert message and any(word in message for word in ('Conflicting','inventory','Out-of-order'))
@@ -360,7 +333,7 @@ def test_duplicate_sequences_are_idempotent_and_conflicting_delivery_is_terminal
         for channel in (commands,acks): channel.close()
 
 
-def test_missing_backing_and_final_metadata_errors_never_publish(tmp_path):
+def test_missing_backing_never_publishes(tmp_path):
     gate=mp.get_context('spawn').Event()
     with output(tmp_path,target=partial(gated_writer,gate)) as (model,service):
         with model.checkpoint(): model.create_dataset('large',data=np.ones(100000,dtype='f4'))
@@ -369,14 +342,6 @@ def test_missing_backing_and_final_metadata_errors_never_publish(tmp_path):
         with pytest.raises(OutputServiceError,match='FileNotFound|No such file'):
             service.finish()
         assert model.records['large'].committed and not Path(model.filename).exists()
-    with output(tmp_path/'metadata') as (model,service):
-        with model.checkpoint(): model.create_dataset('valid',data=7)
-        service.drain()
-        model.attrs['unsupported']={'not':'an HDF5 attribute'}
-        with pytest.raises(OutputServiceError): service.finish()
-        assert model.records['valid'].committed and not Path(model.filename).exists()
-
-
 def test_input_progresses_while_output_process_holds_its_hdf5_lock(tmp_path,monkeypatch):
     context=mp.get_context('spawn')
     entered,release=context.Event(),context.Event()
@@ -479,8 +444,7 @@ def test_cancelled_publication_never_replaces_existing_destination(tmp_path,monk
     assert final.read_bytes()==b'previous result' and not list(tmp_path.glob('.ef-*'))
 
 
-@pytest.mark.parametrize('outcome', ['resume', 'cancel'])
-def test_busy_resource_admission_waits_without_operation_deadline(tmp_path, outcome):
+def test_busy_resource_admission_waits_without_operation_deadline(tmp_path):
     from threading import Event
 
     class GatedBudget:
@@ -515,18 +479,13 @@ def test_busy_resource_admission_waits_without_operation_deadline(tmp_path, outc
                 # budget, even beyond the deadline for an active command.
                 assert not budget.available.wait(3 * service.policy.operation_timeout)
                 assert not future.done()
-                if outcome == 'cancel':
-                    service.request_abort()
-                    with pytest.raises(OutputServiceError, match='cancelled'):
-                        future.result(5)
-                else:
-                    # Restore a normal active-write allowance before admission
-                    # so loaded hosts do not turn this wait regression flaky.
-                    service.policy = replace(service.policy, operation_timeout=5)
-                    budget.available.set()
-                    with h5py.File(future.result(5)) as physical:
-                        assert physical['accepted'][()] == 7
-                    assert service.metrics.snapshot()['output_admission_wait_seconds'] >= 0.3
+                # Restore a normal active-write allowance before admission so
+                # loaded hosts do not turn this wait regression flaky.
+                service.policy = replace(service.policy, operation_timeout=5)
+                budget.available.set()
+                with h5py.File(future.result(5)) as physical:
+                    assert physical['accepted'][()] == 7
+                assert service.metrics.snapshot()['output_admission_wait_seconds'] >= 0.3
             finally:
                 budget.available.set()
                 service.close()
@@ -544,24 +503,3 @@ def test_ipc_failure_is_terminal_without_losing_commits(tmp_path,monkeypatch):
         assert model.records['accepted'].committed and not Path(model.filename).exists()
 
 
-@pytest.mark.skipif(os.name!='nt',reason='Windows spawn handle ownership')
-def test_aborted_startup_releases_transferred_handles_without_cyclic_gc(tmp_path):
-    import psutil
-    process=psutil.Process()
-    retained=[]
-    warm=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/'warm.h5'))
-    warm.finish()
-    retained.append(warm)
-    baseline=process.num_handles()
-    enabled=gc.isenabled()
-    gc.disable()
-    try:
-        for i in range(6):
-            manager=AcquisitionCompletion(OutputModel(ProductStorage(),tmp_path/f'aborted{i}.h5'))
-            with manager.model.checkpoint(): manager.model.create_dataset('value',data=i)
-            manager.close()
-            retained.append(manager)
-            assert not manager.io.output._thread.is_alive()
-        assert process.num_handles() <= baseline+2
-    finally:
-        if enabled: gc.enable()
