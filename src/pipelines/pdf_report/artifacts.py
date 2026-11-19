@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 from input_output.writers.article import save_article_figure_pair
 from plotting.article import ARTICLE_ASPECT_RATIO, ARTICLE_DPI
+from plotting.headless import create_agg_figure
 
 from .data import ReportData
 from .plots import plot_filtered_velocity
@@ -18,7 +17,8 @@ def export_moments_report_figures(output, report: ReportData) -> list[Path]:
 
     paths: list[Path] = []
     for vessel in ("artery", "vein"):
-        fig, ax = plt.subplots(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
+        fig = create_agg_figure(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
+        ax = fig.subplots()
         fig.patch.set_facecolor("white")
         plot_filtered_velocity(
             ax,

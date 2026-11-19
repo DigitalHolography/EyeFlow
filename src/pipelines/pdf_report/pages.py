@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 
 from input_output.writers.png import ReportImagePaths
 from plotting.article import ARTICLE_ASPECT_RATIO
+from plotting.headless import create_agg_figure
 from plotting.units import display_unit
 
 from .assets import (
@@ -63,7 +63,7 @@ def build_velocity_bvr_pages(
 
 def _velocity_page(report: ReportData, folder_name: str, png_dir: Path | None,
                    images: ReportImagePaths):
-    fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
+    fig = create_agg_figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
     fig.patch.set_facecolor("white")
     _add_page_header(fig, folder_name, "Velocity")
     for col, vessel in enumerate(("artery", "vein")):
@@ -126,7 +126,7 @@ def _add_report_image(
 def _vessel_analysis_page(
     report: ReportData, folder_name: str, png_dir: Path | None,
 ) -> Figure:
-    fig = plt.figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
+    fig = create_agg_figure(figsize=(21 / 2.54, 29.7 / 2.54), dpi=150)
     fig.patch.set_facecolor("white")
     _add_page_header(fig, folder_name, "Vessel Geometry and Blood-Volume Rate")
     for column, vessel in enumerate(("artery", "vein")):

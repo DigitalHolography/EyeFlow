@@ -15,6 +15,8 @@ from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine import ExecutionVariant, PipelineDescriptor, StageGraph, StageSpec, ProductSpec, current_pipeline_dag, handoff
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
+pytestmark = pytest.mark.usefixtures("inline_output_service")
+
 
 def _descriptor(name, run, **kwargs):
     return PipelineDescriptor(

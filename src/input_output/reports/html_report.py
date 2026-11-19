@@ -6,11 +6,11 @@ import base64
 from io import BytesIO
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
 from input_output.artifact_ownership import register_artifact_path
+from plotting.headless import close_figure
 
 
 def figure_png_data_uri(figure, *, dpi: int = 180) -> str:
@@ -26,7 +26,7 @@ def figure_png_data_uri(figure, *, dpi: int = 180) -> str:
             edgecolor=figure.get_edgecolor(),
         )
     finally:
-        plt.close(figure)
+        close_figure(figure)
     return _png_data_uri(buffer.getvalue())
 
 

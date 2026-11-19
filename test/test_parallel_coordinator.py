@@ -170,6 +170,7 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
             service.close()
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_output_journal_preserves_commits_without_reverting_other_paths(tmp_path):
     with ProductStorage() as storage:
         model = OutputModel(storage, tmp_path / "result.h5")
@@ -186,6 +187,7 @@ def test_output_journal_preserves_commits_without_reverting_other_paths(tmp_path
             np.testing.assert_array_equal(output["Committed/value"][:], [1, 2])
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_reports_read_the_assembled_view_before_publication(tmp_path):
     from input_output.schema import EyeFlowOutputPaths
     from input_output.writers.h5_output import PipelineH5Output
@@ -206,6 +208,7 @@ def test_reports_read_the_assembled_view_before_publication(tmp_path):
         assert not Path(model.filename).exists()
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_final_serialization_preserves_sparse_and_same_file_virtual_storage(tmp_path):
     from input_output.schema.output_payload import DatasetValue
     from input_output.writers.h5_output import PipelineH5Output
@@ -238,6 +241,7 @@ def test_final_serialization_preserves_sparse_and_same_file_virtual_storage(tmp_
 
 
 @pytest.mark.parametrize("crash", [False, True])
+@pytest.mark.usefixtures("inline_output_service")
 def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, crash):
     source_path = tmp_path / "HD.h5"
     marker = str(tmp_path / "continue")
@@ -349,6 +353,7 @@ def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():
     budget.release(3)
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, monkeypatch):
     from test_run_service import _write_input
 
@@ -384,6 +389,7 @@ def test_native_initialization_failure_releases_compute_reservations(monkeypatch
     assert sum(budget.used.values()) == 0
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypatch):
     from pipeline_engine.execution.process_executor import ProcessExecutor
 
@@ -407,6 +413,7 @@ def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize("missing_artery", [False, True])
+@pytest.mark.usefixtures("inline_output_service")
 def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
     tmp_path, missing_artery
 ):

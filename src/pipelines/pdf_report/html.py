@@ -5,14 +5,13 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 from input_output.reports.html_report import (
     figure_png_data_uri,
     image_png_data_uri,
 )
 from input_output.writers.png import ReportImagePaths
 from plotting.article import ARTICLE_ASPECT_RATIO
+from plotting.headless import create_agg_figure
 
 from .assets import (
     ANALYSIS_GRAPH_TITLES,
@@ -162,7 +161,8 @@ def _velocity_plot_uri(report: ReportData, vessel: str) -> str:
 
 
 def _report_figure():
-    fig, ax = plt.subplots(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
+    fig = create_agg_figure(figsize=(7.5, 7.5 / ARTICLE_ASPECT_RATIO))
+    ax = fig.subplots()
     fig.patch.set_facecolor("white")
     return fig, ax
 

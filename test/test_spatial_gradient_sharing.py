@@ -124,6 +124,7 @@ def test_cache_requires_compatible_measurement_settings(gradient_input):
 
 
 @pytest.mark.parametrize("failure", [None, "persistence"])
+@pytest.mark.usefixtures("inline_output_service")
 def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
     gradient_input, tmp_path, failure,
 ):

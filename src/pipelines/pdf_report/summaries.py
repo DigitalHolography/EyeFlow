@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,12 +25,12 @@ class SummaryRow:
     value: SummaryValue
 
 
-def heart_rate_summary(parameters: dict[str, Any]) -> SummaryValue:
+def heart_rate_summary(parameters: Mapping[str, Any]) -> SummaryValue:
     return _parameter_summary(parameters, "heart_beat", decimals=1)
 
 
 def velocity_summary_rows(
-    parameters: dict[str, Any], vessel: str,
+    parameters: Mapping[str, Any], vessel: str,
 ) -> tuple[SummaryRow, ...]:
     arterial = vessel == "artery"
     prefix = "Arterial" if arterial else "Venous"
@@ -89,10 +90,10 @@ def format_plain_value(value: SummaryValue) -> str:
 
 
 def _parameter_summary(
-    parameters: dict[str, Any], name: str, *, decimals: int = 2,
+    parameters: Mapping[str, Any], name: str, *, decimals: int = 2,
 ) -> SummaryValue:
     parameter = parameters.get(name)
-    if not isinstance(parameter, dict):
+    if not isinstance(parameter, Mapping):
         return SummaryValue(None, decimals=decimals)
     try:
         value = float(parameter["value"])

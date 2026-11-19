@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -46,7 +47,7 @@ class VesselGeometryReportData:
 
 @dataclass(frozen=True)
 class ReportData:
-    parameters: dict[str, Any] = field(default_factory=dict)
+    parameters: Mapping[str, Any] = field(default_factory=dict)
     velocity_per_beat: dict[str, np.ndarray] = field(default_factory=dict)
     velocity_per_beat_unfiltered: dict[str, np.ndarray] = field(default_factory=dict)
     velocity_units: dict[str, str] = field(default_factory=dict)

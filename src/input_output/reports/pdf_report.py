@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from PIL import Image
 
 from input_output.artifact_ownership import register_artifact_path
+from plotting.headless import close_figure
 
 
 def load_first_image(paths: Iterable[Path]) -> np.ndarray | None:
@@ -35,5 +35,5 @@ def write_pdf_report(path: Path, pages: Iterable[Figure]) -> Path:
             try:
                 pdf.savefig(page, dpi=300)
             finally:
-                plt.close(page)
+                close_figure(page)
     return path
