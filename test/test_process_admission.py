@@ -17,6 +17,9 @@ from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 
+pytestmark = pytest.mark.usefixtures("inline_output_service")
+
+
 def _run_single_cpu_case(destination):
     manager = OutputManager(HoloRunLayout.from_holo(Path(destination) / "scan.holo"))
 

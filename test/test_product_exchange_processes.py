@@ -37,6 +37,9 @@ from product_exchange_fixtures import (
 )
 
 
+pytestmark = pytest.mark.usefixtures("inline_output_service")
+
+
 def test_accepted_product_survives_producer_crash_and_is_published(tmp_path):
     context = multiprocessing.get_context("spawn")
     output = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))

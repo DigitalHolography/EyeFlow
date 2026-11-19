@@ -15,6 +15,7 @@ from unittest.mock import Mock, patch
 
 import h5py
 import numpy as np
+import pytest
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
@@ -35,6 +36,9 @@ from pipeline_engine.execution.run_service import (  # noqa: E402
 )
 from utils.logger import Logger  # noqa: E402
 from ui.controllers.run import RunController  # noqa: E402
+
+
+pytestmark = pytest.mark.usefixtures("inline_output_service")
 
 
 def _write_input(root: Path, stem: str = "scan") -> Path:
@@ -172,6 +176,7 @@ def test_previous_publication_overlaps_the_next_acquisitions_scientific_work(tmp
 
 
 class RunServiceTests(unittest.TestCase):
+    @pytest.mark.usefixtures("real_output_service")
     def test_performance_summary_includes_pipeline_stage_and_publication(self) -> None:
         from pipeline_engine import StageGraph, StageSpec
 

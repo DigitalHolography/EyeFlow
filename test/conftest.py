@@ -13,6 +13,7 @@ from input_output.writers.h5_publication import (
     reconcile_attributes,
     write_record,
 )
+from pipeline_engine.io.manager import OutputService as _SpawnedOutputService
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -86,4 +87,13 @@ def inline_output_service(monkeypatch):
 
     monkeypatch.setattr(
         "pipeline_engine.io.manager.OutputService", _InlineOutputService
+    )
+
+
+@pytest.fixture
+def real_output_service(monkeypatch, inline_output_service):
+    """Restore the writer process for tests that own that boundary."""
+
+    monkeypatch.setattr(
+        "pipeline_engine.io.manager.OutputService", _SpawnedOutputService
     )

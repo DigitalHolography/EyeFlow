@@ -5,10 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from calculations.math.spatial_gradient import sobel_spatial_gradient
 from input_output.schema import PixelPitch
 from pipelines.spatial_gradient_moment0 import runner as gradient_runner
+
+
+pytestmark = pytest.mark.usefixtures("inline_output_service")
 
 
 class _State:

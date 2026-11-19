@@ -23,6 +23,9 @@ from pipeline_engine import PipelineDescriptor, run_pipelines_to_output
 from pipeline_engine.execution.runtime import PipelineRunError
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager
+
+
+pytestmark = pytest.mark.usefixtures("inline_output_service")
 from pathlib import Path
 from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 

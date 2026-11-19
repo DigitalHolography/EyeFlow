@@ -16,6 +16,9 @@ from pipeline_engine.execution.invocation import _pipeline_checkpoint
 from pipeline_engine.stage_graph import StageGraph, StageSpec
 
 
+pytestmark = pytest.mark.usefixtures("inline_output_service")
+
+
 def _descriptor(name, run, dependencies=(), *, variants=False, options=(), graph_factory=None):
     return PipelineDescriptor(
         name=name, description=name, available=True, dag_requires=dependencies,
