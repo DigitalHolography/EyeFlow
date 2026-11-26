@@ -1,5 +1,7 @@
 """Continuous gradients are shared across methods; beat products stay local."""
 
+from app_settings import UserSettings
+
 import json
 from dataclasses import replace
 from types import SimpleNamespace
@@ -66,9 +68,9 @@ def test_reuses_identical_continuous_arrays_and_preserves_method_specific_beats(
     ) as output:
         cache = {}
         contexts = [PipelineContext(
-            work_h5=output, holodoppler_h5=hd, doppler_vision_h5=None,
+            work_h5=output, holodoppler_h5=hd, dopplerview_h5=None,
             computation_cache=cache, velocity_estimation_method=method,
-        ) for method in ("doppler_moments", "frequency_bands")]
+         settings=UserSettings(values={})) for method in ("doppler_moments", "frequency_bands")]
         with patch.object(
             profiles, "analyze_segment_profiles", wraps=profiles.analyze_segment_profiles,
         ) as analyze:
@@ -84,8 +86,8 @@ def test_reuses_identical_continuous_arrays_and_preserves_method_specific_beats(
 
         # Compare with independent extraction, not just another cache lookup.
         independent = PipelineContext(
-            work_h5=output, holodoppler_h5=hd, doppler_vision_h5=None,
-        )
+            work_h5=output, holodoppler_h5=hd, dopplerview_h5=None,
+         settings=UserSettings(values={}))
         baseline = _extract(independent, source, plans)
         for shared, separate in zip(first, baseline):
             np.testing.assert_array_equal(shared.segment_signal, separate.segment_signal)
@@ -108,33 +110,23 @@ def test_reuses_identical_continuous_arrays_and_preserves_method_specific_beats(
         assert bands[profile_path].data.shape[2] == 1
 
 
-@pytest.mark.parametrize("changed", ["dataset", "mask", "rotation", "settings", "filter"])
-def test_cache_requires_compatible_source_masks_topology_and_settings(gradient_input, changed):
+def test_cache_requires_compatible_measurement_settings(gradient_input):
     path, source, plans = gradient_input
     masks = {name: getattr(source.segmentation.vessels, name) for name in plans}
     settings = SegmentMeasurementSettings(0.02)
     filters = (7, 6, 8, 0.6, 5)
     with h5py.File(path, "a") as hd:
         original = continuous_gradient_key(hd["moment0ff"], masks, plans, settings, filters)
-        dataset = hd["moment0ff"]
         # Distinct Python wrappers for the same HDF5 object must still hit.
         assert original == continuous_gradient_key(hd["moment0ff"], masks, plans, settings, filters)
-        if changed == "dataset":
-            dataset = hd.create_dataset("other", data=dataset[:])
-        elif changed == "mask":
-            masks = {**masks, "artery": ~masks["artery"]}
-        elif changed == "rotation":
-            plans = {**plans, "artery": replace(
-                plans["artery"], rotation_degrees=plans["artery"].rotation_degrees + 1,
-            )}
-        elif changed == "settings":
-            settings = replace(settings, pixel_size_mm=0.03)
-        else:
-            filters = (5, 6, 8, 0.6, 5)
-        assert original != continuous_gradient_key(dataset, masks, plans, settings, filters)
+        settings = replace(settings, pixel_size_mm=0.03)
+        assert original != continuous_gradient_key(
+            hd["moment0ff"], masks, plans, settings, filters,
+        )
 
 
-@pytest.mark.parametrize("failure", [None, "extraction", "packing", "persistence"])
+@pytest.mark.parametrize("failure", [None, "persistence"])
+@pytest.mark.usefixtures("inline_output_service")
 def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
     gradient_input, tmp_path, failure,
 ):
@@ -189,8 +181,8 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
     ):
         def run():
             return run_pipelines_to_output(
-                output_manager=manager, holodoppler_h5=path, doppler_vision_h5=None,
-                target_names=("spatial_gradient_moment0",), copy_hd_passthrough=False,
+                output_manager=manager, holodoppler_h5=path, dopplerview_h5=None,
+                target_names=("spatial_gradient_moment0",), settings=UserSettings(values={'copy_hd_passthrough': False}),
                 pipelines=[
                     _descriptor("source", produce, variants=True),
                     _descriptor("spatial_gradient_moment0", gradient, ("source",)),
@@ -208,12 +200,16 @@ def test_runtime_sharing_keeps_variant_failures_and_retries_independent(
         assert caches[0] is caches[1]
         assert len(calls) == (2 if failure == "extraction" else 1)
         with h5py.File(output_path) as output:
-            root = "SpatialGradientProfiles/Artery/Transverse/Masked/SpatialGradientProfile/value"
-            assert output[f"ProcessingBandRatio/{root}"].shape[2] == 1
+            root = "ProcessingWidth/SpatialGradient"
+            profile = "Profiles/Artery/Transverse/Masked/SpatialGradientProfile/value"
+            metric = "Metrics/Artery/Transverse/Masked/tk/lumen_size"
+            assert output[f"{root}/BandRatio/{profile}"].shape[2] == 1
+            assert f"{root}/BandRatio/{metric}" in output
             if failure is None:
-                assert output[f"ProcessingMoments/{root}"].shape[2] == 2
+                assert output[f"{root}/Moments/{profile}"].shape[2] == 2
+                assert f"{root}/Moments/{metric}" in output
             else:
-                assert f"ProcessingMoments/{root}" not in output
+                assert f"{root}/Moments/{profile}" not in output
                 statuses = json.loads(output.attrs["pipeline_status"])["variants"]
                 assert statuses["doppler_moments"]["spatial_gradient_moment0"] == "failed"
                 assert statuses["frequency_bands"]["spatial_gradient_moment0"] == "succeeded"

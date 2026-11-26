@@ -1,5 +1,7 @@
 """Marker-free HD/DV folder discovery, selection, and validation."""
 
+from app_settings import UserSettings
+
 import pytest
 from test_run_service import _descriptor
 from test_stem_list_inputs import _write_companion_h5_files
@@ -20,7 +22,7 @@ def test_discovery_accepts_the_selected_run_folder(tmp_path):
     assert discover_run_inputs(folder) == [folder]
     status = holo_input_status(folder)
     assert status.hd and status.dv
-    spec = resolve_run_spec(input_paths=[folder], target_names=["sample"], pipelines=[_descriptor()])
+    spec = resolve_run_spec(input_paths=[folder], target_names=["sample"], pipelines=[_descriptor()], settings=UserSettings(values={}))
     layout = spec.requests[0].input_layout
     assert layout.root_dir == folder
     assert layout.stem == stem
@@ -55,7 +57,7 @@ def test_cli_expansion_and_output_routing_do_not_add_an_extra_run_directory(tmp_
         assert expanded.batch_root == folder.parent
         spec = resolve_run_spec(input_paths=expanded.paths, target_names=["sample"],
                                 pipelines=[_descriptor()], batch_root=expanded.batch_root,
-                                output_root=tmp_path / "results")
+                                output_root=tmp_path / "results", settings=UserSettings(values={}))
     assert spec.requests[0].output_manager.layout.ef_dir == tmp_path / "results/scan/scan_EF"
     assert spec.requests[0].output_manager.layout.input_path == folder
 
@@ -71,5 +73,5 @@ def test_discovery_defers_hdf5_validation_and_keeps_existing_outputs_safe(tmp_pa
     assert not holo_input_status(folder).hd
     assert holo_input_status(folder).dv
     with pytest.raises(FileNotFoundError, match="HDF5"):
-        resolve_run_spec(input_paths=[folder], target_names=["sample"], pipelines=[_descriptor()])
+        resolve_run_spec(input_paths=[folder], target_names=["sample"], pipelines=[_descriptor()], settings=UserSettings(values={}))
     assert existing.read_text(encoding="utf-8") == "previous result"

@@ -15,9 +15,8 @@ from calculations.blood_flow_velocity import (
 from calculations.topology import AnnulusGeometry
 from data_manager import InvocationResource
 from input_output import EyeFlowOutputPaths
-from pipeline_engine import ProductSpec, StageGraph, StageSpec, read_int_setting
+from pipeline_engine import InputAccess, InputUse, ProductSpec, StageGraph, StageSpec
 from pipeline_engine.context import require_managed_runtime
-from pipelines.signal_settings import band_limited_harmonics
 from pipelines.topology_core.runner import prepared_topologies
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.runner import velocity
@@ -34,7 +33,7 @@ from .artifacts import (
     export_pulse_pngs,
     export_rotated_mean_pngs,
 )
-from .constants import NUMBER_OF_RADII_IN_FOV, SEGMENT_INNER_RADIUS_FRAC, SEGMENT_OUTER_RADIUS_FRAC
+from .artifacts.figures.signal_inputs import temporal_mean_image
 from .models import VelocityAnalysis, VelocitySegmentResult
 from .outputs import (
     pack_velocity_per_beat_inputs,
@@ -87,7 +86,10 @@ def velocity_analysis_graph(*, options=(), selection=None, segments_required=Non
         stages.append(StageSpec("segment_figures", _segment_figures, requires=("inputs", "segments"), artifact=True))
         stages.append(StageSpec("signal_figures", _signal_figures, requires=("waveform_inputs",), artifact=True))
     if pulse_figures:
-        stages.append(StageSpec("pulse_figures", _pulse_figures, requires=("analysis", "waveform_inputs", "continuous"), artifact=True))
+        stages.append(StageSpec(
+            "pulse_figures", _pulse_figures, requires=("analysis", "waveform_inputs", "continuous"),
+            artifact=True, inputs=(InputUse("hd.moment0ff", InputAccess.SEQUENTIAL, optional=True),),
+        ))
     if "segment_velocity_maps" in options:
         stages.append(StageSpec("map_videos", _map_videos, requires=("analysis", "maps"), artifact=True))
     return StageGraph(tuple(stages))
@@ -103,9 +105,10 @@ def _inputs(ctx):
     ctx.require_inputs("hd", "dv")
     retinal = velocity(ctx)
     source = load_velocity_analysis_source_data(ctx)
-    harmonic_count = band_limited_harmonics(ctx)
+    harmonic_count = ctx.settings.band_limited_harmonics
     attrs = _context_attrs(source, retinal, harmonic_count, "eyeflow_velocity_analysis",
-                           _number_of_radii_in_fov(ctx), retinal.cardiac_cycle_source)
+                           prepared_topologies(ctx)["artery"].native.ring_settings,
+                           retinal.cardiac_cycle_source)
     ctx.dag.handoff("inputs", (retinal, InvocationResource(source), harmonic_count, attrs))
 
 
@@ -244,7 +247,14 @@ def _optional_artifact_export(label):
 
 def _segments_required(ctx) -> bool:
     """Return whether the canonical segment analysis must run."""
-    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for("blood_volume_rate"):
+    from pipelines.blood_volume_rate.selection import (
+        selected_blood_volume_rate_methods,
+    )
+
+    if (
+        ctx.pipeline_scheduled("blood_volume_rate")
+        and selected_blood_volume_rate_methods(ctx)
+    ):
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
@@ -270,25 +280,6 @@ def _segments_required(ctx) -> bool:
 
 def _pulse_pngs_required(ctx) -> bool:
     return ctx.pipeline_targeted("velocity_analysis") or ctx.pipeline_scheduled("pdf_report")
-
-
-def _number_of_radii_in_fov(ctx) -> int:
-    value = read_int_setting(
-        ctx,
-        default=NUMBER_OF_RADII_IN_FOV,
-        keys=(
-            "number_of_radii_in_FOV",
-            "number_of_radii_in_fov",
-            "NumberOfRadiiInFOV",
-            # Accept the earlier spelling for compatibility.
-            "number_of_radii_over_FOV",
-            "number_of_radii_over_fov",
-            "NumberOfRadiiOverFOV",
-        ),
-    )
-    if value < 1:
-        raise ValueError("number_of_radii_in_FOV must be positive.")
-    return value
 
 
 def _build_segments(
@@ -483,10 +474,30 @@ def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None
         from input_output.writers.png import REPORT_IMAGES_STATE
 
         report_images = {}
+        moment0ff_average = _moment0ff_background(ctx, analysis.velocity.maps.section_mask.shape)
         export_pulse_pngs(
-            ctx.output, analysis, per_beat_result, report_images=report_images
+            ctx.output, analysis, per_beat_result,
+            report_images=report_images, moment0ff_average=moment0ff_average,
         )
         ctx.state.set(REPORT_IMAGES_STATE, report_images)
+
+
+def _moment0ff_background(ctx, spatial_shape: tuple[int, int]) -> np.ndarray | None:
+    try:
+        volume = ctx.inputs.hd.as_holodoppler().moment0ff()
+        if volume is None:
+            return None
+        if volume.shape[1:] != spatial_shape or not volume.shape[0]:
+            raise ValueError(f"expected nonempty frames with spatial shape {spatial_shape}, got {volume.shape}")
+        if volume.dtype.kind not in "iuf":
+            raise TypeError(f"expected real numeric intensities, got {volume.dtype}")
+        background = temporal_mean_image(volume)
+        if not np.isfinite(background).any():
+            raise ValueError("no finite intensities")
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        Logger.log_warning(f"Cannot use HD moment0ff for vessel-map backgrounds: {exc}")
+        return None
+    return background
 
 
 @contextmanager
@@ -505,7 +516,7 @@ def _context_attrs(
     velocity: RetinalVelocity,
     harmonic_count: int,
     analysis_source: str,
-    number_of_radii_in_fov: int,
+    ring_settings: AnnulusGeometry,
     cardiac_cycle_detection_source: str,
 ) -> dict[str, object]:
     output_paths = EyeFlowOutputPaths.active()
@@ -533,13 +544,10 @@ def _context_attrs(
         ],
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
-        "velocity_section_geometry": "optic_disc_centered_frame_fraction",
-        "velocity_section_inner_radius_fraction": float(SEGMENT_INNER_RADIUS_FRAC),
-        "velocity_section_outer_radius_fraction": float(SEGMENT_OUTER_RADIUS_FRAC),
-        "velocity_section_outer_to_disc_radius": float(
-            SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
-        ),
-        "number_of_radii_in_FOV": int(number_of_radii_in_fov),
+        "velocity_section_geometry": "optic_disc_centered_annuli",
+        "velocity_section_inner_radius_fraction": float(ring_settings.inner_radius_frac),
+        "velocity_section_outer_radius_fraction": float(ring_settings.outer_radius_frac),
+        **ring_settings.metadata(source_data.source.segmentation.vessels.artery.shape),
         "arterial_velocity_signal_path": (analysis_paths.retinal_artery_velocity_signal),
         "venous_velocity_signal_path": (analysis_paths.retinal_vein_velocity_signal),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,

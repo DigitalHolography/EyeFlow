@@ -27,6 +27,8 @@ from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
 from pipeline_engine.planning.inspection import export_execution_graph, resolve_execution_graph
 from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement
 from pipeline_engine.stage_graph import (
+    InputAccess,
+    InputUse,
     StageGraph,
     StageSpec,
     ProductSpec,
@@ -55,6 +57,8 @@ __all__ = [
     "PipelineDAG",
     "StageGraph",
     "StageSpec",
+    "InputAccess",
+    "InputUse",
     "ProductSpec",
     "PipelineInvocationId",
     "ProductId",

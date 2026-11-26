@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import numpy as np
-from PIL import Image
 
-from input_output.runs.layout import HoloRunLayout
-from input_output.output_manager import OutputManager
 from pipelines.velocity_analysis.artifacts.velocity_signals import (
     VELOCITY_ENVELOPE_GRAY,
     VELOCITY_FIGURE_ASPECT_RATIO,
     _velocity_figure,
-    export_velocity_signals,
 )
 
 
@@ -42,13 +35,19 @@ def test_velocity_figure_reduces_space_then_plots_beat_median_and_sd() -> None:
     assert ax.get_xlabel() == r"Cardiac Phase $t/T$"
     assert ax.get_ylabel() == r"$v(t)$ (mm/s)"
     assert ax.get_xlim() == (0.0, 1.0)
-    assert len(ax.lines) == 2
-    zero_line, median_line = ax.lines
+    assert len(ax.lines) == 3
+    zero_line, median_line, mean_line = ax.lines
     np.testing.assert_allclose(zero_line.get_ydata(), [0.0, 0.0])
     assert zero_line.get_color() == "black"
     assert zero_line.get_linestyle() == ":"
 
     expected_signal = np.median(spatial_medians, axis=1)
+    np.testing.assert_allclose(mean_line.get_ydata(), np.full(2, np.mean(expected_signal)))
+    assert mean_line.get_linestyle() == "--"
+    assert mean_line.get_color() == "0.35"
+    assert mean_line.get_linewidth() == 0.4
+    assert ax.get_legend() is None
+    assert ax.get_legend_handles_labels() == ([], [])
     expected_sd = np.std(spatial_medians, axis=1)
     np.testing.assert_allclose(median_line.get_xdata(), [0.0, 0.5, 1.0])
     np.testing.assert_allclose(median_line.get_ydata(), expected_signal)
@@ -73,35 +72,21 @@ def test_velocity_figure_reduces_space_then_plots_beat_median_and_sd() -> None:
     assert np.isclose(width / height, VELOCITY_FIGURE_ASPECT_RATIO)
 
 
-def test_velocity_signals_export_png_and_eps_for_both_vessels() -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager(
-            HoloRunLayout.from_holo(
-                Path(temp_dir) / "sample.holo",
-                output_root=Path(temp_dir),
-            )
-        )
-        values = _segment_values(np.asarray([[1.0, 2.0], [3.0, 5.0]]))
-        metric = (values, {"unit": "mm/s"})
 
-        paths = export_velocity_signals(output, metric, metric)
+def test_mean_references_use_displayed_medians_and_ignore_missing_phases():
+    from pipelines.blood_volume_rate.outputs import _blood_volume_rate_figure
 
-        assert {path.relative_to(output.layout.ef_dir).as_posix() for path in paths} == {
-            "png/velocity/sample_artery_velocity.png",
-            "eps/velocity/sample_artery_velocity.eps",
-            "png/velocity/sample_vein_velocity.png",
-            "eps/velocity/sample_vein_velocity.eps",
-        }
-        for path in paths:
-            assert path.is_file()
-            if path.suffix == ".png":
-                with Image.open(path) as image:
-                    assert image.format == "PNG"
-                    assert np.isclose(
-                        image.width / image.height,
-                        VELOCITY_FIGURE_ASPECT_RATIO,
-                        rtol=0.01,
-                    )
-                    image.verify()
-            else:
-                assert path.read_bytes().startswith(b"%!PS-Adobe")
+    beats = np.asarray([[1.0, 1.0, 40.0], [np.nan, np.nan, np.nan], [4.0, 4.0, 4.0]])
+    for figure in (_blood_volume_rate_figure(beats), _velocity_figure(_segment_values(beats))):
+        ax = figure.axes[0]
+        mean = next(line for line in ax.lines if line.get_linestyle() == "--")
+        np.testing.assert_allclose(mean.get_ydata(), [2.5, 2.5])
+        assert ax.get_legend() is None
+        assert ax.get_legend_handles_labels() == ([], [])
+        assert np.isnan(ax.lines[1].get_ydata()[1])
+        assert ax.xaxis.label.get_fontsize() == 11
+        assert all(tick.get_fontsize() == 11 for tick in ax.get_xticklabels())
+    for figure in (_blood_volume_rate_figure(beats * np.nan),
+                   _velocity_figure(_segment_values(beats * np.nan))):
+        assert len(figure.axes[0].lines) == 2
+        assert figure.axes[0].get_legend() is None

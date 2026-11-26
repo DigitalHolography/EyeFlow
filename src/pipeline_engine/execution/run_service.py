@@ -12,14 +12,8 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from app_settings import (
-    DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    DEFAULT_COPY_HD_PASSTHROUGH,
-    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-    validate_velocity_workflow_selection,
-    validate_band_limited_harmonics_setting,
-    validate_copy_hd_passthrough,
-)
+from app_settings import UserSettings, user_settings
+from calculations.compute_backend import optional_cupy_backend
 from input_output import HoloRunLayout, resolve_selected_run_layouts
 from input_output.output_manager import (
     OutputManager, OutputType, output_manager_for_layout, reject_duplicate_destinations,
@@ -30,15 +24,12 @@ from input_output.runs.inputs import (
     expand_run_inputs,
 )
 from utils.logger import Logger
-from velocity_calibration import (
-    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
-    validate_band_ratio_frequency_scale_hz,
-)
+
 
 from pipeline_engine.planning.base import PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from pipeline_engine.planning.dag import PipelineDAG, PipelineExecutionPlan
-from pipeline_engine.output.finalization import PendingOutput
+from pipeline_engine.output.completion import AcquisitionCompletion
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
 
 @dataclass(frozen=True)
@@ -47,6 +38,8 @@ class RunRequest:
 
     input_layout: HoloRunLayout
     output_manager: OutputManager
+    hd_h5: Path
+    dv_h5: Path
 
 
 @dataclass(frozen=True)
@@ -56,10 +49,7 @@ class RunSpec:
     plan: PipelineExecutionPlan
     requests: tuple[RunRequest, ...]
     pipeline_options: Mapping[str, tuple[str, ...]]
-    band_ratio_frequency_scale_hz: float = DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-    band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING
-    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH
-    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION
+    settings: UserSettings
 
     @property
     def total_pipeline_units(self) -> int:
@@ -108,21 +98,12 @@ def resolve_run_spec(
     target_names: Sequence[str],
     pipelines: Iterable[PipelineDescriptor],
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
-    band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
-    band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
-    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    settings: UserSettings | None = None,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
-    resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
-    resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
-    resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
-
-    resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
-        band_ratio_frequency_scale_hz
-    )
+    settings = (settings if settings is not None else user_settings).for_run()
     descriptors = tuple(pipelines)
     selectable = selectable_pipeline_registry(descriptors)
     hidden_targets = [name for name in target_names if name not in selectable]
@@ -130,10 +111,11 @@ def resolve_run_spec(
         raise ValueError("Unknown or hidden pipeline target(s): " + ", ".join(hidden_targets))
 
     resolved_options = _resolve_pipeline_options(descriptors, pipeline_options)
-    plan = PipelineDAG(descriptors).resolve_targets(
-        target_names,
-        pipeline_options=resolved_options,
-    )
+    with Logger.perf_stage("run/dag_resolution"):
+        plan = PipelineDAG(descriptors).resolve_targets(
+            target_names,
+            pipeline_options=resolved_options,
+        )
     if not plan.targets:
         raise ValueError("Select at least one pipeline target.")
     unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
@@ -149,24 +131,28 @@ def resolve_run_spec(
         if descriptor.name in resolved_options
     }
 
-    layouts = resolve_selected_run_layouts(input_paths)
+    with Logger.perf_stage("run/input_discovery_validation"):
+        layouts = resolve_selected_run_layouts(input_paths)
     resolved_output_root = output_root.expanduser().resolve() if output_root is not None else None
     effective_batch_root = (
         batch_root.expanduser().resolve()
         if batch_root is not None
         else infer_batch_root([layout.holo_path for layout in layouts])
     )
-    requests = tuple(
-        RunRequest(
-            input_layout=layout,
-            output_manager=output_manager_for_layout(
-                layout,
-                output_root=resolved_output_root,
-                batch_root=effective_batch_root,
-            ),
+    with Logger.perf_stage("run/companion_path_snapshot"):
+        requests = tuple(
+            RunRequest(
+                input_layout=layout,
+                hd_h5=layout.hd_h5,
+                dv_h5=layout.dv_h5,
+                output_manager=output_manager_for_layout(
+                    layout,
+                    output_root=resolved_output_root,
+                    batch_root=effective_batch_root,
+                ),
+            )
+            for layout in layouts
         )
-        for layout in layouts
-    )
     reject_duplicate_destinations(
         tuple((request.input_layout, request.output_manager) for request in requests)
     )
@@ -174,10 +160,7 @@ def resolve_run_spec(
         plan=plan,
         requests=requests,
         pipeline_options=resolved_options,
-        band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
-        band_limited_harmonics=resolved_harmonics,
-        copy_hd_passthrough=resolved_copy_hd_passthrough,
-        velocity_estimation_method=resolved_velocity_selection,
+        settings=settings,
     )
 
 
@@ -196,21 +179,51 @@ def execute_run(
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     from pipeline_engine.resources import ResourceBudget, current_resources
 
-    budget = current_resources() or ResourceBudget()
     Logger.log_perf(f"START pipeline=run variant=shared stage=batch at={started_at:.6f}")
-    with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
-    ) as completions:
-        result = _execute_batch(
-            spec, workers, completions, on_file_start=on_file_start,
-            on_pipeline_start=on_pipeline_start, on_progress=on_progress,
-            should_stop=should_stop,
-        )
+    with _batch_compute_backend():
+        with Logger.perf_stage("run/budget_create"):
+            budget = current_resources() or ResourceBudget()
+        with ExitStack() as startup:
+            with Logger.perf_stage("run/batch_resources"):
+                startup.enter_context(budget.activate())
+            with ArtifactWorkers() as workers, ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
+            ) as completions:
+                result = _execute_batch(
+                    spec, workers, completions, on_file_start=on_file_start,
+                    on_pipeline_start=on_pipeline_start, on_progress=on_progress,
+                    should_stop=should_stop,
+                )
+    finished_at = perf_counter()
+    elapsed_seconds = finished_at - started_at
     Logger.log_perf(
         f"END pipeline=run variant=shared stage=batch "
-        f"at={perf_counter():.6f} wall={perf_counter() - started_at:.3f}s"
+        f"at={finished_at:.6f} wall={elapsed_seconds:.3f}s"
     )
+    Logger.log_info(f"Total app execution time: {elapsed_seconds:.3f} s")
     return result
+
+
+@contextmanager
+def _batch_compute_backend():
+    """Resolve automatic GPU availability once before any batch output is reset."""
+
+    configured = os.environ.get("EYEFLOW_COMPUTE_BACKEND")
+    preference = (configured or "auto").strip().lower()
+    backend = optional_cupy_backend()
+    if preference != "auto" or backend is not None:
+        yield
+        return
+
+    os.environ["EYEFLOW_COMPUTE_BACKEND"] = "cpu"
+    Logger.log_info("No usable CuPy/CUDA backend detected; using CPU for this batch.")
+    try:
+        yield
+    finally:
+        if configured is None:
+            os.environ.pop("EYEFLOW_COMPUTE_BACKEND", None)
+        else:
+            os.environ["EYEFLOW_COMPUTE_BACKEND"] = configured
 
 
 def _execute_batch(
@@ -252,14 +265,14 @@ def _execute_batch(
             )
         Logger.log(f"[INPUT] SOURCE -> {input_layout.input_path}")
         Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
-        Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
-        Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
+        Logger.log(f"[RESOLVED] HD -> {request.hd_h5}")
+        Logger.log(f"[RESOLVED] DV -> {request.dv_h5}")
         Logger.log(f"[OUTPUT] {final_path}")
 
         artifacts = BackgroundArtifacts(workers)
         file_started_at = perf_counter()
         numerical_error = None
-        finalizers: list[PendingOutput] = []
+        finalizers: list[AcquisitionCompletion] = []
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -268,18 +281,16 @@ def _execute_batch(
                 )
             # Start clean so a failed run leaves only its own partial output,
             # rather than mixing new files with artifacts from an old run.
-            final_manager.prepare(replace=True)
+            with Logger.perf_stage("run/output_directory_reset"):
+                final_manager.prepare(replace=True)
             run_pipelines_to_output(
                 output_manager=final_manager,
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
                 pipeline_options=spec.pipeline_options,
-                band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
-                band_limited_harmonics=spec.band_limited_harmonics,
-                copy_hd_passthrough=spec.copy_hd_passthrough,
-                velocity_estimation_method=spec.velocity_estimation_method,
-                holodoppler_h5=input_layout.hd_h5,
-                doppler_vision_h5=input_layout.dv_h5,
+                settings=spec.settings,
+                holodoppler_h5=request.hd_h5,
+                dopplerview_h5=request.dv_h5,
                 on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
                 background_artifacts=artifacts,
@@ -317,36 +328,26 @@ def _execute_batch(
 
 
 def _discard_file_output(artifacts, outputs):
-    with ExitStack() as retained, artifacts:
+    with ExitStack() as retained:
+        if not outputs:
+            retained.enter_context(artifacts)
         for output in outputs:
             retained.callback(output.close)
 
 
 def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=(), started_at=None):
-    """Serialize the retained output model only after sidecars are published."""
-    import h5py
-
+    """Drain retained output and publish after final sidecar statuses are known."""
     metrics = finalizers[0].model.storage.metrics if finalizers else None
     try:
-        with ExitStack() as retained, artifacts:
+        with ExitStack() as retained:
+            if not finalizers:
+                # Setup failed before a completion handle could adopt these jobs.
+                retained.enter_context(artifacts)
+                artifacts.collect(wait=True)
             for output in finalizers:
                 retained.callback(output.close)
-            artifact_wait_started = perf_counter()
-            Logger.log_perf(
-                f"START pipeline=run variant=shared stage=background_artifact_join "
-                f"at={artifact_wait_started:.6f}"
-            )
-            artifacts.collect(wait=True)
-            Logger.log_perf(
-                f"END pipeline=run variant=shared stage=background_artifact_join "
-                f"at={perf_counter():.6f} wall={perf_counter() - artifact_wait_started:.3f}s"
-            )
             for output in finalizers:
                 output.finish()
-            if not finalizers and artifacts.statuses and output_path.is_file():
-                with h5py.File(output_path, "r+") as h5:
-                    h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)
-                    h5.attrs["artifact_failures"] = json.dumps(artifacts.failures, sort_keys=True)
             _log_performance_summary(
                 input_path, output_path, started_at, artifacts, metrics,
             )

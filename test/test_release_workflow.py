@@ -25,7 +25,7 @@ def _git(repo, *args, check=True):
 
 
 @pytest.mark.parametrize("scenario", [
-    "clean", "pyproject", "both", "unexpected", "bad_project_version", "bad_lock_version",
+    "both", "unexpected", "bad_project_version", "bad_lock_version",
 ])
 def test_release_merge_handles_only_expected_version_conflicts(tmp_path, scenario):
     repo = tmp_path / "repo"

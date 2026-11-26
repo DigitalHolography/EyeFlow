@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
+
+from app_settings import UserSettings
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -10,8 +14,6 @@ from pipeline_engine import PipelineDAG, PipelineDescriptor, PipelineOption
 from ui.controllers.pipeline_library import (
     PipelineLibraryController,
     option_selection_names,
-    pipeline_ui_sort_key,
-    status_text_wraplength,
 )
 
 
@@ -35,55 +37,16 @@ def _descriptor(
 
 
 class PipelineLibraryDependencyTests(unittest.TestCase):
-    def test_status_text_is_limited_to_half_the_library_width(self) -> None:
-        self.assertEqual(
-            399,
-            status_text_wraplength(
-                900,
-                horizontal_padding=48,
-                divider_width=6,
-                fallback=320,
-            ),
-        )
-        self.assertEqual(
-            320,
-            status_text_wraplength(
-                1,
-                horizontal_padding=48,
-                divider_width=6,
-                fallback=320,
-            ),
-        )
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.settings_path = Path(directory.name) / "settings.json"
 
-    def test_pipeline_ui_order_is_explicit_and_extensible(self) -> None:
-        rows = [
-            _descriptor("pdf_report"),
-            _descriptor("another_pipeline"),
-            _descriptor("waveform_shape_metrics"),
-            _descriptor("velocity_analysis"),
-        ]
-
-        self.assertEqual(
-            [
-                "velocity_analysis",
-                "waveform_shape_metrics",
-                "pdf_report",
-                "another_pipeline",
-            ],
-            [item.name for item in sorted(rows, key=pipeline_ui_sort_key)],
-        )
-
-    def test_waveform_status_reports_both_velocity_estimators(self) -> None:
-        estimator_var = SimpleNamespace(get=lambda: "frequency_bands")
-        controller = PipelineLibraryController(
-            SimpleNamespace(velocity_estimation_method_var=estimator_var)
-        )
-
-        status = controller._pipeline_status_text(
-            _descriptor("velocity_analysis")
-        )
-
-        self.assertEqual("Available \u2014 estimators: Moments and Band ratio", status)
+    def make_app(self, **values):
+        settings = UserSettings(path=self.settings_path)
+        settings.pipeline_visibility.replace(values.pop("pipeline_visibility", {}))
+        settings.pipeline_options.replace(values.pop("pipeline_options", {}))
+        return SimpleNamespace(settings=settings, settings_controller=Mock(), **values)
 
     def test_dag_exposes_transitive_upstream_and_downstream_relations(self) -> None:
         core = _descriptor(
@@ -113,7 +76,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         catalog = {
             item.name: item for item in (core, velocity, metrics, report)
         }
-        app = SimpleNamespace(
+        app = self.make_app(
             pipeline_catalog=catalog,
             pipeline_dag=PipelineDAG(catalog.values()),
             pipeline_visibility={
@@ -124,17 +87,17 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             pipeline_visibility_vars={},
             pipeline_option_widgets={},
             pipeline_rows=[velocity, metrics, report],
-            pipeline_option_visibility={},
+            pipeline_options={},
         )
         controller = PipelineLibraryController(app)
-        controller.persist_visibility = Mock()
+
         controller.update_summary = Mock()
 
         controller.set_visibility("report", True)
 
         self.assertEqual(
             {"velocity": False, "metrics": False, "report": True},
-            app.pipeline_visibility,
+            app.settings.pipeline_visibility,
         )
         self.assertEqual({"velocity", "metrics"}, app.pipeline_required_names)
 
@@ -142,9 +105,16 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
 
         self.assertEqual(
             {"velocity": False, "metrics": False, "report": False},
-            app.pipeline_visibility,
+            app.settings.pipeline_visibility,
         )
         self.assertEqual(set(), app.pipeline_required_names)
+
+        app.settings_controller.save_preferences.reset_mock()
+        controller.set_all_visibility(True)
+        self.assertEqual({"velocity": True, "metrics": True, "report": True},
+                         app.settings.pipeline_visibility)
+        self.assertEqual({}, app.settings.pipeline_options)
+        app.settings_controller.save_preferences.assert_called_once_with()
 
     def test_option_dependencies_replan_required_visible_pipelines(self) -> None:
         topology = _descriptor(
@@ -193,7 +163,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 bvr,
             )
         }
-        app = SimpleNamespace(
+        app = self.make_app(
             pipeline_catalog=catalog,
             pipeline_dag=PipelineDAG(catalog.values()),
             pipeline_rows=[gradient, bvr],
@@ -201,7 +171,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 "spatial_gradient_moment0": False,
                 "blood_volume_rate": True,
             },
-            pipeline_option_visibility={
+            pipeline_options={
                 "blood_volume_rate": {
                     "gradient_edges": True,
                     "masked_edges": True,
@@ -213,7 +183,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             pipeline_option_widgets={},
         )
         controller = PipelineLibraryController(app)
-        controller.persist_options = Mock()
+
         controller.update_summary = Mock()
         controller._refresh_required_pipelines()
 
@@ -227,7 +197,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             False,
         )
         self.assertEqual(set(), app.pipeline_required_names)
-        self.assertFalse(app.pipeline_visibility["spatial_gradient_moment0"])
+        self.assertFalse(app.settings.pipeline_visibility["spatial_gradient_moment0"])
 
     def test_child_option_selection_follows_declared_requirements(self) -> None:
         options = (
@@ -254,9 +224,9 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         )
 
         pipeline = _descriptor("velocity", options=options)
-        app = SimpleNamespace(
+        app = self.make_app(
             pipeline_catalog={"velocity": pipeline},
-            pipeline_option_visibility={
+            pipeline_options={
                 "velocity": {
                     "profiles": False,
                     "per_beat": False,
@@ -266,129 +236,19 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             pipeline_option_vars={"velocity": {}},
         )
         controller = PipelineLibraryController(app)
-        controller.persist_options = Mock()
+
         controller.update_summary = Mock()
 
         controller.set_option_visibility("velocity", "quadrants", True)
         self.assertEqual(
             {"profiles": False, "per_beat": True, "quadrants": True},
-            app.pipeline_option_visibility["velocity"],
+            app.settings.pipeline_options["velocity"],
         )
 
         controller.set_option_visibility("velocity", "per_beat", False)
         self.assertEqual(
             {"profiles": False, "per_beat": False, "quadrants": False},
-            app.pipeline_option_visibility["velocity"],
-        )
-
-    def test_waveform_segment_substeps_follow_upstream_selection(self) -> None:
-        velocity = _descriptor(
-            "velocity_analysis",
-            options=(
-                PipelineOption("segments", "Segments"),
-                PipelineOption(
-                    "quadrants",
-                    "Quadrants",
-                    requires=("segments",),
-                ),
-            ),
-        )
-        shape = _descriptor(
-            "waveform_shape_metrics",
-            options=(
-                PipelineOption("segments", "Segments"),
-                PipelineOption("quadrants", "Quadrants"),
-            ),
-        )
-        app = SimpleNamespace(
-            pipeline_catalog={
-                velocity.name: velocity,
-                shape.name: shape,
-            },
-            pipeline_option_visibility={
-                "velocity_analysis": {
-                    "segments": True,
-                    "quadrants": True,
-                },
-                "waveform_shape_metrics": {
-                    "segments": True,
-                    "quadrants": True,
-                },
-            },
-            pipeline_option_vars={"velocity_analysis": {}, "waveform_shape_metrics": {}},
-        )
-        controller = PipelineLibraryController(app)
-        controller.persist_options = Mock()
-        controller.update_summary = Mock()
-
-        controller.set_option_visibility("velocity_analysis", "segments", False)
-
-        self.assertFalse(
-            app.pipeline_option_visibility["velocity_analysis"]["segments"]
-        )
-        self.assertFalse(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
-        )
-        self.assertFalse(
-            app.pipeline_option_visibility["velocity_analysis"]["quadrants"]
-        )
-        self.assertFalse(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
-        )
-
-        controller.set_option_visibility("waveform_shape_metrics", "segments", True)
-
-        self.assertTrue(
-            app.pipeline_option_visibility["velocity_analysis"]["segments"]
-        )
-        self.assertTrue(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
-        )
-
-    def test_pdf_report_does_not_mutate_shape_options(self) -> None:
-        velocity = _descriptor(
-            "velocity_analysis",
-            options=(PipelineOption("segments", "Segments"),),
-        )
-        shape = _descriptor(
-            "waveform_shape_metrics",
-            options=(PipelineOption("segments", "Segments"),),
-        )
-        report = _descriptor(
-            "pdf_report",
-            requires=("velocity_analysis", "waveform_shape_metrics"),
-        )
-        app = SimpleNamespace(
-            pipeline_catalog={
-                item.name: item for item in (velocity, shape, report)
-            },
-            pipeline_dag=PipelineDAG((velocity, shape, report)),
-            pipeline_visibility={
-                "velocity_analysis": False,
-                "waveform_shape_metrics": False,
-                "pdf_report": False,
-            },
-            pipeline_visibility_vars={},
-            pipeline_option_widgets={},
-            pipeline_option_visibility={
-                "velocity_analysis": {"segments": False},
-                "waveform_shape_metrics": {"segments": False},
-            },
-            pipeline_option_vars={
-                "velocity_analysis": {},
-                "waveform_shape_metrics": {},
-            },
-        )
-        controller = PipelineLibraryController(app)
-        controller.persist_visibility = Mock()
-        controller.persist_options = Mock()
-        controller.update_summary = Mock()
-
-        controller.set_visibility("pdf_report", True)
-
-        self.assertEqual(
-            {"segments": False},
-            app.pipeline_option_visibility["waveform_shape_metrics"],
+            app.settings.pipeline_options["velocity"],
         )
 
     def test_stored_waveform_segment_selection_is_normalized_downstream(self) -> None:
@@ -407,34 +267,29 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 ),
             ),
         )
-        app = SimpleNamespace(
+        app = self.make_app(
             pipeline_catalog={
                 velocity.name: velocity,
                 shape.name: shape,
             },
-            settings_store=SimpleNamespace(
-                load_pipeline_options=lambda: {
-                    "velocity_analysis": {"segments": False},
-                    "waveform_shape_metrics": {
-                        "segments": True,
-                        "quadrants": True,
-                    },
-                }
-            ),
+            pipeline_options={
+                "velocity_analysis": {"segments": False},
+                "waveform_shape_metrics": {"segments": True, "quadrants": True},
+            },
         )
         controller = PipelineLibraryController(app)
-        controller.persist_options = Mock()
+
 
         controller.sync_options([velocity, shape])
 
         self.assertTrue(
-            app.pipeline_option_visibility["velocity_analysis"]["segments"]
+            app.settings.pipeline_options["velocity_analysis"]["segments"]
         )
         self.assertTrue(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
+            app.settings.pipeline_options["waveform_shape_metrics"]["segments"]
         )
         self.assertTrue(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
+            app.settings.pipeline_options["waveform_shape_metrics"]["quadrants"]
         )
 
 

@@ -1,4 +1,4 @@
-"""Frequency and delta-frequency map PNG exporters."""
+"""Frequency and delta-frequency map figure exporters."""
 
 from __future__ import annotations
 
@@ -86,14 +86,18 @@ def _export_frequency_maps(
             label="RMS frequency (kHz)",
         )
     )
+    background = f_avg if ctx.moment0ff_average is None else ctx.moment0ff_average
     for vessel, mask, color in (
         ("artery", ctx.artery_mask, "red"),
         ("vein", ctx.vein_mask, "blue"),
     ):
-        path = _mask_background_map(
-            writer, f_avg, mask, f"{vessel}_seg_map_bkg.png",
+        artifact_paths = _mask_background_map(
+            writer, background, mask, f"{vessel}_seg_map_bkg.png",
             color=color, cmap=_matlab_vessel_colormap(vessel), values=velocity_values,
         )
-        paths.append(path)
-        writer.register_artifact("vessel_map", vessel, path)
+        paths.extend(artifact_paths)
+        writer.register_artifact(
+            "vessel_map", vessel,
+            next(path for path in artifact_paths if path.suffix.lower() == ".png"),
+        )
     return paths

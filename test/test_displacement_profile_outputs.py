@@ -29,8 +29,8 @@ from pipelines.displacement_map import segments as displacement_segments
 from pipelines.displacement_map.segments import DisplacementSegmentResult
 
 
-def _result(*, retain_maps: bool = True) -> DisplacementSegmentResult:
-    signal_shape = (1, 1, 5)
+def _result(*, retain_maps: bool = True, ring_count: int = 1) -> DisplacementSegmentResult:
+    signal_shape = (ring_count, 1, 5)
     curve = np.asarray([0.0, 2.0, 0.0, 1.0, 0.0], dtype=np.float32)
     profiles = np.broadcast_to(curve, (*signal_shape, curve.size)).copy()
     scalar = np.ones(signal_shape, dtype=np.float32)
@@ -128,6 +128,23 @@ def test_vector_segment_map_interpolation_preserves_components_and_axis_order() 
 
     assert actual.shape == (3, 2, 4, 1, 1, 1, 2)
     np.testing.assert_allclose(actual[2, 1, :, 0, 0, 0, 1], expected, rtol=1e-6)
+
+
+def test_displacement_profiles_and_segment_maps_accept_a_denser_radial_axis():
+    result = _result(ring_count=7)
+    outputs = pack_displacement_profile_outputs(
+        {"artery": result}, "level_set_motion", np.asarray([0, 4])
+    )
+    outputs.update(pack_displacement_segment_map_outputs(
+        {"artery": result}, "level_set_motion", np.asarray([0, 4])
+    ))
+    radial_products = 0
+    for dataset in outputs.values():
+        axes = dataset.attrs.get("dimDesc", [])
+        if "radius" in axes:
+            assert dataset.data.shape[axes.index("radius")] == 7
+            radial_products += 1
+    assert radial_products > 10
 
 
 def test_segment_maps_are_packed_only_by_the_separate_map_packer() -> None:
@@ -295,56 +312,3 @@ def test_restored_payloads_write_through_the_current_h5_adapter() -> None:
         assert h5[profile_path].attrs["unit"] == "pixels"
         assert h5[map_path].shape == (5, 5, 4, 1, 1, 1, 2)
         assert h5[map_path].compression == "gzip"
-
-
-def test_real_process_registration_product_feeds_the_production_profile_graph(tmp_path):
-    """Exercise both actual pipelines, calculations, handoff and final schemas."""
-    from test_topology_chunks import _prepared
-    from test_velocity_pipeline import _retinal_velocity
-    from input_output.output_manager import OutputManager
-    from input_output.runs.layout import HoloRunLayout
-    from input_output.schema.doppler_view import DV_ARTERY_MASK_PATH, DV_VEIN_MASK_PATH
-    from pipeline_engine.planning.base import PipelineDescriptor
-    from pipeline_engine.resources import ResourceBudget
-    from pipeline_engine.execution.runtime import run_pipelines_to_output
-    from pipelines.topology_core.runner import TOPOLOGY_CORE_STATE
-    from pipelines.velocity.models import VelocityWorkflows
-    from pipelines.velocity.runner import VELOCITY_WORKFLOWS_STATE
-
-    catalog, _ = load_pipeline_catalog()
-    registration = next(item for item in catalog if item.name == "displacement_map")
-    profile = next(item for item in catalog if item.name == "displacement_profiles")
-    if not registration.available:
-        import pytest
-        pytest.skip("Optional displacement registration dependencies unavailable")
-    hd_path, dv_path = tmp_path / "HD.h5", tmp_path / "DV.h5"
-    y, x = np.mgrid[:9, :9]
-    image = np.exp(-((x - 4)**2 + (y - 4)**2) / 4).astype(np.float32)
-    with h5py.File(hd_path, "w") as hd:
-        hd["moment0"] = np.stack([np.roll(image, frame % 2, axis=1) for frame in range(6)])
-    with h5py.File(dv_path, "w") as dv:
-        mask = np.zeros((9, 9), np.uint8)
-        mask[2:7, 2:7] = 1
-        dv[DV_ARTERY_MASK_PATH] = mask
-        dv[DV_VEIN_MASK_PATH] = mask
-
-    def inputs(ctx):
-        ctx.state.set(TOPOLOGY_CORE_STATE, {name: _prepared(angle=0)
-                                          for name in ("artery", "vein")})
-        ctx.state.set(VELOCITY_WORKFLOWS_STATE, VelocityWorkflows(_retinal_velocity(), None))
-
-    source = PipelineDescriptor("shared_fixture", "shared_fixture", True,
-        dag_produces=("prepared_topology", "velocity_workflows"),
-        pipeline_factory=lambda: SimpleNamespace(name="shared_fixture", run=inputs))
-    budget = ResourceBudget(cpu_threads=8, memory_bytes=2 * 1024**3)
-    with budget.activate():
-        final = run_pipelines_to_output(output_manager=OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo")),
-            pipelines=[source, registration, profile], pipeline_options={"displacement_profiles": ("segment_maps",)},
-            holodoppler_h5=hd_path, doppler_vision_h5=dv_path, copy_hd_passthrough=False)
-    schema = EyeFlowOutputPaths.active()
-    with h5py.File(final) as result:
-        for vessel in ("Artery", "Vein"):
-            group = result[f"{schema.displacement_profiles_root}/LevelSetMotion/{vessel}"]
-            assert group["Transverse/Masked/tbkr/Profile"].attrs["unit"] == "pixels"
-            assert result[f"{schema.displacement_map_root}/LevelSetMotion/{vessel}/PerSegment"].shape[-1] == 2
-    assert budget.cpu_used == 0 and not any(budget.used.values())

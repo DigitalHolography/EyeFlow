@@ -194,6 +194,8 @@ class BackgroundArtifacts:
         self._owns_workers = workers is None
         self._jobs: list[ArtifactJob] = []
         self._lock = RLock()
+        self._cleanup_lock = RLock()
+        self._closed = False
         self.ownership = ArtifactOwnership()
         self._failures: dict[str, str] = {}
 
@@ -201,11 +203,15 @@ class BackgroundArtifacts:
         return self
 
     def __exit__(self, *exc):
-        self.collect(wait=True)
-        if self._owns_workers:
-            self._workers.__exit__(*exc)
-        for job in self._jobs:
-            job.temporary.cleanup()
+        with self._cleanup_lock:
+            if self._closed:
+                return
+            self.collect(wait=True)
+            if self._owns_workers:
+                self._workers.__exit__(*exc)
+            for job in self._jobs:
+                job.temporary.cleanup()
+            self._closed = True
 
     @property
     def statuses(self) -> dict[str, str]:
@@ -227,6 +233,8 @@ class BackgroundArtifacts:
         return any(status in {"prepared", "running"} for status in self.statuses.values())
 
     def prepare(self, label, manager, exporter, snapshotter, **kwargs) -> ArtifactJob:
+        if self._closed:
+            raise RuntimeError("Cannot prepare artifacts for a closed acquisition")
         started = perf_counter()
         if label in self.statuses:
             raise ValueError(f"Duplicate background artifact job: {label}")
@@ -265,6 +273,8 @@ class BackgroundArtifacts:
         job.temporary.cleanup()
 
     def start(self, job: ArtifactJob) -> None:
+        if self._closed:
+            raise RuntimeError("Cannot start artifacts for a closed acquisition")
         job.timings["submitted_at"] = perf_counter()
         job.future = Future()
         with self._lock:

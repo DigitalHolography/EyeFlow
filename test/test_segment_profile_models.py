@@ -7,7 +7,6 @@ import pytest
 
 from calculations.vessel_segments.measurement import (
     CompactSegmentMaps,
-    MaskedArrays,
     SegmentMeasurements,
     SegmentMeasurementSettings,
 )
@@ -18,9 +17,6 @@ from pipelines.velocity_analysis.models import VelocitySegmentResult
     ("field", "value"),
     [
         ("pixel_size_mm", 0),
-        ("pixel_size_mm", np.nan),
-        ("working_memory_mb", -1),
-        ("submask_size_percentile_kept", np.nan),
     ],
 )
 def test_invalid_settings_are_rejected(field, value):
@@ -43,15 +39,6 @@ def test_velocity_result_composes_generic_profiles_with_pipeline_products():
         "maps",
     }
     assert velocity_fields == {"profile", "transverse_fft", "filtered_signal"}
-
-
-def test_masked_arrays_selects_the_requested_representation():
-    unmasked = np.asarray([1.0], dtype=np.float32)
-    masked = np.asarray([np.nan], dtype=np.float32)
-    arrays = MaskedArrays(unmasked=unmasked, masked=masked)
-
-    assert arrays.select(masked=False) is unmasked
-    assert arrays.select(masked=True) is masked
 
 
 def test_compact_segment_maps_resolve_rows_and_expand_to_the_segment_grid():

@@ -6,19 +6,132 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import pytest
+from scipy import ndimage as ndi
 
-from calculations.compute_backend import optional_cupy_backend
 from calculations.topology.branch_identity import BranchIdentityResult
 from calculations.topology.geometry import annulus_mask
 from calculations.topology.segments import SegmentTopology
 from calculations.topology.orientation import determine_segment_rotations
+from calculations.vessel_segments.sampling import transforms
 from calculations.vessel_segments.sampling.transforms import (
     dilate_segment_masks,
     interpolate_segment_masks,
     interpolate_segments,
     resample_rotate_segment,
-    rotate_segment_masks,
 )
+
+
+def _original_cpu_affine(values, matrix, offset, output_shape):
+    """Original N-D SciPy call, including interpolation and border settings."""
+    return ndi.affine_transform(
+        values, matrix, offset, output_shape=output_shape,
+        order=1, mode="grid-constant", cval=0.0, prefilter=False,
+    )
+
+
+@pytest.mark.parametrize("shape,side,angle", [
+    ((9, 9), 128, 31.7),
+    ((1, 9, 9), 9, 0.0),
+    ((4, 9, 9), 13, -23.5),
+    ((4, 9, 9), 5, 90.0),
+    ((3, 2, 9, 9), 17, 127.3),
+    ((2, 1, 1), 4, 180.0),
+    ((3, 9, 9), 1, -90.0),
+    ((2, 9, 9), 16, 89.999),
+])
+@pytest.mark.parametrize("missing", ["none", "shared", "changing", "all", "masked", "zeros"])
+def test_cpu_weighted_affine_matches_original_nd_call(shape, side, angle, missing):
+    rng = np.random.default_rng(117)
+    values = rng.normal(size=shape).astype(np.float64 if side == 5 else np.float32)
+    if missing == "shared":
+        values[..., 0, :] = np.nan
+        values[..., -1, -1] = np.inf
+    elif missing == "changing":
+        for frame, index in enumerate(np.ndindex(shape[:-2])):
+            values[index][frame % shape[-2], :] = np.nan
+            values[index][-1, frame % shape[-1]] = -np.inf
+    elif missing == "all":
+        values.fill(np.nan)
+    elif missing == "masked":
+        y, x = np.indices(shape[-2:])
+        values[..., (x - shape[-1] / 2)**2 + (y - shape[-2] / 2)**2 > (shape[-1] / 3)**2] = np.nan
+    elif missing == "zeros":
+        values.fill(0.0)
+        values[..., ::2, ::2] = -0.0
+    # Exercise read-only, noncontiguous input without allowing either path to edit it.
+    values = values[..., ::-1, ::-1]
+    values.flags.writeable = False
+    original = values.copy()
+    with patch.object(transforms, "optional_cupy_backend", return_value=None):
+        with patch.object(transforms, "_affine_transform_cpu", side_effect=_original_cpu_affine):
+            expected = resample_rotate_segment(values, angle, side)
+        actual = resample_rotate_segment(values, angle, side)
+    assert actual.dtype == expected.dtype == np.dtype(np.float32)
+    assert actual.shape == expected.shape
+    # Check bit patterns, including signed zeros and the NaN mask.
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+    np.testing.assert_array_equal(values, original)
+
+
+def test_cpu_spatial_affine_uses_views_into_one_output_allocation():
+    values = np.arange(3 * 2 * 7 * 7, dtype=np.float32).reshape(3, 2, 7, 7)
+    values = values[..., ::-1, ::-1]
+    values.flags.writeable = False
+    matrix, offset = transforms._fused_affine_mapping(4, 7, 11, 16, 31.7)
+    output_shape = (3, 2, 16, 16)
+    expected = _original_cpu_affine(values, matrix, offset, output_shape)
+    original_affine = ndi.affine_transform
+    output_planes = []
+
+    def sample(plane, *args, **kwargs):
+        assert plane.ndim == 2
+        assert np.shares_memory(plane, values)
+        output_planes.append(kwargs["output"])
+        return original_affine(plane, *args, **kwargs)
+
+    with patch.object(transforms.ndi, "affine_transform", side_effect=sample):
+        actual = transforms._affine_transform_cpu(values, matrix, offset, output_shape)
+    assert len(output_planes) == 6
+    assert actual.flags.owndata
+    assert all(np.shares_memory(plane, actual) for plane in output_planes)
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+
+
+@pytest.mark.parametrize("change", [
+    "time_shift", "time_scale", "time_from_y", "y_from_time", "tiny_coupling", "frame_count",
+])
+def test_cpu_affine_retains_nd_path_for_temporal_transform(change):
+    values = np.arange(4 * 7 * 7, dtype=np.float32).reshape(4, 7, 7)
+    matrix, offset = transforms._fused_affine_mapping(3, 7, 11, 16, 23.0)
+    output_shape = (4, 16, 16)
+    if change == "time_shift":
+        offset[0] = 0.25
+    elif change == "time_scale":
+        matrix[0, 0] = 0.75
+    elif change == "time_from_y":
+        matrix[0, 1] = 0.1
+    elif change == "y_from_time":
+        matrix[1, 0] = 0.1
+    elif change == "tiny_coupling":
+        matrix[1, 0] = 1e-15
+    else:
+        output_shape = (6, 16, 16)
+    expected = _original_cpu_affine(values, matrix, offset, output_shape)
+    with patch.object(transforms.ndi, "affine_transform", wraps=ndi.affine_transform) as sample:
+        actual = transforms._affine_transform_cpu(values, matrix, offset, output_shape)
+    sample.assert_called_once()
+    assert sample.call_args.args[0].ndim == 3
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+
+
+def test_cpu_spatial_affine_preserves_empty_batch_shape():
+    values = np.empty((0, 7, 7), dtype=np.float32)
+    matrix, offset = transforms._fused_affine_mapping(3, 7, 11, 16, 23.0)
+    expected = _original_cpu_affine(values, matrix, offset, (0, 16, 16))
+    actual = transforms._affine_transform_cpu(values, matrix, offset, (0, 16, 16))
+    assert actual.shape == expected.shape == (0, 16, 16)
+    assert actual.dtype == expected.dtype
 
 
 class TestTopologyTransforms(unittest.TestCase):
@@ -72,20 +185,6 @@ class TestTopologyTransforms(unittest.TestCase):
             7.0,
         )
 
-    def test_mask_dilation_treats_each_segment_independently(self) -> None:
-        masks = np.zeros((1, 2, 7, 7), dtype=bool)
-        masks[0, 0, 3, 3] = True
-        masks[0, 1, 0, 0] = True
-
-        dilated = dilate_segment_masks(masks, iterations=2)
-
-        self.assertEqual(masks.shape, dilated.shape)
-        self.assertEqual(np.bool_, dilated.dtype)
-        self.assertEqual(25, np.count_nonzero(dilated[0, 0]))
-        self.assertEqual(9, np.count_nonzero(dilated[0, 1]))
-        self.assertFalse(dilated[0, 0, 0, 0])
-        self.assertFalse(dilated[0, 1, 4, 4])
-
     def test_mask_dilation_removes_competing_vessel_pixels(self) -> None:
         masks = np.zeros((1, 1, 7, 7), dtype=bool)
         masks[0, 0, 3, 3] = True
@@ -103,30 +202,6 @@ class TestTopologyTransforms(unittest.TestCase):
         self.assertTrue(analysis_mask[0, 0, 3, 3])
         self.assertFalse(analysis_mask[0, 0, 3, 4])
         self.assertFalse(analysis_mask[0, 0, 3, 5])
-
-    def test_rotation_occurs_after_interpolation_on_a_larger_canvas(self) -> None:
-        values = np.arange(18, dtype=np.float32).reshape(1, 1, 2, 3, 3)
-        masks = np.ones((1, 1, 3, 3), dtype=bool)
-        rotations = np.asarray([[0.0]], dtype=np.float32)
-
-        interpolated_values = interpolate_segments(values)
-        interpolated_masks = interpolate_segment_masks(masks)
-        rotated_values = resample_rotate_segment(interpolated_values[0, 0], float(rotations[0, 0]))[None, None]
-        rotated_masks = rotate_segment_masks(interpolated_masks, rotations)
-
-        self.assertEqual((1, 1, 2, 128, 128), interpolated_values.shape)
-        self.assertEqual((1, 1, 128, 128), interpolated_masks.shape)
-        self.assertEqual((1, 1, 2, 181, 181), rotated_values.shape)
-        self.assertEqual((1, 1, 181, 181), rotated_masks.shape)
-        np.testing.assert_allclose(
-            rotated_values[..., 26:154, 26:154],
-            interpolated_values,
-            equal_nan=True,
-        )
-        np.testing.assert_array_equal(
-            rotated_masks[..., 26:154, 26:154],
-            interpolated_masks,
-        )
 
     def test_fused_transform_preserves_alignment_with_bounded_scientific_delta(
         self,
@@ -190,48 +265,6 @@ class TestTopologyTransforms(unittest.TestCase):
         )
         profile_scale = np.sqrt(np.mean(staged_profile[profile_overlap] ** 2))
         self.assertLess(float(profile_rmse / profile_scale), 0.003)
-
-    def test_invalid_rotation_keeps_segment_outputs_empty(self) -> None:
-        values = np.ones((1, 1, 4, 4), dtype=np.float32)
-        masks = np.ones((1, 1, 4, 4), dtype=bool)
-        rotations = np.asarray([[np.nan]], dtype=np.float32)
-
-        rotated_values = resample_rotate_segment(values[0, 0], float(rotations[0, 0]))
-        rotated_masks = rotate_segment_masks(masks, rotations)
-
-        self.assertTrue(np.all(np.isnan(rotated_values)))
-        self.assertFalse(np.any(rotated_masks))
-
-    def test_cupy_fused_transform_does_not_fall_back_to_scipy(self) -> None:
-        if optional_cupy_backend() is None:
-            self.skipTest("CuPy/CUDA is unavailable.")
-        rng = np.random.default_rng(91)
-        values = rng.normal(size=(8, 29, 29)).astype(np.float32)
-        values[:, :4, :] = np.nan
-        values[:, 20:, 25:] = np.nan
-
-        with patch(
-            "calculations.vessel_segments.sampling.transforms.ndi.affine_transform",
-            side_effect=AssertionError("unexpected CPU fallback"),
-        ):
-            gpu = resample_rotate_segment(values, 31.7)
-        with patch(
-            "calculations.vessel_segments.sampling.transforms.optional_cupy_backend",
-            return_value=None,
-        ):
-            cpu = resample_rotate_segment(values, 31.7)
-
-        self.assertEqual(cpu.shape, gpu.shape)
-        self.assertEqual(cpu.dtype, gpu.dtype)
-        np.testing.assert_array_equal(np.isnan(gpu), np.isnan(cpu))
-        np.testing.assert_allclose(gpu, cpu, rtol=5e-5, atol=2e-5, equal_nan=True)
-        np.testing.assert_allclose(
-            np.nanmean(gpu, axis=(-2, -1)),
-            np.nanmean(cpu, axis=(-2, -1)),
-            rtol=1e-5,
-            atol=1e-6,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

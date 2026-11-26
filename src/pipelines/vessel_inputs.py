@@ -53,7 +53,7 @@ def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
     hd = ctx.inputs.hd.as_holodoppler()
     dv = ctx.inputs.dv.as_dopplerview()
     method = getattr(ctx, "velocity_estimation_method", None)
-    scale = getattr(ctx, "band_ratio_frequency_scale_hz", DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ)
+    scale = ctx.settings.band_ratio_frequency_scale_hz
     if method is None:
         failures = {}
         for candidate in ("doppler_moments", "frequency_bands"):

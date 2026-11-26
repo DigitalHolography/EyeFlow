@@ -30,6 +30,7 @@ from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
 from .calculator import create_retinal_motion_map, render_retinal_motion_map_video
 from calculations.temporal_reference import compute_mean_reference
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
+from .logging import logged_stage
 from .parameters import MotionMapConfig
 
 
@@ -307,8 +308,9 @@ class RegistrationResources:
 
 
 def prepare(config, ctx):
+    ctx.log("Starting displacement-map pipeline...")
     ctx.require_inputs("hd", "dv")
-    moment = ctx.inputs.hd.as_holodoppler().named_root_moment_dataset(config.moment_path)
+    moment = ctx.inputs.hd.as_holodoppler().moment(config.moment_path, required=True)
     fps = resolve_frame_rate(ctx, config.fallback_fps)
     # Run-owned backing survives producer termination and replay cleanup.
     directory = ctx.runtime.work_h5.storage.path("")
@@ -321,7 +323,10 @@ def prepare(config, ctx):
                              h5_source=moment, defer_h5_range=True)
     scope = ExitStack()
     try:
-        replay = scope.enter_context(sequence.cached_for_replay(base.max_frames, directory))
+        with logged_stage("displacement frame replay"):
+            replay = scope.enter_context(
+                sequence.cached_for_replay(base.max_frames, directory)
+            )
         resources = RegistrationResources(scope, directory, base, moment, fps, replay)
         ctx.dag.handoff("prepared", InvocationResource(resources))
     except BaseException:
@@ -354,7 +359,12 @@ def vessel(name, names, ctx):
 
 def reference(ctx):
     prepared = ctx.dag.require("prepared")
-    ctx.dag.handoff("reference", compute_mean_reference(prepared.replay, prepared.base.max_frames))
+    frames = prepared.replay.frame_count
+    if prepared.base.max_frames is not None:
+        frames = min(frames, prepared.base.max_frames)
+    with logged_stage("displacement mean reference", frames=frames):
+        value = compute_mean_reference(prepared.replay, prepared.base.max_frames)
+    ctx.dag.handoff("reference", value)
 
 
 def magnitude_video(name, names, ctx):
@@ -378,6 +388,7 @@ def finalize(config, names, ctx):
         raise RuntimeError("No displacement vessel field was produced.")
     ctx.dag.handoff("registered_fields", {"registration_method": config.registration_method,
                                           "fields": available})
+    ctx.log("Completed displacement registration; magnitude-video export is scheduled.")
 
 
 def analyze(retain_segment_maps, ctx):
@@ -393,11 +404,12 @@ def analyze(retain_segment_maps, ctx):
         ctx.log_warning("Displacement profiles use frequency-band cardiac timing because valid Doppler-moments timing is unavailable.")
     scratch = ctx.runtime.scratch
     memory = DEFAULT_WORKING_MEMORY_MB if scratch is None else min(DEFAULT_WORKING_MEMORY_MB, scratch.memory_budget_bytes / 2**20)
-    with ctx.output.h5.build_arrays() as allocate:
-        analysis = analyze_displacement_vessels(registration["fields"], prepared_topologies(ctx),
-            retain_maps=retain_segment_maps, working_memory_mb=memory,
-            array_allocator=scratch.empty_float32 if scratch is not None else None,
-            map_allocator=allocate if retain_segment_maps else None)
+    with logged_stage("displacement profile analysis"):
+        with ctx.output.h5.build_arrays() as allocate:
+            analysis = analyze_displacement_vessels(registration["fields"], prepared_topologies(ctx),
+                retain_maps=retain_segment_maps, working_memory_mb=memory,
+                array_allocator=scratch.empty_float32 if scratch is not None else None,
+                map_allocator=allocate if retain_segment_maps else None)
     ctx.dag.handoff("analysis", {"analysis": analysis, "boundaries": timing.boundaries, "timing_attrs": timing.attrs,
                                "registration_method": registration["registration_method"]})
 

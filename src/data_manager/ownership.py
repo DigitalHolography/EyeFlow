@@ -39,6 +39,11 @@ class DataManager:
         snapshot = self._snapshot(value, {})
         if transportable:
             self.validate_storage(snapshot, product_paths=True)
+        if transportable and isinstance(snapshot, np.ndarray):
+            # Multiprocessing events and manifests may use different pickle
+            # protocols. Stable backing preserves read-only ownership for small
+            # arrays as well as large ones across both transport paths.
+            snapshot = self.storage.store_array(snapshot)
         if transportable and isinstance(snapshot, (Mapping, tuple, frozenset, ScientificValue, StringArray)):
             # A structured scientific value can contain local Python types or
             # extensive metadata. IPC carries one stable metadata reference.

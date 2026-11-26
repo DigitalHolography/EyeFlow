@@ -1,5 +1,7 @@
 """Output serialization must preserve metadata and publish atomically."""
 
+from app_settings import UserSettings
+
 from pathlib import Path
 
 import h5py
@@ -9,6 +11,26 @@ import pytest
 from input_output.writers.h5_initialization import _copy_source_object
 from pipeline_engine.output.output_model import OutputModel, OutputImmutableError, OutputOwnershipError, OutputPathConflictError
 from pipeline_engine.data.storage import ProductStorage
+
+
+def test_finalization_snapshot_preserves_the_dataset_acceptance_boundary(tmp_path):
+    from dataclasses import FrozenInstanceError
+
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        with model.checkpoint():
+            model.create_dataset("accepted", data=7)
+        model.create_dataset("provisional", data=9)
+        model.require_group("FinalMetadata").attrs["status"] = "partial"
+        snapshot = model.finalization_snapshot()
+        assert snapshot.dataset_paths == ("accepted",)
+        assert dict(snapshot.groups)["FinalMetadata"].attrs["status"] == "partial"
+        assert not model.records["provisional"].committed
+        with pytest.raises(FrozenInstanceError):
+            snapshot.dataset_paths = ("provisional",)
+        with model.checkpoint():
+            with pytest.raises(RuntimeError, match="active output transaction"):
+                model.finalization_snapshot()
 
 
 def test_incremental_dense_shape_is_sparse_atomic_immutable_and_reused(tmp_path):
@@ -159,3 +181,138 @@ def test_dataset_commits_are_immutable_while_groups_remain_shared_and_authorized
         with h5py.File(model.filename) as result:
             assert result["Shared"].attrs["title"] == "authorized"
             assert result["Shared/Mean"].attrs["unit"] == "pixels"
+
+
+def _observe_committed_datasets(model):
+    batches, cursor = [], {}
+
+    def observed(current):
+        records, next_cursor = current.committed_delta(cursor)
+        datasets = {path: record for path, record in records.items() if record.kind == "dataset"}
+        if datasets:
+            batches.append(datasets)
+        cursor.clear()
+        cursor.update(next_cursor)
+
+    model.bind_commit_listener(observed)
+    return batches, observed
+
+
+def test_commit_listener_hides_child_commits_until_outer_acceptance(tmp_path):
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        batches, _ = _observe_committed_datasets(model)
+        with pytest.raises(RuntimeError, match="outer rejected"), model.checkpoint(owner="producer"):
+            with model.checkpoint() as child:
+                model.create_dataset("Rejected/value", data=[1, 2])
+                child.commit(("Rejected/value",))
+                assert model.records["Rejected/value"].committed
+                assert not batches
+            assert not batches
+            raise RuntimeError("outer rejected")
+        assert "Rejected" not in model and not batches
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("Accepted/value", data=[3, 4])
+            assert not batches
+        assert [set(batch) for batch in batches] == [{"Accepted/value"}]
+
+
+def test_nonexposed_handoff_notifies_before_producer_returns_and_survives_later_failure(tmp_path):
+    from input_output.output_manager import OutputManager
+    from input_output.runs.layout import HoloRunLayout
+    from pipeline_engine.context import PipelineContext, managed_invocation
+    from pipeline_engine.execution.invocation import _pipeline_checkpoint
+    from pipeline_engine.stage_graph import StageGraph, StageSpec, ProductSpec
+    from pipeline_engine.stage_graph.executor import StageGraphExecutor
+
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+        batches, _ = _observe_committed_datasets(model)
+        exposed = []
+        context = PipelineContext(work_h5=model, holodoppler_h5=None, dopplerview_h5=None,
+                                  output_manager=manager, pipeline_name="science", variables={},
+                                  on_product_commit=lambda *args: exposed.append(args), settings=UserSettings(values={}))
+
+        def produce(ctx):
+            ctx.dag.handoff("value", np.array([7., -0., np.nan]))
+            assert [set(batch) for batch in batches] == [{"Scientific/value"}]
+            assert not exposed  # A non-exposed handoff has no acceptance callback.
+            raise ValueError("later calculation failed")
+
+        graph = StageGraph((StageSpec("produce", produce, products=(
+            ProductSpec("value", "Scientific/value", {"unit": "Hz"}),
+        )),))
+        with pytest.raises(RuntimeError, match="later calculation failed"), managed_invocation(context):
+            with _pipeline_checkpoint(model, context.state.raw, manager, owner="science") as outer:
+                StageGraphExecutor(graph, context, outer, _pipeline_checkpoint).run()
+        assert [set(batch) for batch in batches] == [{"Scientific/value"}]
+        assert model.records["Scientific/value"].committed
+        assert batches[0]["Scientific/value"].attrs["unit"] == "Hz"
+        np.testing.assert_array_equal(model["Scientific/value"][:], [7., -0., np.nan])
+
+
+def test_commit_listener_late_binding_and_single_owner_do_not_repeat_dataset_deltas(tmp_path):
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("value", data=3)
+        batches, callback = _observe_committed_datasets(model)
+        assert [set(batch) for batch in batches] == [{"value"}]
+        model.bind_commit_listener(callback)
+        with model.checkpoint(owner="producer"):
+            model.require_group("Empty")
+        assert len(batches) == 1
+        with pytest.raises(RuntimeError, match="already bound"):
+            model.bind_commit_listener(lambda current: None)
+        model.bind_commit_listener(None)
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("later", data=4)
+        assert len(batches) == 1
+
+
+@pytest.mark.parametrize("failure", [OSError("writer is unavailable"), KeyboardInterrupt(), SystemExit(2)])
+def test_commit_listener_failure_preserves_accepted_records_and_state(tmp_path, failure):
+    from input_output.output_manager import OutputManager
+    from input_output.runs.layout import HoloRunLayout
+    from pipeline_engine.execution.invocation import _pipeline_checkpoint
+
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        attempts = []
+
+        def failed(current):
+            if "value" in current.committed_records():
+                attempts.append(1)
+                raise failure
+
+        model.bind_commit_listener(failed)
+        manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+        state = {"before": 1}
+        with _pipeline_checkpoint(model, state, manager, owner="producer"):
+            model.create_dataset("value", data=7)
+            state["accepted"] = 2
+        assert model.commit_listener_error is failure
+        assert model.records["value"].committed and state == {"before": 1, "accepted": 2}
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("later", data=8)
+        assert attempts == [1] and model.records["later"].committed
+
+
+def test_standalone_publish_cannot_commit_records_owned_by_an_active_service(tmp_path):
+    with ProductStorage() as storage:
+        model = OutputModel(storage, tmp_path / "output.h5")
+        batches, listener = _observe_committed_datasets(model)
+        model.create_dataset("unfinished", data=1)
+        with pytest.raises(RuntimeError, match="already bound"):
+            model.publish()
+        assert not model.records["unfinished"].committed and not batches
+        # Cleanup from an unrelated/failed service must preserve the live owner.
+        model.detach_commit_listener(lambda current: None)
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("accepted", data=7)
+        assert [set(batch) for batch in batches] == [{"accepted"}]
+        model.detach_commit_listener(listener)
+        with model.checkpoint(owner="producer"):
+            model.create_dataset("later", data=8)
+        assert len(batches) == 1

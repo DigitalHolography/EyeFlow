@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Integral, Real
 
 import numpy as np
 
 from .geometry import (
     AnnulusGeometry,
+    annulus_count,
     _validated_center_xy,
     _validated_image_shape,
     image_half_diagonal,
@@ -229,25 +231,82 @@ class OpticDisc:
     def annulus_geometry(
         self,
         image_shape: tuple[int, int],
-        number_of_radii_in_fov: int = 25,
+        number_of_radii_in_fov: int | None = None,
+        *,
+        annulus_size: float | None = None,
+        annulus_stride: float | None = None,
+        number_of_radii_in_half_diagonal: int = 32,
     ) -> AnnulusGeometry:
-        """Derive uniformly spaced annuli from this optic-disc geometry."""
+        """Derive full-width annuli with half-diagonal sampling density.
 
-        if number_of_radii_in_fov < 1:
-            raise ValueError("number_of_radii_in_fov must be positive.")
+        The count includes intermediate annuli: stride = half-diagonal / count
+        and size = 2 * stride. Starts extend to the farthest image corner from
+        the optic disc, without clipping outer boundaries or dropping tails.
+        Explicit native-pixel size/stride and legacy FOV-count calculation
+        paths remain available with their existing terminal-boundary behavior.
+        """
+
+        for name, value in (("annulus_size", annulus_size), ("annulus_stride", annulus_stride)):
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, Real)
+                or not np.isfinite(value) or value <= 0
+            ):
+                raise ValueError(f"{name} must be finite and strictly positive (native pixels).")
+        legacy = annulus_size is None and annulus_stride is None and number_of_radii_in_fov is not None
+        count_based = annulus_size is None and annulus_stride is None and not legacy
+        if legacy and (isinstance(number_of_radii_in_fov, bool)
+                       or not isinstance(number_of_radii_in_fov, Integral) or number_of_radii_in_fov < 1):
+            raise ValueError("number_of_radii_in_FOV must be positive and an integer.")
+        if count_based and (
+            isinstance(number_of_radii_in_half_diagonal, bool)
+            or not isinstance(number_of_radii_in_half_diagonal, Integral)
+            or number_of_radii_in_half_diagonal < 1
+        ):
+            raise ValueError("number_of_radii_in_half_diagonal must be positive and an integer.")
         self._required_dimensions("derive annulus geometry")
         ny, nx = _validated_image_shape(image_shape)
         radius_scale = max(image_half_diagonal(ny, nx), 1.0)
-        radial_step = max(nx, ny) / float(number_of_radii_in_fov) / radius_scale
+        if count_based:
+            stride = radius_scale / number_of_radii_in_half_diagonal
+            size = 2.0 * stride
+            inner = self.centered_circle_radius_pixels() / radius_scale
+            cx, cy = self.center
+            farthest_radius = float(np.hypot(
+                max(abs(cx), abs(nx - 1 - cx)),
+                max(abs(cy), abs(ny - 1 - cy)),
+            ))
+            # The branch-support mask evaluates distances in float32. Round its
+            # limit outward so a corner cannot disappear through roundoff.
+            outer = float(np.nextafter(
+                np.float32(farthest_radius / radius_scale), np.float32(np.inf),
+            ))
+            count = annulus_count(
+                farthest_radius - inner * radius_scale, size, stride, retain_all=True,
+            )
+            return AnnulusGeometry(
+                inner_radius_frac=inner,
+                outer_radius_frac=outer,
+                ring_width_frac=size / radius_scale,
+                ring_count=count,
+                segment_length_frac=size / radius_scale,
+                ring_stride_frac=stride / radius_scale,
+                clip_outer_radius=False,
+            )
+        size = float(annulus_size) if annulus_size is not None else max(nx, ny) / float(
+            number_of_radii_in_fov if legacy else 25
+        )
+        stride = float(annulus_stride) if annulus_stride is not None else size / (1.0 if legacy else 2.0)
+        radial_width = size / radius_scale
         inner = min(self.centered_circle_radius_pixels() / radius_scale, 1.0)
         outer = 1.0
-        count = max(1, int(np.ceil((outer - inner) / radial_step)))
+        count = annulus_count((outer - inner) * radius_scale, size, stride)
         return AnnulusGeometry(
             inner_radius_frac=inner,
             outer_radius_frac=outer,
-            ring_width_frac=radial_step,
+            ring_width_frac=radial_width,
             ring_count=count,
-            segment_length_frac=radial_step,
+            segment_length_frac=radial_width,
+            ring_stride_frac=stride / radius_scale,
         )
 
     def _required_dimensions(self, purpose: str) -> tuple[float, float]:

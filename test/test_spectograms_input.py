@@ -20,6 +20,27 @@ def _hd_source(hd):
     return HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
 
 
+@pytest.mark.parametrize("name,alias,shape", [
+    ("moment0", "M0", (2, 3, 4)),
+    ("moment2", "M2", (2, 3, 4)),
+    ("moment0ff", "M0FF", (2, 3, 4)),
+    ("spectrograms", "spectrograms", (2, 3, 4, 5)),
+])
+def test_single_accessor_handles_absence_aliases_and_required_inputs(tmp_path, name, alias, shape):
+    with h5py.File(tmp_path / "hd.h5", "w") as hd:
+        source = _hd_source(hd)
+        accessor = getattr(source, name)
+        assert accessor() is None
+        assert source.input_datasets(name) == ()
+        with pytest.raises(KeyError, match="HD"):
+            accessor(required=True)
+        expected = hd.create_dataset(alias, shape=shape, dtype="f4")
+        with patch.object(RawH5SourceReader, "array", side_effect=AssertionError("eager read")):
+            assert accessor().id == expected.id
+            assert accessor(required=True).id == expected.id
+            assert source.input_datasets(name)[0].id == expected.id
+
+
 @pytest.mark.parametrize("frequency", [None, float("nan")])
 def test_spectral_frequency_calibration_rejects_missing_or_invalid_sampling_rate(tmp_path, frequency):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
@@ -33,7 +54,7 @@ def test_reads_exact_root_dataset_lazily_and_preserves_exported_axes(tmp_path):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
         exported = hd.create_dataset("spectrograms", data=values)
         with patch.object(RawH5SourceReader, "array", side_effect=AssertionError("eager read")):
-            dataset = _hd_source(hd).spectograms_dataset()
+            dataset = _hd_source(hd).spectrograms()
         assert isinstance(dataset, h5py.Dataset)
         assert dataset.name == "/spectrograms"
         assert dataset.id == exported.id
@@ -48,23 +69,23 @@ def test_optional_source_ignores_legacy_spectrograms_group(tmp_path):
         group.create_group("singlebeat")
         group.create_dataset("spectral_cube_parameters", data="{}")
 
-        assert _hd_source(hd).optional_spectograms_dataset() is None
+        assert _hd_source(hd).spectrograms() is None
         with pytest.raises(KeyError, match="spectrograms"):
-            _hd_source(hd).spectograms_dataset()
+            _hd_source(hd).spectrograms(required=True)
 
 
 def test_rejects_incorrect_rank_with_the_external_path(tmp_path):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
         hd.create_dataset(HD_SPECTOGRAMS_PATH, shape=(3, 5, 7), dtype=np.float32)
         with pytest.raises(ValueError, match="/spectrograms.*4-D"):
-            _hd_source(hd).optional_spectograms_dataset()
+            _hd_source(hd).spectrograms()
 
 
 def test_requires_real_numeric_band_power(tmp_path):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
         hd.create_dataset(HD_SPECTOGRAMS_PATH, shape=(3, 4, 5, 7), dtype=np.complex64)
         with pytest.raises(TypeError, match="/spectrograms.*real numeric"):
-            _hd_source(hd).spectograms_dataset()
+            _hd_source(hd).spectrograms()
 
 
 @pytest.mark.parametrize("method", ["doppler_moments", "frequency_bands"])

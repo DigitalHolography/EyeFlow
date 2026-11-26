@@ -1,123 +1,32 @@
-# Pipeline engine context
+# Pipeline engine map
 
-## Boundary
+This package owns pipeline descriptors, DAG resolution, shared run validation,
+contexts, scheduling, checkpoints, resource admission, and execution. It does
+not own scientific formulas, pipeline-specific HDF5 paths, Tkinter widgets,
+or persisted-setting policy.
 
-This package owns pipeline metadata, dependency planning, run validation, the
-runtime context, and execution. It does not own scientific calculations,
-pipeline-specific HDF5 paths, GUI widgets, or persisted-setting policy.
-
-Read [repository architecture](../../docs/architecture.md) first only when the
-task crosses front-end or I/O boundaries.
-
-## Key modules
-
-| Module | Responsibility |
+| Task | Start with |
 |---|---|
-| `planning/base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
-| `planning/dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
-| `planning/inspection.py` | Resolved JSON/DOT export using the execution selection; optional observed stage/artifact diagnostics |
-| `execution/run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion to `input_output/runs/inputs.py` and destination mapping to `input_output/output_manager.py` |
-| `execution/runtime.py`, `execution/invocation.py` | Per-input workflow coordination / one descriptor's execution and checkpoints |
-| `execution/scheduler.py` | Dependency readiness, artifact barriers and progress order |
-| `execution/process_executor.py`, `execution/worker.py`, `execution/protocol.py` | Worker lifetime, incremental transport and receipt acknowledgments |
-| `stage_graph/` | Immutable local definitions, dedicated planner, stage executor, logical products, artifact readiness, scope and journal |
-| `product_exchange/` | Qualified product identity, registry and authoritative coordinator acceptance |
-| `src/data_manager/` | Stable structured product handles and physical ownership over `ProductStorage` |
-| `data/input_service.py`, `data/storage.py`, `data/transfer.py` | Lazy source replay, immutable payloads and local-file transport |
-| `output/output_model.py`, `output/finalization.py` | Output tree/journals and retained payload ownership through publication |
-| `resources.py`, `src/runtime_limits.py` | Batch admission/memory accounting and process/thread allowances |
-| `context.py` | Namespaced inputs/output, timing/setting helpers, shared state, options and result persistence |
-| `execution/errors.py` | User-facing pipeline exception formatting |
-| `__init__.py` | Public declarations, context, graph and run-service API |
+| Registration metadata and options | `planning/base.py`; pipeline declarations in `src/pipelines/` |
+| Dependencies and target closure | `planning/dag.py` |
+| GUI/CLI validation and batch policy | `execution/run_service.py` |
+| Context, state, and output access | `context.py`, `io/` |
+| Invocation lifecycle and statuses | `execution/runtime.py`, `execution/invocation.py` |
+| Product-level stage graphs | `stage_graph/`; [stage graphs](../../docs/pipeline_stage_graphs.md) |
+| Process work and input replay | `execution/scheduler.py`, `execution/worker.py`, `io/input/`; [parallel execution](../../docs/parallel_pipeline_execution.md) |
+| HDF5 model, scratch, resources | `output/output_model.py`, `data/storage.py`, `resources.py` |
 
-Pipeline discovery itself is in `src/pipelines/__init__.py`; settings
-normalization is in `src/app_settings.py`.
+`requires` names importable packages; `dag_requires` names produced data.
+Options close their own prerequisites before the DAG is resolved. A pipeline
+implicitly produces its name; a key with no producer is external and must be
+validated by its consumer. `auto_run_after` adds a companion; `run_once` keeps
+shared work outside velocity fan-out.
 
-## Dependency semantics
+`resolve_run_spec` validates selections, layouts, calibration, and destinations
+before execution. `execute_run` replaces the EyeFlow-owned output directory per
+attempt. Declared execution variants isolate state and output namespaces;
+state consumers need a declared DAG producer. Accepted stage handoffs survive
+later stage failure. Keep GUI and CLI on this shared run path.
 
-- Import requirements (`requires`) only control availability.
-- Data requirements (`dag_requires`) are matched to one producer's pipeline
-  name or `dag_produces` key.
-- Every pipeline implicitly produces its own name.
-- Multiple producers for a key and dependency cycles fail graph construction.
-- A key with no producer is considered external and creates no edge.
-- Selected option `requires` are closed transitively within one pipeline before
-  the DAG is resolved. Selected option `dag_requires` add producer edges.
-- `auto_run_after` adds a companion when its named predecessor is scheduled,
-  adds an ordering/dependency edge, and preserves directly selected targets.
-- Hidden pipelines may enter a plan through dependencies or automatic
-  companions; only visible available pipelines are valid user targets.
-- Descriptor discovery order breaks ties between otherwise independent nodes.
-
-When modifying scheduling, inspect `planning/base.py`, `planning/dag.py`, the affected pipeline
-declarations, `test_pipeline_discovery.py`,
-`test_pipeline_library_dependencies.py`, and the scheduling cases in
-`test_run_service.py`. Calculation implementations are normally irrelevant.
-
-## Run lifecycle
-
-`resolve_run_spec` validates band-ratio calibration, filters selectable targets,
-resolves option closure and the DAG, rejects unavailable required descriptors,
-resolves every `.holo` companion layout, maps outputs, and rejects duplicate
-destinations. No files are executed at this stage.
-
-`execute_run` iterates `RunRequest`s. Before each attempt it replaces the
-EyeFlow output directory, delegates to `run_pipelines_to_output`, records an
-output or `RunFailure`, and checks cancellation only between files.
-
-The [execution design](../../docs/parallel_pipeline_execution.md) is the contract
-for scheduling, transactional acceptance, resources and storage lifetime.
-Base displacement registration and its profile/map companion execute in separate
-run-once processes; the companion waits for topology and shared timing. Worker
-logs are forwarded by the result receiver while coordinator work runs.
-Change the component that owns the behavior; keep transport out of the scheduler
-and scientific work out of the executor. HDF5 serialization belongs in
-`input_output/writers/h5_publication.py`; local scratch policy in
-`src/scratch_location.py`.
-
-`ctx.computation_cache` is a per-input memo shared across execution variants,
-separate from transactional `ctx.state`. Use it only for immutable successful
-pure calculations with explicit source/settings compatibility keys. Never cache
-failures, beat-specific products, or output side effects. A later packing/write
-failure does not discard a valid cached calculation; a failed calculation must
-remain independently retryable. Each input execution starts with an empty memo.
-
-## Invariants
-
-- Keep GUI and CLI behavior in the shared run-service path.
-- Resolve and validate all plan-level choices before deleting an output.
-- Preserve the distinction between selected targets and full execution order;
-  both are written as output provenance.
-- A state consumer must have a matching declared DAG dependency. The engine
-  does not validate arbitrary `ctx.state` keys.
-- `input_slot` controls preferred merged-attribute lookup. Normal `.holo` layout
-  resolution still requires both HD and DV companions.
-- Descriptor failures roll back that invocation's uncommitted dataset edits,
-  attributes, state bindings, and newly created artifacts. Earlier pipeline
-  outputs remain available. Skip consumers of failed/skipped active dependencies
-  while continuing independent pipelines, including within a failed variant.
-  Shared errors or failure of every variant report an incomplete run only after
-  safe pipelines finish; its partial HDF5 path remains in `RunResult.outputs`.
-  Root `pipeline_status`, `pipeline_failures`, and `pipeline_skips` record outcomes.
-  Committed scientific datasets are immutable, including their attributes.
-  Groups are shared structural namespaces with a designated metadata owner;
-  inserting a new child does not modify committed children. State rollback and
-  transport cover binding changes, not in-place mutable state-object edits.
-  Existing sidecar files must not be overwritten.
-  `invocation._run_pipeline_descriptor` wraps them with pipeline identity and retains
-  their cause.
-- Variant producers must declare `produces_execution_variants=True`; publishing
-  variants without the declaration, or declaring them without publishing any,
-  is an execution error. Nested variant producers are not supported.
-- Do not mutate the global catalog during a run. Reload/discovery belongs before
-  plan construction.
-
-## Change scopes
-
-| Change | Usually inspect | Usually irrelevant |
-|---|---|---|
-| Decorator metadata | `planning/base.py`, affected declarations, discovery tests | calculations, UI views |
-| DAG behavior | `planning/dag.py`, option declarations, dependency tests | HDF5 writers, figures |
-| Run input/output routing | `execution/run_service.py`, `input_output/runs/layout.py`, run-service tests | scientific formulas |
-| Context API/result handling | `context.py`, `execution/runtime.py`, context and writer tests | GUI layout |
-| Progress/cancellation | `execution/run_service.py`, `ui/controllers/run.py`, run-service tests | pipeline algorithms unless callback frequency changes |
+Use focused DAG, run-service, graph, or coordinator tests for the behavior that
+changes. See [test guidance](../../test/AGENTS.md).

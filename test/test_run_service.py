@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_settings import UserSettings
+
 import json
 import sys
 import tempfile
@@ -15,13 +17,14 @@ from unittest.mock import Mock, patch
 
 import h5py
 import numpy as np
+import pytest
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from app_settings import (  # noqa: E402
-    AppSettingsStore,
+    UserSettings,
     normalize_pipeline_options,
 )
 from input_output.archives import extracted_zip_tree  # noqa: E402
@@ -35,6 +38,9 @@ from pipeline_engine.execution.run_service import (  # noqa: E402
 )
 from utils.logger import Logger  # noqa: E402
 from ui.controllers.run import RunController  # noqa: E402
+
+
+pytestmark = pytest.mark.usefixtures("inline_output_service")
 
 
 def _write_input(root: Path, stem: str = "scan") -> Path:
@@ -132,7 +138,47 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
     )
 
 
+def test_previous_publication_overlaps_the_next_acquisitions_scientific_work(tmp_path, monkeypatch):
+    import shutil
+    from threading import Event
+
+    inputs = [_write_input(tmp_path / stem, stem) for stem in ('first', 'second')]
+    copying, next_science = Event(), Event()
+    copyfile = shutil.copyfile
+
+    def run(ctx):
+        stem = ctx.output.manager.layout.stem
+        if stem == 'second':
+            assert copying.wait(15), 'Previous output never reached publication'
+            assert not first_output.exists()
+        ctx.output.h5.write('Results/value', 1 if stem == 'first' else 2)
+        if stem == 'second':
+            next_science.set()
+
+    descriptor = PipelineDescriptor(
+        name='overlap', description='overlap', available=True,
+        pipeline_factory=lambda: SimpleNamespace(name='overlap', run=run),
+    )
+    spec = resolve_run_spec(input_paths=inputs, target_names=['overlap'], pipelines=[descriptor], settings=UserSettings(values={}))
+    first_output = spec.requests[0].output_manager.path_for(OutputType.H5)
+
+    def copy(local, staging):
+        if staging.parent == first_output.parent:
+            copying.set()
+            assert next_science.wait(15), 'Next scientific execution waited for publication'
+        return copyfile(local, staging)
+
+    monkeypatch.setattr('input_output.writers.h5_publication.shutil.copyfile', copy)
+    result = execute_run(spec)
+    assert result.succeeded, result.failures
+    assert copying.is_set() and next_science.is_set() and len(result.outputs) == 2
+    for expected, path in enumerate(result.outputs, start=1):
+        with h5py.File(path) as output:
+            assert output['Results/value'][()] == expected
+
+
 class RunServiceTests(unittest.TestCase):
+    @pytest.mark.usefixtures("real_output_service")
     def test_performance_summary_includes_pipeline_stage_and_publication(self) -> None:
         from pipeline_engine import StageGraph, StageSpec
 
@@ -151,7 +197,7 @@ class RunServiceTests(unittest.TestCase):
             )
             spec = resolve_run_spec(
                 input_paths=[holo], target_names=["timed"], pipelines=[descriptor],
-            )
+             settings=UserSettings(values={}))
             messages = []
             with patch.object(Logger, "_current", Logger(on_log=messages.append)):
                 result = execute_run(spec)
@@ -176,9 +222,9 @@ class RunServiceTests(unittest.TestCase):
                 dv.create_dataset("app_versions", data=json.dumps({"DV_version": "test"}))
             spec = resolve_run_spec(
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
-            )
+             settings=UserSettings(values={}))
             with (
-                patch("pipeline_engine.execution.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch("pipeline_engine.io.manager.open_h5", wraps=real_open_h5) as open_input,
                 patch(
                     "input_output.writers.h5_initialization.open_h5",
                     side_effect=AssertionError("Initialization reopened an input"),
@@ -200,7 +246,7 @@ class RunServiceTests(unittest.TestCase):
                 hd.create_dataset("registration", data=[1, 2, 3])
             spec = resolve_run_spec(
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
-                copy_hd_passthrough=True,
+                settings=UserSettings(values={'copy_hd_passthrough': True}),
             )
             result = execute_run(spec)
             self.assertTrue(result.succeeded, result.failures)
@@ -248,7 +294,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["variant_consumer", "variant_report"],
                 pipelines=[producer, consumer, report_pipeline],
-            )
+             settings=UserSettings(values={}))
 
             result = execute_run(spec)
 
@@ -278,7 +324,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[_descriptor()],
-            )
+             settings=UserSettings(values={}))
             final_dir = spec.requests[0].output_manager.layout.ef_dir
             final_dir.mkdir(parents=True)
             (final_dir / "old.txt").write_text("old", encoding="utf-8")
@@ -309,7 +355,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[_descriptor()],
-            )
+             settings=UserSettings(values={}))
             final_dir = spec.requests[0].output_manager.layout.ef_dir
             final_dir.mkdir(parents=True)
             marker = final_dir / "old.txt"
@@ -343,7 +389,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[_descriptor()],
-            )
+             settings=UserSettings(values={}))
             final_dir = spec.requests[0].output_manager.layout.ef_dir
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             final_dir.write_text("user file", encoding="utf-8")
@@ -368,7 +414,7 @@ class RunServiceTests(unittest.TestCase):
                     input_paths=[holo],
                     target_names=["sample"],
                     pipelines=[_descriptor(visibility="hidden")],
-                )
+                 settings=UserSettings(values={}))
 
     def test_hidden_pipeline_can_satisfy_visible_target_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -388,7 +434,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[hidden, visible],
-            )
+             settings=UserSettings(values={}))
 
             self.assertEqual(("preparation", "sample"), spec.plan.names)
 
@@ -396,22 +442,26 @@ class RunServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             spec = resolve_run_spec(input_paths=[holo], target_names=["sample"],
-                                    pipelines=[_descriptor()], band_ratio_frequency_scale_hz=2.5)
-            self.assertEqual(2.5, spec.band_ratio_frequency_scale_hz)
+                                    pipelines=[_descriptor()], settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2.5}))
+            self.assertEqual(2.5, spec.settings.band_ratio_frequency_scale_hz)
             with self.assertRaisesRegex(ValueError, "band_ratio_frequency_scale_hz"):
                 resolve_run_spec(input_paths=[holo], target_names=["sample"],
-                                 pipelines=[_descriptor()], band_ratio_frequency_scale_hz=0.0)
+                                 pipelines=[_descriptor()], settings=UserSettings(values={'band_ratio_frequency_scale_hz': 0.0}))
 
     def test_gui_reads_band_ratio_calibration(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             progress_controller = SimpleNamespace(reset_run_log=Mock())
-            settings_store = SimpleNamespace(
-                load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
-                load_velocity_estimation_method=Mock(return_value="bandratio"),
-                load_band_limited_harmonics=Mock(return_value=7),
-                load_copy_hd_passthrough=Mock(return_value=True),
-            )
+            settings = UserSettings(path=Path(temp_dir) / "settings.json")
+            settings.update({
+                "band_ratio_frequency_scale_hz": 3.0,
+                "velocity_estimation_method": "bandratio",
+                "band_limited_harmonics": 7,
+                "copy_hd_passthrough": True,
+                "input_backend": "direct",
+                "input_unknown_transport": "coordinator",
+                "number_of_radii_in_half_diagonal": 16,
+            })
             app = SimpleNamespace(
                 input_controller=SimpleNamespace(
                     selected_holo_paths=Mock(return_value=[holo])
@@ -421,7 +471,7 @@ class RunServiceTests(unittest.TestCase):
                     selected_pipeline_options=Mock(return_value={}),
                 ),
                 pipeline_catalog={"sample": _descriptor()},
-                settings_store=settings_store,
+                settings=settings,
                 progress_controller=progress_controller,
                 ui_services=SimpleNamespace(dialogs=Mock()),
             )
@@ -432,21 +482,35 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(spec)
             assert spec is not None
-            self.assertEqual("bandratio", spec.velocity_estimation_method)
-            self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
-            self.assertEqual(7, spec.band_limited_harmonics)
-            self.assertTrue(spec.copy_hd_passthrough)
-            settings_store.load_band_limited_harmonics.assert_called_once_with()
-            settings_store.load_copy_hd_passthrough.assert_called_once_with()
-            settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
+            self.assertEqual("bandratio", spec.settings.velocity_estimation_method)
+            self.assertEqual(3.0, spec.settings.band_ratio_frequency_scale_hz)
+            self.assertEqual(7, spec.settings.band_limited_harmonics)
+            self.assertTrue(spec.settings.copy_hd_passthrough)
+
+            self.assertEqual(spec.settings.input_backend, "direct")
+            self.assertEqual(spec.settings.input_unknown_transport, "coordinator")
+            self.assertEqual(spec.settings.number_of_radii_in_half_diagonal, 16)
+
+
             progress_controller.reset_run_log.assert_called_once()
 
+    def test_radius_count_is_validated_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            for value in (None, 0, -1, 2.5, True, "32"):
+                with self.subTest(value=value), self.assertRaisesRegex(
+                    ValueError, "number_of_radii_in_half_diagonal",
+                ):
+                    resolve_run_spec(
+                        input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
+                        settings=UserSettings(values={'number_of_radii_in_half_diagonal': value}),
+                    )
     def test_shared_harmonic_setting_reaches_runtime_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             spec = resolve_run_spec(
                 input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
-                band_limited_harmonics=5,
+                settings=UserSettings(values={'band_limited_harmonics': 5}),
             )
             result = execute_run(spec)
             self.assertTrue(result.succeeded, result.failures)
@@ -466,13 +530,13 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[descriptor],
-            )
+             settings=UserSettings(values={}))
             empty_spec = resolve_run_spec(
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[descriptor],
                 pipeline_options={"sample": ()},
-            )
+             settings=UserSettings(values={}))
 
             self.assertEqual(("default",), default_spec.pipeline_options["sample"])
             self.assertEqual((), empty_spec.pipeline_options["sample"])
@@ -489,7 +553,7 @@ class RunServiceTests(unittest.TestCase):
                     target_names=["sample"],
                     pipelines=[descriptor],
                     pipeline_options={"sample": ("missing",)},
-                )
+                 settings=UserSettings(values={}))
 
     def test_pipeline_option_settings_are_normalized_and_persisted(self) -> None:
         options = {
@@ -513,12 +577,13 @@ class RunServiceTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            store = AppSettingsStore(
+            store = UserSettings(
                 path=Path(temp_dir) / "settings.json",
                 default_template_path=None,
             )
-            store.save_pipeline_options(normalized)
-            self.assertEqual(normalized, store.load_pipeline_options())
+            store.pipeline_options.replace(normalized)
+            store.save()
+            self.assertEqual(normalized, store.pipeline_options)
 
     def test_duplicate_output_destinations_are_rejected_before_execution(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -528,7 +593,7 @@ class RunServiceTests(unittest.TestCase):
                     input_paths=[holo, holo],
                     target_names=["sample"],
                     pipelines=[_descriptor()],
-                )
+                 settings=UserSettings(values={}))
 
     def test_runtime_records_run_and_velocity_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -537,7 +602,7 @@ class RunServiceTests(unittest.TestCase):
                 input_paths=[holo],
                 target_names=["sample"],
                 pipelines=[_descriptor()],
-            )
+             settings=UserSettings(values={}))
 
             result = execute_run(spec)
 
@@ -559,7 +624,7 @@ class RunServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             spec = resolve_run_spec(input_paths=[_write_input(Path(temp_dir))],
                                     target_names=["sample"], pipelines=[_descriptor()],
-                                    band_ratio_frequency_scale_hz=2.5)
+                                    settings=UserSettings(values={'band_ratio_frequency_scale_hz': 2.5}))
             result = execute_run(spec)
             self.assertTrue(result.succeeded)
             with h5py.File(result.outputs[0], "r") as output:
@@ -600,7 +665,7 @@ class RunServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             holo = _write_input(root / "input")
-            store = AppSettingsStore(
+            store = UserSettings(
                 path=root / "settings.json",
                 default_template_path=None,
             )
@@ -611,13 +676,15 @@ class RunServiceTests(unittest.TestCase):
                     "velocity_estimation_method": "bandratio",
                 }
             )
+            # CLI must use the shared dataset, including edits not yet persisted.
+            store.band_ratio_frequency_scale_hz = 6.0
 
             with (
                 patch(
                     "cli._build_pipeline_registry",
                     return_value={"sample": _descriptor()},
                 ),
-                patch("cli.AppSettingsStore", return_value=store),
+                patch("cli.user_settings", store),
                 redirect_stdout(StringIO()),
                 redirect_stderr(StringIO()),
             ):
@@ -632,7 +699,7 @@ class RunServiceTests(unittest.TestCase):
                     list(output_h5.attrs["velocity_estimation_methods"]),
                 )
                 self.assertEqual(
-                    4.0,
+                    6.0,
                     output_h5.attrs["band_ratio_frequency_scale_hz"],
                 )
 
@@ -640,17 +707,18 @@ class RunServiceTests(unittest.TestCase):
         import cli
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            store = AppSettingsStore(
+            store = UserSettings(
                 path=Path(temp_dir) / "settings.json",
                 default_template_path=None,
             )
             store.save({"pipeline_visibility": {"sample": False}})
 
-            with self.assertRaisesRegex(ValueError, "provide --pipelines"):
-                cli._load_configured_pipeline_targets(
-                    {"sample": _descriptor()},
-                    settings_store=store,
-                )
+            with (
+                patch("cli.user_settings", store),
+                patch("cli._build_pipeline_registry", return_value={"sample": _descriptor()}),
+                self.assertRaisesRegex(ValueError, "provide --pipelines"),
+            ):
+                cli.run_cli(Path(temp_dir))
 
     def test_zip_input_default_output_survives_temporary_extraction(self) -> None:
         import cli
@@ -707,13 +775,13 @@ class RunServiceTests(unittest.TestCase):
             holo = _write_input(root / "input")
             pipelines_file = root / "pipelines.txt"
             pipelines_file.write_text("sample\n", encoding="utf-8")
-            store = AppSettingsStore(path=root / "settings.json", default_template_path=None)
+            store = UserSettings(path=root / "settings.json", default_template_path=None)
             for filename in ("outputs.zip", "scan_outputs.zip", "custom"):
                 with self.subTest(filename=filename):
                     output_root = root / filename
                     with (
                         patch("cli._build_pipeline_registry", return_value={"sample": _descriptor()}),
-                        patch("cli.AppSettingsStore", return_value=store),
+                        patch("cli.user_settings", store),
                         redirect_stdout(StringIO()),
                         redirect_stderr(StringIO()),
                     ):
@@ -757,3 +825,17 @@ class RunServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_batch_reuses_validated_source_paths_without_remote_rediscovery(tmp_path):
+    from input_output.runs.layout import HoloRunLayout
+    holo = _write_input(tmp_path)
+    spec = resolve_run_spec(input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()], settings=UserSettings(values={}))
+    assert spec.requests[0].hd_h5.name == "scan_HD_output.h5"
+    messages = []
+    with (patch.object(HoloRunLayout, "_h5_files", side_effect=AssertionError("repeated remote discovery")),
+          Logger.capture_messages(messages.append)):
+        result = execute_run(spec)
+    assert result.succeeded
+    for stage in ("batch_resources", "output_directory_reset", "runtime_setup", "product_storage", "plan_graph_construction"):
+        assert any(f"stage=run/{stage}" in message for message in messages)

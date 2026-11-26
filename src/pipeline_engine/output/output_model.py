@@ -66,6 +66,18 @@ class Record:
         return self
 
 
+@dataclass(frozen=True)
+class FinalizationSnapshot:
+    """Accepted inventory and final group metadata, with no provisional datasets."""
+
+    groups: tuple[tuple[str, Record], ...]
+    dataset_paths: tuple[str, ...]
+
+    def __post_init__(self):
+        object.__setattr__(self, "groups", tuple((path, record) for path, record in self.groups))
+        object.__setattr__(self, "dataset_paths", tuple(self.dataset_paths))
+
+
 class Attributes(MutableMapping):
     def __init__(self, node):
         self.node = node
@@ -293,6 +305,9 @@ class OutputModel(OutputGroup):
         self._checkpoints = []
         self._versions = {"": 0}
         self._generation = 0
+        self._commit_listener = None
+        self._commit_listener_error = None
+        self._notifying_commit = False
 
     @contextmanager
     def build_arrays(self):
@@ -337,6 +352,46 @@ class OutputModel(OutputGroup):
     @property
     def records(self):
         return MappingProxyType(self._records)
+
+    @property
+    def commit_listener_error(self):
+        """First materialization failure, separate from scientific acceptance."""
+        return self._commit_listener_error
+
+    def bind_commit_listener(self, callback):
+        """Observe safe accepted deltas without adding a transaction authority.
+
+        The callback receives this model and owns its own committed_delta cursor.
+        It must only read the model. Notifications can repeat and can occur while
+        enclosing checkpoints still mask provisional records. Passing None detaches
+        the listener; only one materialization service may be bound at a time.
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("A commit listener must be callable.")
+        if self._commit_listener is not None and callback is not None and self._commit_listener != callback:
+            raise RuntimeError("An output commit listener is already bound.")
+        self._commit_listener = callback
+        self._notify_committed()
+
+    def detach_commit_listener(self, callback):
+        """Release only the observer owned by the caller doing cleanup."""
+        if self._commit_listener == callback:
+            self._commit_listener = None
+
+    def _notify_committed(self):
+        callback = self._commit_listener
+        if callback is None or self._commit_listener_error is not None or self._notifying_commit:
+            return
+        self._notifying_commit = True
+        try:
+            callback(self)
+        except BaseException as exc:
+            # Acceptance is already irreversible. Raising through its surrounding
+            # pipeline checkpoint would roll back state/artifacts but not these
+            # datasets. The I/O owner reports this terminal error at a safe boundary.
+            self._commit_listener_error = exc
+        finally:
+            self._notifying_commit = False
 
     @contextmanager
     def writing_as(self, owner):
@@ -407,6 +462,7 @@ class OutputModel(OutputGroup):
                 checkpoint.commit(tuple(checkpoint.before))
         finally:
             self._checkpoints.remove(checkpoint)
+            self._notify_committed()
 
     def visititems(self, callback):
         for path in sorted(self.records):
@@ -515,14 +571,31 @@ class OutputModel(OutputGroup):
         return records, {path: version for path, version in versions.items()
                          if overrides.get(path, self.records.get(path)).committed}
 
-    def publish(self):
-        """Publish through the shared I/O policy (also used by standalone callers)."""
-        from input_output.writers.h5_publication import publish_output_model
-
+    def commit_pending(self):
+        """Explicit acceptance for standalone callers without an active writer."""
         if self._checkpoints:
             raise RuntimeError("Cannot publish an active output transaction.")
+        if self._commit_listener is not None:
+            raise RuntimeError("Cannot publish while an output service is already bound.")
         ProductCheckpoint(self).commit(tuple(self._records))
-        publish_output_model(self)
+
+    def finalization_snapshot(self) -> FinalizationSnapshot:
+        """Accept final structure/metadata while retaining dataset commit rules."""
+        if self._checkpoints:
+            raise RuntimeError("Cannot finalize an active output transaction")
+        ProductCheckpoint(self).commit(tuple(
+            path for path, record in self.records.items() if record.kind == "group"))
+        records = self.committed_records()
+        return FinalizationSnapshot(
+            groups=tuple((path, record) for path, record in records.items() if record.kind == "group"),
+            dataset_paths=tuple(path for path, record in records.items() if record.kind == "dataset"),
+        )
+
+    def publish(self):
+        """Compatibility facade; the completion component owns all publication."""
+        from pipeline_engine.output.completion import publish_output_model
+
+        return publish_output_model(self)
 
 
 class ProductCheckpoint:
@@ -542,6 +615,7 @@ class ProductCheckpoint:
                 self.model._records[path] = replace(record, committed=True)
             self.before.pop(path, None)
             self.versions.pop(path, None)
+        self.model._notify_committed()
 
     def rollback(self):
         for path, old in self.before.items():

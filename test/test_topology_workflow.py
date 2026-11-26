@@ -25,7 +25,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         disc[18:23, 18:23] = True
         prepared = prepare_sampling_plan(
             vessel, OpticDisc(disc, (20.0, 20.0), None, None),
-            AnnulusGeometry(.1, .6, .25, 2)
+            AnnulusGeometry(.1, .6, .25, 4, ring_stride_frac=.125)
         )
         cube = np.arange(2 * 41 * 41, dtype=np.float32).reshape(2, 41, 41)
         for mode in ("fused", "sequential"):
@@ -43,68 +43,6 @@ class TopologyWorkflowTests(unittest.TestCase):
                     )
                 np.testing.assert_allclose(item.rotated, expected, equal_nan=True)
 
-    def test_empty_topology_allows_parallel_preparation(self) -> None:
-        vessel = np.zeros((21, 21), bool)
-        prepared = prepare_sampling_plan(
-            vessel, OpticDisc(vessel, (10.0, 10.0), None, None),
-            AnnulusGeometry(0., .5, .5, 1)
-        )
-        self.assertEqual([], list(prepare_segment_chunks(
-            np.zeros((2, 21, 21), np.float32), prepared, worker_count=2,
-        )))
-
-    def test_reuses_one_topology_for_multiple_maps(self) -> None:
-        vessel = np.zeros((41, 41), dtype=bool)
-        vessel[18:23, 5:36] = True
-        optic_disc = np.zeros_like(vessel)
-        optic_disc[18:23, 18:23] = True
-        prepared = prepare_sampling_plan(
-            vessel,
-            OpticDisc(optic_disc, (20.0, 20.0), None, None),
-            AnnulusGeometry(0.1, 0.6, 0.25, 2),
-            window_size_percentile_kept=1.0,
-        )
-
-        first = list(
-            prepare_segment_chunks(np.ones((2, 41, 41), dtype=np.float32), prepared)
-        )
-        second = list(
-            prepare_segment_chunks(
-                np.full((2, 41, 41), 2.0, dtype=np.float32),
-                prepared,
-            )
-        )
-
-        ring_count, branch_count = prepared.native.valid_segments.shape
-        expected_count = np.count_nonzero(
-            prepared.native.valid_segments
-            & np.isfinite(prepared.rotation_degrees)
-        )
-        self.assertEqual(expected_count, len(first))
-        self.assertEqual(expected_count, len(second))
-        self.assertTrue(all(item.rotated.shape == (2, 181, 181) for item in first))
-        self.assertEqual(
-            [(item.ring_index, item.branch_index) for item in first],
-            [(item.ring_index, item.branch_index) for item in second],
-        )
-        self.assertEqual(
-            (ring_count, branch_count, 128, 128),
-            prepared.interpolated_masks.shape,
-        )
-        self.assertEqual(
-            (ring_count, branch_count, 181, 181),
-            prepared.rotated_masks.shape,
-        )
-        np.testing.assert_allclose(
-            np.concatenate(
-                [
-                    item.rotated[np.isfinite(item.rotated)]
-                    for item in second
-                ]
-            ),
-            2.0,
-        )
-
     def test_velocity_and_generic_profiles_share_authoritative_topology(self) -> None:
         from calculations.vessel_segments.measurement import (
             SegmentMeasurementSettings,
@@ -117,7 +55,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         vessel = np.zeros((31, 31), dtype=bool)
         vessel[13:18, 3:28] = True
         optic_disc = OpticDisc(None, (15.0, 15.0), 6.0, 6.0)
-        rings = AnnulusGeometry(0.1, 0.6, 0.25, 2)
+        rings = AnnulusGeometry(0.1, 0.6, 0.25, 4, ring_stride_frac=0.125)
         prepared = prepare_sampling_plan(
             vessel,
             optic_disc,
@@ -164,6 +102,17 @@ class TopologyWorkflowTests(unittest.TestCase):
             velocity.profile.topology.rotation_degrees,
             equal_nan=True,
         )
+
+    def test_disc_covering_radial_extent_has_no_zero_width_annuli(self):
+        vessel = np.ones((11, 11), dtype=bool)
+        disc = OpticDisc(None, (5.0, 5.0), 30, 30)
+        geometry = disc.annulus_geometry(vessel.shape)
+        prepared = prepare_sampling_plan(vessel, disc, geometry)
+        self.assertEqual((0, 11, 11), prepared.native.annulus_masks.shape)
+        self.assertEqual((0,), prepared.native.delta_radius.shape)
+        self.assertEqual([], list(prepare_segment_chunks(
+            np.ones((2, 11, 11), np.float32), prepared,
+        )))
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ def local(array_mib, consumers):
     with TemporaryDirectory() as temp, budget.activate(), ProductStorage(budget=budget) as storage:
         manager = OutputManager(HoloRunLayout.from_holo(Path(temp) / "scan.holo"))
         model = OutputModel(storage, Path(temp) / "final.h5")
-        ctx = PipelineContext(work_h5=model, holodoppler_h5=None, doppler_vision_h5=None,
+        ctx = PipelineContext(work_h5=model, holodoppler_h5=None, dopplerview_h5=None,
                               output_manager=manager, pipeline_name="bench")
         count = array_mib * 1024**2 // 4
 
@@ -88,7 +88,7 @@ def processes():
         with budget.activate():
             try:
                 run_pipelines_to_output(output_manager=output, pipelines=descriptors,
-                    holodoppler_h5=None, doppler_vision_h5=None, copy_hd_passthrough=False,
+                    holodoppler_h5=None, dopplerview_h5=None, copy_hd_passthrough=False,
                     on_finalization_ready=pending.append)
             except PipelineRunError:
                 pass

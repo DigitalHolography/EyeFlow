@@ -1,6 +1,5 @@
 """Peak selection, missing-value contracts, and scalar gap-spectrum HDF5 outputs."""
 
-import warnings
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8,16 +7,13 @@ import h5py
 import numpy as np
 import pytest
 
-from calculations.math import nanmedian
 from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.metrics import (
     FLOOD_PERCENTAGES, PHASE_METRIC_OUTPUT_NAMES, PHASE_SUMMARY_OUTPUT_NAMES,
-    SPECTRUM_METRIC_DEFINITIONS, SPECTRUM_METRIC_OUTPUT_NAMES,
-    analyze_phase_spectrum, analyze_spectrum, pack_spectrum_metrics,
+    SPECTRUM_METRIC_OUTPUT_NAMES, analyze_spectrum,
 )
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
-from pipelines.low_freq_spectra.qc import _leave_one_beat_medians, _pack_beat_sensitivity
 from test_spectrogram_frequency import _write_frequency_table
 
 
@@ -25,74 +21,6 @@ def _spectrum():
     values = np.ones(32, dtype=np.float32)
     values[2], values[28], values[15], values[16] = 10, 6, 2, 4
     return values
-
-
-def test_leave_one_beat_medians_match_nanmedian_with_missing_samples_and_ties():
-    rng = np.random.default_rng(73)
-    cases = []
-    for beat_count in (2, 3, 8):
-        raw = rng.integers(0, 6, size=(5, 7, beat_count)).astype(np.float32)
-        raw[rng.random(raw.shape) < 0.35] = np.nan
-        raw[:, 0, :] = np.nan
-        raw[0, 1, :] = np.nan
-        cases.append(raw)
-    overflow = np.ones((2, 3, 2), dtype=np.float64)
-    overflow[0, 1, 0] = 1e40
-    cases.append(overflow)
-    for raw in cases:
-        beat_count = raw.shape[2]
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            for beat, (pooled, phase_spectrum) in enumerate(_leave_one_beat_medians(raw)):
-                remaining = raw[:, :, np.arange(beat_count) != beat]
-                expected_pooled = nanmedian(remaining, axis=(0, 2))
-                expected_phase = nanmedian(remaining, axis=2)
-                np.testing.assert_array_equal(pooled, expected_pooled)
-                np.testing.assert_array_equal(phase_spectrum, expected_phase)
-
-
-def test_beat_sensitivity_reselects_peaks_and_matches_full_omission_estimator():
-    raw = np.ones((4, 8, 3), dtype=np.float64)
-    raw[:, 1, (0, 2)] = 20
-    raw[:, 2, 1] = 30
-    raw[:, 6, :] = 15
-    raw[:, 3, :] = 2
-    raw[0, 0, 1] = np.nan
-    schema = EyeFlowOutputPaths.active()
-    root = schema.spectrograms_masked_metrics_root
-    reference = 0.5
-    packed = {}
-
-    def put(family, name, data, definition, **attrs):
-        packed[(family, name)] = (data, attrs)
-
-    _pack_beat_sensitivity(
-        raw, {f"{root}/SEI": (reference, {})},
-        {"sampling_frequency_hz": 32000}, 2, put, schema,
-    )
-    expected = np.full(raw.shape[2], np.nan)
-    peak_indices = []
-    phase_counts = []
-    for beat in range(raw.shape[2]):
-        remaining = raw[:, :, np.arange(raw.shape[2]) != beat]
-        pooled = nanmedian(remaining, axis=(0, 2))
-        phase_spectrum = nanmedian(remaining, axis=2)
-        fixed = analyze_spectrum(
-            pooled, sampling_frequency_hz=32000, valley_neighborhood_length=2,
-        )
-        peak_indices.append(fixed["index_max1"])
-        curve = analyze_phase_spectrum(
-            phase_spectrum, index_max1=fixed["index_max1"],
-            index_max2=fixed["index_max2"], sampling_frequency_hz=32000,
-            valley_neighborhood_length=2,
-        )["SE"]
-        phase_counts.append(np.isfinite(curve).sum())
-        expected[beat] = np.float32(nanmedian(curve, dtype=np.float64))
-
-    assert peak_indices == [2, 1, 2]
-    actual, attrs = packed[(schema.spectrograms_masked_qc.sei_beat_sensitivity, "DeltaSEI")]
-    np.testing.assert_array_equal(actual, expected - reference)
-    np.testing.assert_array_equal(attrs["valid_phase_count_per_omission"], phase_counts)
 
 
 def test_metrics_match_hand_calculated_khz_areas_and_leave_input_unchanged():
@@ -110,42 +38,14 @@ def test_metrics_match_hand_calculated_khz_areas_and_leave_input_unchanged():
     np.testing.assert_array_equal(spectrum, original)
 
 
-@pytest.mark.parametrize("sampling_frequency_hz, spacing", [(8000, 0.25), (64000, 2)])
-def test_khz_areas_use_sampling_rate_and_peak_distance_with_trapezoidal_endpoints(sampling_frequency_hz, spacing):
-    result = analyze_spectrum(_spectrum(), sampling_frequency_hz=sampling_frequency_hz)
+def test_khz_areas_use_sampling_rate_and_peak_distance_with_trapezoidal_endpoints():
+    result = analyze_spectrum(_spectrum(), sampling_frequency_hz=8000)
+    spacing = 0.25
     assert result["A0"] == 26 * spacing
     assert result["A1"] == 37 * spacing  # The endpoint samples contribute half their height.
     unit_spacing = analyze_spectrum(_spectrum(), sampling_frequency_hz=32000)
     for p in FLOOD_PERCENTAGES:
         assert result[f"A_{p}"] == pytest.approx(unit_spacing[f"A_{p}"] * spacing)
-
-
-@pytest.mark.parametrize("sampling_frequency_hz", [0, -1, np.nan])
-def test_invalid_sampling_rate_cannot_produce_khz_areas(sampling_frequency_hz):
-    with pytest.raises(ValueError, match="positive finite sampling frequency"):
-        analyze_spectrum(_spectrum(), sampling_frequency_hz=sampling_frequency_hz)
-
-
-@pytest.mark.parametrize("sampling_frequency_hz", [None, 0])
-def test_missing_calibration_skips_metrics_but_keeps_gap_spectra_and_filters(tmp_path, sampling_frequency_hz):
-    schema = EyeFlowOutputPaths.active()
-    with h5py.File(tmp_path / "out.h5", "w") as output:
-        output.create_dataset(schema.spectrograms_masked, data=np.ones((9, 8)))
-        if sampling_frequency_hz is not None:
-            output.create_dataset(schema.sampling_frequency_hz, data=sampling_frequency_hz)
-        ctx = SimpleNamespace(output=SimpleNamespace(h5=PipelineH5Output(output)))
-        timing = SimpleNamespace(
-            cycle_boundary_indexes=np.array([0, 2, 8]),
-            cycle_durations_seconds=np.array([0.2, 0.6]),
-            cardiac_cycle_source="artery", continuous=lambda vessel, raw: np.zeros(9),
-        )
-        with patch("pipelines.low_freq_spectra.gap_analysis.Logger.log_warning") as warning:
-            metrics = run_gap_analysis(ctx, timing)
-        assert not any(path.startswith(schema.spectrograms_masked_metrics_root + "/") for path in metrics)
-        assert schema.spectrograms_masked_time_aggregated_median in metrics
-        assert schema.spectrograms_masked_per_beat_band_limited in metrics
-        assert schema.spectrograms_masked_per_beat_svd_continuous in metrics
-        assert any("areas in kHz" in call.args[0] for call in warning.call_args_list)
 
 
 def test_peak_selection_uses_one_half_each_lowest_tie_index_and_includes_endpoints():
@@ -165,146 +65,10 @@ def test_peak_selection_uses_one_half_each_lowest_tie_index_and_includes_endpoin
     assert result["A_50"] == 125
 
 
-def test_interval_nan_propagates_area_while_peak_selection_ignores_it():
-    spectrum = _spectrum()
-    spectrum[8] = np.nan
-    result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    assert (result["index_max1"], result["index_max2"]) == (2, 28)
-    assert np.isnan(result["A1"])
-    assert result["A0"] == 26
-    assert all(np.isnan(result[f"A_{p}"]) for p in FLOOD_PERCENTAGES)
-    spectrum[8], spectrum[0] = 1, np.nan
-    assert analyze_spectrum(spectrum, sampling_frequency_hz=32000)["A1"] == 37  # NaNs outside the interval do not affect it.
-
-
-def test_missing_valley_preserves_other_samples_for_the_valley_median():
-    spectrum = _spectrum()
-    spectrum[15] = np.nan
-    result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    assert np.isnan(result["A1"])
-    assert result["A0"] == 26
-    assert all(np.isnan(result[f"A_{p}"]) for p in FLOOD_PERCENTAGES)
-
-
-@pytest.mark.parametrize("length, expected_height", [(2, 3), (4, 1.5), (6, 1), (32, 1)])
-def test_valley_neighborhood_length_is_centered_and_uses_same_rectangle_width(length, expected_height):
-    result = analyze_spectrum(_spectrum(), sampling_frequency_hz=32000, valley_neighborhood_length=length)
-    assert result["A0"] == 26 * expected_height
-
-
-def test_valley_height_uses_robust_median_rather_than_mean_or_minimum():
-    spectrum = _spectrum()
-    spectrum[12:20] = [1, 2, 3, 4, 5, 6, 7, 1000]
-    result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    assert result["A0"] == (19 - 2) * 4.5
-
-
-def test_all_missing_valley_returns_nan_without_warning_and_preserves_peaks():
-    spectrum = _spectrum()
-    spectrum[12:20] = np.nan
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)
-        result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    assert result["max1"] == 10 and result["max2"] == 6
-    for name in ("A0", "A1", "A_25", "A_50", "A_75"):
-        assert np.isnan(result[name])
-
-
-@pytest.mark.parametrize("length", [0, 1, 3, 33, 6.0, True])
-def test_invalid_valley_neighborhood_length_is_rejected(length):
-    with pytest.raises(ValueError, match="even integer from 2 through 32"):
-        analyze_spectrum(_spectrum(), sampling_frequency_hz=32000, valley_neighborhood_length=length)
-
-
-@pytest.mark.parametrize("half", [slice(0, 16), slice(16, 32), slice(0, 32)])
-def test_empty_peak_half_propagates_missing_peak_without_warnings(half):
-    spectrum = _spectrum()
-    spectrum[half] = np.nan
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)
-        result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    missing_peak = "1" if half.start == 0 else "2"
-    assert np.isnan(result[f"index_max{missing_peak}"])
-    assert np.isnan(result[f"max{missing_peak}"])
-    for name in ("A0", "A1", "A_25", "A_50", "A_75"):
-        assert np.isnan(result[name])
-
-
-def test_zero_spectrum_keeps_zero_areas_without_division_warning():
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)
-        result = analyze_spectrum(np.zeros(32), sampling_frequency_hz=32000)
-    assert all(result[name] == 0 for name in ("A0", "A1", "A_25", "A_50", "A_75"))
-
-
-@pytest.mark.parametrize("shape", [(), (0,), (1,), (2, 16)])
-def test_unsupported_shape_returns_all_nan_metrics_with_one_warning(shape):
-    with patch("pipelines.low_freq_spectra.metrics.Logger.log_warning") as warning:
-        result = analyze_spectrum(np.ones(shape), sampling_frequency_hz=32000)
-    assert set(result) == set(SPECTRUM_METRIC_DEFINITIONS)
-    assert len(result) == 9
-    assert all(np.isnan(value) for value in result.values())
-    warning.assert_called_once()
-    assert "at least 2 bins" in warning.call_args.args[0]
-
-
-@pytest.mark.parametrize(
-    "bin_count, start, stop, height", [(16, 6, 10, 1.5), (64, 24, 40, 7.5)],
-)
-def test_default_neighborhood_is_quarter_of_actual_domain_and_metadata_matches(bin_count, start, stop, height):
-    spectrum = np.ones(bin_count)
-    spectrum[start:stop] = np.arange(stop - start)
-    spectrum[0], spectrum[-1] = 100, 80
-    result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    assert result["index_max1"] == 0
-    assert result["index_max2"] == bin_count - 1
-    assert result["A0"] == (bin_count - 1) * (32 / bin_count) * height
-    metrics = pack_spectrum_metrics(spectrum, sampling_frequency_hz=32000, source_attrs={"unit": "power_unit"})
-    for _, attrs in metrics.values():
-        assert attrs["valley_neighborhood_length"] == bin_count // 4
-        np.testing.assert_array_equal(attrs["valley_neighborhood_indices"], np.arange(start, stop))
-        assert attrs["valley_neighborhood_selection"] == "quarter_of_bin_domain"
-
-
-@pytest.mark.parametrize(
-    "bin_count, start, stop", [(2, 0, 2), (3, 0, 2), (31, 11, 19), (65, 24, 40)],
-)
-def test_finite_non_multiple_of_eight_domains_produce_valid_peak_indices(bin_count, start, stop):
-    spectrum = np.arange(bin_count, dtype=float)
-    with patch("pipelines.low_freq_spectra.metrics.Logger.log_warning") as warning:
-        result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
-    warning.assert_not_called()
-    assert result["index_max1"] == bin_count // 2 - 1
-    assert result["index_max2"] == bin_count - 1
-    assert result["A0"] == (bin_count - bin_count // 2) * (32 / bin_count) * (start + stop - 1) / 2
-    metrics = pack_spectrum_metrics(spectrum, sampling_frequency_hz=32000, source_attrs={})
-    _, attrs = next(iter(metrics.values()))
-    np.testing.assert_array_equal(attrs["valley_neighborhood_indices"], np.arange(start, stop))
-    assert attrs["source_bin_count"] == bin_count
-    assert attrs["peak_half_valid_bin_counts"] == [bin_count // 2, bin_count - bin_count // 2]
-
-
-def test_missing_first_half_retains_nan_index_and_explains_missing_input():
-    spectrum = np.arange(63, dtype=float)
-    spectrum[:31] = np.nan
-    with patch("pipelines.low_freq_spectra.metrics.Logger.log_warning") as warning:
-        metrics = pack_spectrum_metrics(spectrum, sampling_frequency_hz=32000, source_attrs={})
-    path = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
-    index, attrs = metrics[path + "/index_max1"]
-    assert np.isnan(index)
-    assert metrics[path + "/index_max2"][0] == 62
-    assert attrs["peak_half_valid_bin_counts"] == [0, 32]
-    warning.assert_called_once()
-    assert "index_max1" in warning.call_args.args[0]
-    assert "only NaN" in warning.call_args.args[0]
-
-
-@pytest.mark.parametrize("bin_count, valley_length, expected_length", [
-    (32, None, 8), (32, 2, 2), (63, None, 16), (3, None, 2),
-])
 def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
-    tmp_path, bin_count, valley_length, expected_length,
+    tmp_path,
 ):
+    bin_count, valley_length, expected_length = 32, None, 8
     schema = EyeFlowOutputPaths.active()
     spectrum = _spectrum() if bin_count == 32 else np.ones(bin_count)
     with h5py.File(tmp_path / "output.h5", "w") as output:

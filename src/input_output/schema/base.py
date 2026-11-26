@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
-
-MISSING = object()
+from input_output.readers.nodes import is_dataset
 
 
 def normalize_h5_path(path: object) -> str:
@@ -30,6 +28,8 @@ class SourceFileLayout:
 class TypedSource:
     """Thin typed facade over one raw HDF5 reader and its sidecar config."""
 
+    INPUTS = {}
+
     def __init__(self, reader, config: dict[str, object] | None = None) -> None:
         self._reader = reader
         self._config = dict(config or {})
@@ -38,30 +38,15 @@ class TypedSource:
     def filename(self) -> str | None:
         return self._reader.filename
 
-    def _array(
-        self,
-        path: str,
-        *,
-        dtype=None,
-        default: Any = MISSING,
-    ) -> Any:
-        if default is MISSING:
-            return self._reader.array(path, dtype=dtype)
-        return self._reader.array(path, dtype=dtype, default=default)
-
-    def _dataset(self, path: str):
-        return self._reader.dataset(path)
-
-    def _value(self, path: str, *, default: Any = MISSING):
-        if default is MISSING:
-            return self._reader.value(path)
-        return self._reader.value(path, default=default)
-
-    def _config_value(self, section: str, key: str, default):
-        source = self._config.get(section, {})
-        if not isinstance(source, dict):
-            return default
-        return source.get(key, default)
+    def input_datasets(self, name: str) -> tuple:
+        """Resolve one declarative input through the adapter's lazy resolver table."""
+        try:
+            resolve = self.INPUTS[name]
+        except KeyError:
+            raise KeyError(f"Unknown {self._reader.label} input declaration: {name}") from None
+        value = resolve(self)
+        nodes = value if isinstance(value, tuple) else (value,)
+        return tuple(node for node in nodes if is_dataset(node))
 
 
 def scalar_from_value(value):

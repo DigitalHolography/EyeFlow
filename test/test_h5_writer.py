@@ -22,7 +22,7 @@ from input_output.writers.h5 import (  # noqa: E402
     set_attr_safe,
     write_value_dataset,
 )
-from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader  # noqa: E402
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader, _read_dataset_array  # noqa: E402
 from input_output.writers.h5_initialization import initialize_output_h5  # noqa: E402
 from pipeline_engine.planning.base import DatasetValue  # noqa: E402
 from pipeline_engine.output.output_model import OutputModel  # noqa: E402
@@ -42,11 +42,12 @@ class H5WriterTests(unittest.TestCase):
                 self.assertEqual(1000, hd.sampling_frequency_hz())
                 self.assertEqual(1000, hd.sampling_frequency_hz())
                 self.assertEqual(1, read_value.call_count)
-            with patch.object(reader, "array", wraps=reader.array) as read_array:
+            with patch("input_output.readers.h5._read_dataset_array", wraps=_read_dataset_array) as read_array:
                 dv = inputs.as_dopplerview()
                 self.assertIs(dv, inputs.as_dopplerview())
-                dv.retinal_mask("segmentation/Retina/artery_mask")
-                dv.retinal_artery_mask()
+                first = dv.retinal_mask("segmentation/Retina/artery_mask")
+                first[:] = 0
+                self.assertTrue(np.all(dv.retinal_artery_mask()))
                 self.assertEqual(1, read_array.call_count)
 
     def test_default_compression_preserves_float32_bits(self) -> None:
@@ -263,9 +264,9 @@ class H5WriterTests(unittest.TestCase):
                         initialize_output_h5(
                             output_h5,
                             holodoppler_source_file=str(hd_path),
-                            doppler_vision_source_file=str(dv_path),
+                            dopplerview_source_file=str(dv_path),
                             holodoppler_source_h5=hd,
-                            doppler_vision_source_h5=dv,
+                            dopplerview_source_h5=dv,
                         )
             with h5py.File(output_path, "r") as output_h5:
                 registration = output_h5["Meta/registration"]
@@ -314,8 +315,8 @@ class H5WriterTests(unittest.TestCase):
                 output = OutputModel(storage, output_path)
                 initialize_output_h5(
                     output,
-                    doppler_vision_source_file=str(dv_path),
-                    doppler_vision_source_h5=dv,
+                    dopplerview_source_file=str(dv_path),
+                    dopplerview_source_h5=dv,
                 )
                 output.publish()
 

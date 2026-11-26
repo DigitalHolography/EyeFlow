@@ -1,260 +1,95 @@
-# Architecture and navigation
+# Architecture
 
-This document is the repository-wide map. Detailed data paths belong in
-[data contracts](data-contracts.md); local change guidance belongs in the
-nearest subsystem `AGENTS.md`.
+EyeFlow starts from a `.holo` run or matching run folder, reads HoloDoppler
+(HD) and DopplerView (DV) companions, and writes one `<stem>_EF` result. DV
+supplies segmentation; EyeFlow does not segment vessels. See
+[data contracts](data-contracts.md) for input and output boundaries.
 
-## System boundary
+## Entry points and ownership
 
-EyeFlow starts from a `.holo` marker, resolves separately produced HD and DV
-companion data, and performs downstream analysis. HD owns image sequences and
-acquisition metadata. DV owns vessel/optic-disc segmentation and a small amount
-of analysis configuration. EyeFlow owns pipeline selection, derived analysis,
-figures/reports, and the `<stem>_EF` result directory.
+`pyproject.toml` exposes `eyeflow` and `eyeflow-cli`. `src/launcher.py` sends
+arguments to `src/cli.py` and a no-argument desktop launch to
+`src/eye_flow.py`. Both front ends select inputs and targets through
+`pipeline_engine.execution.run_service.resolve_run_spec`, then call `execute_run`.
+Folder and marker discovery is shared in `input_output/runs/`.
 
-The application deliberately has four layers:
+| Layer | Owns | Start with |
+|---|---|---|
+| Front ends | Input, selection, progress, presentation | `src/cli.py`, `src/ui/` |
+| Run service and engine | Validation, DAG order, execution, failures, resource admission | `src/pipeline_engine/execution/run_service.py`, `planning/dag.py`, `execution/runtime.py` |
+| Pipelines | Declarations, source adaptation, run state, product packing | `src/pipelines/<name>/` |
+| Calculations | Reusable numerical operations | `src/calculations/` |
+| I/O and schemas | HD/DV adapters, HDF5 paths, output serialization, artifacts | `src/input_output/` |
+| Settings | Defaults, persisted settings, validation | `default_settings.json`, `src/app_settings.py` |
 
-```text
-front ends                 `src/cli.py`, `src/ui/`, `src/eye_flow.py`
-    -> orchestration       `src/pipeline_engine/`
-        -> adapters        `src/input_output/`, pipeline source loaders
-            -> science     `src/pipelines/` -> `src/calculations/`
-        -> persistence     `src/input_output/schema/`, writers, OutputManager
-```
+Keep calculations independent of settings, Tkinter, and result directories.
+Pipelines may combine calculations and runtime state; front ends must not
+implement scheduling or science. External path aliases belong in
+`input_output/schema/`, and current EyeFlow paths come from
+`EyeFlowOutputPaths.active()`.
 
-Dependencies should point downward. `calculations` must not know about the UI,
-settings files, or run-directory layout. Pipelines may combine calculations,
-run state, and output paths. Front ends may select work but must not implement
-scientific behavior.
+## Pipeline execution
 
-## Entry points and convergence
+`pipelines.load_pipeline_catalog()` discovers top-level pipeline packages.
+Their `@pipeline` or `@registerPipeline` declarations define options,
+visibility, and dependencies. `requires` names importable packages;
+`dag_requires` names produced data. A pipeline implicitly produces its name.
+A missing producer key is treated as external, so consumers must validate
+external values. The resolved DAG and option closure are shared by GUI and CLI.
 
-`pyproject.toml` publishes two commands:
+`resolve_run_spec` validates settings, target availability, dependencies,
+companion layouts, and unique destinations before execution. `execute_run`
+replaces the EyeFlow-owned output directory per attempt, runs the plan, and
+collects partial failures. Cancellation is checked between files. Runtime
+contexts share run-local `ctx.state`; durable products go through
+`ctx.output.h5`. Variant producers create isolated velocity workflow state and
+HDF5/artifact namespaces. See [parallel execution](parallel_pipeline_execution.md)
+for process scheduling and publication, and [stage graphs](pipeline_stage_graphs.md)
+for product-level handoffs.
 
-- `eyeflow` calls `launcher.main`. With arguments it dispatches to `cli.main`;
-  without arguments it calls `eye_flow.main` and creates the desktop app.
-- `eyeflow-cli` calls `launcher.cli_main` and always uses `cli.main`.
-
-CLI flow:
-
-```text
-argparse in `cli.main`
-  -> `expand_run_inputs` (file, list, recursive folder, or ZIP)
-  -> settings/catalog target and option selection
-  -> `resolve_run_spec`
-  -> `execute_run`
-```
-
-GUI flow:
-
-```text
-`eye_flow.main` -> `EyeFlowApp`
-  -> input/pipeline/settings controllers build selection
-  -> `RunController._build_run_spec`
-  -> `resolve_run_spec`
-  -> worker calls `execute_run`
-```
-
-`resolve_run_spec` is the shared validation boundary: it validates calibration,
-selectable targets, option closure, pipeline availability, DAG order,
-input layouts, and unique destinations. `execute_run` owns batch iteration,
-per-file cleanup, failure collection, and stop-between-files behavior.
-
-GUI folder selection/drop and CLI folder expansion share
-`input_output.runs.discovery`. It finds `.holo` markers and directories containing
-matching `<stem>_HD` and `<stem>_DV` companions, including the selected directory
-itself. Marker-free inputs retain their actual folder identity for progress and
-errors; HDF5 validation and execution use the same run-service path.
-
-## Pipeline model
-
-`pipelines.load_pipeline_catalog()` discovers top-level modules from the
-runtime pipeline directory followed by the built-in package path. Importing a
-module executes `@pipeline` or `@registerPipeline`, which places a
-`PipelineDescriptor` in `PIPELINE_REGISTRY`. There is no hand-maintained module
-list.
-
-Each descriptor distinguishes:
-
-- `requires`: importable optional Python packages and availability;
-- `dag_requires` / `dag_produces`: semantic data dependencies;
-- `options`: user-selectable product families, including option-to-option and
-  option-to-DAG dependencies;
-- `visibility`: visible target versus hidden shared implementation;
-- `input_slot`: preferred source for merged attributes, not permission to omit
-  companion data from a normal `.holo` run;
-- `produces_execution_variants`: whether the pipeline publishes isolated
-  downstream executions;
-- `auto_run_after`: automatically include a companion after a scheduled pipeline;
-- `run_once`: execute once with shared state/output despite variant ancestry.
-- `wait_for_artifacts`: join completed sidecars before an artifact consumer runs.
-
-Every pipeline implicitly produces its own name. A required DAG key with no
-producer is treated as external, so a misspelled key does not fail DAG
-construction; consumers must still validate the external value. The resolved
-plan preserves discovery order subject to topological constraints.
-
-The important shared scientific chain is:
+The main scientific flow is:
 
 ```text
-velocity      -> `velocity` + `cardiac_cycles` + `velocity_workflows`
-  -> low_freq_spectra (selectable, selected-only, once per run; optional HD spectra)
-topology_core -> `prepared_topology` + shared `capillary_analysis_zones`
-        \          /
-         velocity_analysis
-          -> continuous, per-beat, segment, quadrant,
-             profile, FFT, map, and artifact products
-                    |
-                    +-> waveform metric and report pipelines
-
-spatial_gradient_moment0
-  requires cardiac_cycles + prepared_topology
-  -> spatial_gradient_edges
-
-blood_volume_rate options
-  gradient_edges -> velocity_analysis + spatial_gradient_edges
-  masked_edges   -> velocity_analysis + prepared_topology
+HD + DV -> velocity (moments and/or calibrated bands) -> cardiac timing
+        -> topology_core -----------------------------+-> velocity_analysis
+        -> low_freq_spectra (optional HD video)       |       -> metrics/artifacts
+        -> spatial_gradient_moment0 (timing + topology)
+        -> displacement_map -> displacement_profiles (optional)
+        -> blood_volume_rate -> pdf_report (moments PDF + HTML)
 ```
 
-The hidden core pipelines are shared work, not UI targets. The declarations in
-each pipeline package remain the authoritative graph; the diagram is a
-navigation aid.
+`blood_volume_rate` chooses gradient or mask geometry through its declared
+options. The pipeline declarations, not this sketch, are the current graph.
 
-## Runtime ownership
+## Settings and outputs
 
-The formerly flat engine is grouped by responsibility:
+The GUI and CLI share the process-wide `user_settings` instance. It loads lazily
+and keeps validated settings and pipeline selections in memory. Call `save()`
+to persist edits and `reload()` to read external changes. Import validates and
+persists a replacement before updating existing views. `AppSettingsStore`
+owns JSON persistence and validation. Each run captures a settings snapshot
+and passes it to pipeline contexts and workers. `velocity_estimation_method` selects
+`doppler_moments`, `bandratio`, or `both` (default). The legacy
+`frequency_bands` value is accepted as a setting alias. Calibration passes
+through the run spec to the velocity context. The GUI has no method selector.
 
-```text
-pipeline_engine/
-  __init__.py, context.py, resources.py   public API and shared runtime contracts
-  planning/                             declarations and global dependency resolution
-  execution/                            run service, invocations, scheduling and workers
-  data/                                 input replay, payload/scratch storage, transfer and counters
-  output/                               output transactions and finalization lifetime
-  stage_graph/                          local graph definitions, planning and execution
-  product_exchange/                     identities, readiness and coordinator acceptance
-```
+The coordinator opens HD/DV inputs, stages requested datasets in local read-only
+storage, accepts pipeline products, and writes the final HDF5 locally before
+publishing it to the destination. Reports read the assembled output view after
+required artifacts complete. `input_output` owns the serialized schema and
+writers; pipelines own scientific values and report page selection.
 
-`runtime` owns each input's sources, workflow state and accepted output model.
-`scheduler` chooses ready work; `process_executor` owns opt-in workers and receipt.
-`product_exchange/acceptance.py` accepts incremental commits on the coordinator
-thread and `ProductExchangeRegistry` owns cross-pipeline readiness. Both execution
-modes use the same invocation/checkpoint and executable stage-graph code.
-Inputs replay from read-only local storage. `PendingOutput` retains result
-payloads until exports and final HDF5 publication finish, including when completion
-overlaps the next input. Reports read the accepted model before publication.
+## Sources of truth
 
-The [execution design](parallel_pipeline_execution.md) defines ownership,
-failure recovery, resources and storage lifetime. The [stage graph API](pipeline_stage_graphs.md)
-defines pipeline-owned products and dependencies.
-
-Every production pipeline declares its executable graph in `runner.py`.
-Registration imports that factory; independent numerical algorithms and output
-packers remain separate. `velocity_analysis` publishes one accepted per-beat
-representation for all downstream waveform families, avoiding repeated FFT
-magnitude/phase packing. Shared gradient extraction still uses the existing
-source/settings-compatible computation cache.
-
-## Scientific processing boundaries
-
-- `velocity` estimates physical retinal velocity, prepares whole-vessel signals,
-  detects each workflow's cardiac cycles from its physical velocity after estimation,
-  attempts moments and band-ratio estimation independently, and retains each
-  velocity video when downstream analysis requires spatial products.
-- `low_freq_spectra` runs once after velocity when HD `/spectrograms` is an
-  available frequency-bin video. It owns shared spatial/gap reductions, per-beat
-  spectra and filters, and spectral metrics under `/ProcessingSpectrograms`.
-  Detected moments cardiac timing takes priority, with band-ratio timing as a
-  fallback; metadata identifies the selected workflow. Missing timing preserves
-  raw/spatial spectra. Spectral failures do not disable independent velocity
-  products.
-- `topology_core` aligns masks, creates annular branch/segment topology, and
-  publishes reusable prepared artery and vein topology.
-- `velocity_analysis` consumes velocity and topology state, performs per-beat
-  and segment/profile analysis, and publishes the selected user-facing velocity
-  datasets and artifacts. Shape, absolute, low-rank, blood-volume-rate, and
-  report pipelines consume its declared state. The existing DAG executes these
-  downstream descriptors for each successful `ExecutionVariant` using isolated
-  state, `/ProcessingMoments` or `/ProcessingBandRatio`, and separate artifact folders.
-  Topology and segmentation remain shared.
-- `spatial_gradient_moment0` is independent of velocity analysis computation;
-  it reuses cardiac-cycle timing and topology, applies its own ordered image-processing
-  chain, and owns gradient-derived lumen products. Dependency-only execution
-  keeps those products in run state; their HDF5 families are published only
-  when `spatial_gradient_moment0` is selected directly.
-- `blood_volume_rate` composes either gradient-derived edges or mask-derived
-  geometry with velocity products according to its enabled option families.
-- `displacement_map` is the early, dependency-free registration analysis. It
-  emits per-vessel magnitude videos and an exposed `registered_fields` product
-  backed by run-owned immutable storage. The separately selectable `displacement_profiles` pipeline runs
-  later, after topology and cardiac timing are ready, and publishes beat-resolved
-  profiles and metrics. Its disabled-by-default `segment_maps` option adds the
-  larger dense per-segment maps without delaying registration startup. Persisted
-  selections from the former `displacement_map.profiles` option migrate to the
-  new target and retain their segment-map selection.
-
-See [pipeline context](../src/pipelines/AGENTS.md) and
-[calculation context](../src/calculations/AGENTS.md) before scientific changes.
-
-## Settings lifecycle
-
-`default_settings.json` is the fresh-settings template. `AppSettingsStore` in
-`src/app_settings.py` owns the platform-specific persisted path, loading,
-normalization, import validation, and saving. Catalog-aware normalization adds
-new default-selected pipelines/options to older settings without using old
-files as a complete schema.
-
-The GUI exposes settings through `ui/controllers/settings.py` and pipeline
-selection through `ui/controllers/pipeline_library.py`. The CLI reads the same
-store; `--pipelines` changes target selection. The JSON `velocity_estimation_method` setting selects `doppler_moments`,
-`bandratio`, or `both` (the default when absent). The legacy `frequency_bands`
-value is accepted as an alias for `bandratio`. Only selected workflows load
-inputs, estimate velocity, and execute their downstream pipelines. The calibration comes from persisted settings and passes through
-`resolve_run_spec` into `PipelineContext.band_ratio_frequency_scale_hz`.
-`PipelineContext.velocity_estimation_method` identifies a workflow internally;
-there is no GUI selector. Workflow selection is configured in JSON.
-
-For a new CLI option controlling an existing setting, inspect only
-`src/cli.py`, the relevant `AppSettingsStore` methods/default, the field passed
-to `resolve_run_spec`, and its tests. The GUI matters only if the shared setting
-contract or its presentation must also change.
-
-Both velocity workflows reconstruct their local background with OpenCV Telea
-on float32 frequency images, using a fixed 5-pixel radius. The velocity pipeline
-records the method and radius in output provenance.
-
-## Source-of-truth map
-
-| Concept | Source of truth |
+| Concern | File or package |
 |---|---|
-| Installed commands and package dependencies | `pyproject.toml` |
-| GUI and CLI dispatch | `src/launcher.py` |
-| Pipeline discovery | `src/pipelines/__init__.py` |
-| Pipeline metadata and registration | decorators in pipeline `__init__.py` files; types in `src/pipeline_engine/planning/base.py` |
-| Dependency resolution | `src/pipeline_engine/planning/dag.py` |
-| Run validation and batch policy | `src/pipeline_engine/execution/run_service.py` |
-| Per-pipeline runtime/context | `src/pipeline_engine/execution/runtime.py`, `src/pipeline_engine/context.py` |
-| Default and persisted settings | `default_settings.json`, `src/app_settings.py` |
-| Companion input layout | `src/input_output/runs/layout.py` and source layouts in `src/input_output/schema/` |
-| HD/DV logical fields | `src/input_output/schema/holodoppler.py`, `src/input_output/schema/doppler_view.py` |
-| Canonical aligned source models | `src/retinal_source_data.py`, `src/pipelines/vessel_inputs.py` |
-| Reusable figure styling and layout | `src/plotting/article.py`, `src/plotting/formatting.py` |
-| Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
-| HDF5 source access and output serialization | `src/input_output/readers/h5.py`, `src/input_output/writers/h5_output.py`, `src/input_output/writers/h5.py`, `src/input_output/writers/h5_storage.py`, `src/input_output/writers/h5_initialization.py` |
-| Existing artifact migration | `scripts/migrate_artifacts.py` |
-| Native topology and centerline geometry | `src/calculations/topology/` |
-| Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
-| Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |
-| Release behavior | `.github/workflows/release.yml`, `build_installer.ps1` |
-
-## Resource and release notes
-
-Cross-section work is temporally chunked. CPU/GPU backend selection lives in
-`calculations/compute_backend.py`; vessel-segment sampling enforces a shared
-scratch-memory budget, while retained outputs are outside that budget. Preserve
-the staged gradient path's temporal halo and operation order when optimizing.
-
-The checked-in GitHub workflow is release-only: a newly created `vX.Y.Z` tag at
-the current `dev` head is validated, the tree is squash-published to `main`, an
-installer is built, and refs are updated atomically. Do not infer continuous
-test coverage from that workflow.
+| Commands and dependencies | `pyproject.toml` |
+| Pipeline metadata and discovery | pipeline `__init__.py` files; `src/pipelines/__init__.py` |
+| DAG and run validation | `src/pipeline_engine/planning/dag.py`, `execution/run_service.py` |
+| Execution and context | `src/pipeline_engine/execution/runtime.py`, `context.py` |
+| HD/DV paths and alignment | `src/input_output/schema/`, `readers/canonical.py` |
+| Output HDF5 paths and provenance | `src/input_output/schema/eyeflow_output.py`, `provenance.py` |
+| Velocity semantics | `src/pipelines/velocity/estimation.py`, `semantics.py` |
+| Segment geometry and profiles | `src/calculations/topology/`, `vessel_segments/` |
+| Figure styling | `src/plotting/` |
+| Installer and release | `build_installer.ps1`, `installer/`, `.github/workflows/release.yml` |

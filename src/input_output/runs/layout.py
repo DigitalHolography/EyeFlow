@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
+import os
 
 from ..schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
 
@@ -137,22 +138,14 @@ class HoloRunLayout:
 
     def _h5_files(self, schema: SourceFileLayout) -> list[Path]:
         folder = self._h5_dir(schema)
-        if not folder.is_dir():
+        try:
+            with os.scandir(folder) as entries:
+                return sorted(Path(entry.path) for entry in entries
+                              if Path(entry.name).suffix.lower() in HDF5_SUFFIXES
+                              and entry.is_file() and h5py.is_hdf5(entry.path))
+        except (FileNotFoundError, NotADirectoryError):
             return []
-        return sorted(
-            path
-            for path in folder.iterdir()
-            if _is_hdf5_file(path)
-        )
 
 
 def _absolute(path: Path) -> Path:
     return path if path.is_absolute() else Path.cwd() / path
-
-
-def _is_hdf5_file(path: Path) -> bool:
-    return (
-        path.is_file()
-        and path.suffix.lower() in HDF5_SUFFIXES
-        and h5py.is_hdf5(path)
-    )

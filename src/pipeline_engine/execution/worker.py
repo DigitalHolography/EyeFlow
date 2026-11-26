@@ -37,7 +37,7 @@ def run_worker(spec, events):
 
     from pipeline_engine.planning.base import PIPELINE_REGISTRY
     from pipeline_engine.context import PipelineInputs
-    from pipeline_engine.data.input_service import InputFile
+    from pipeline_engine.io.input.service import InputFile
     from pipeline_engine.output.output_model import OutputModel
     from pipeline_engine.execution.invocation import _run_pipeline_descriptor
     from pipeline_engine.data.scratch import RunArrayStorage
@@ -52,6 +52,7 @@ def run_worker(spec, events):
         metrics=storage.metrics,
     )
     scratch.budget = spec.memory_account
+    spec.input_client._budget = spec.memory_account
     files = {
         slot: InputFile(slot, *metadata, spec.input_client) if metadata else None
         for slot, metadata in spec.input_metadata.items()
@@ -175,9 +176,9 @@ def run_worker(spec, events):
                 output_h5_path=Path(output.filename),
                 output_manager=manager,
                 holodoppler_h5=files["hd"],
-                doppler_vision_h5=files["dv"],
+                dopplerview_h5=files["dv"],
                 holodoppler_config=configs["hd"],
-                doppler_vision_config=configs["dv"],
+                dopplerview_config=configs["dv"],
                 shared_inputs=inputs,
                 variables=variables,
                 scratch=scratch,

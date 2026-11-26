@@ -121,7 +121,7 @@ def _image_map(
     if colorbar:
         add_colorbar(fig, im, ax=ax, label=label,
                      layout=DIAGNOSTIC_ARTICLE_STYLE.colorbar_layout)
-    apply_article_style(fig)
+    apply_article_style(fig, DIAGNOSTIC_ARTICLE_STYLE)
     return writer.save_figure(fig, suffix, dpi=180)
 
 def _mask_background_map(
@@ -133,7 +133,7 @@ def _mask_background_map(
     color: str | None = None,
     cmap: str | None = None,
     values: np.ndarray | None = None,
-) -> Path:
+) -> list[Path]:
     fig, ax = _plt().subplots(figsize=(4.0, 4.0))
     ax.imshow(_finite_image(background), cmap="gray")
     mask = mask.astype(bool)
@@ -147,8 +147,8 @@ def _mask_background_map(
         ax.imshow(overlay, cmap=_matplotlib().colors.ListedColormap([color or "red"]), alpha=0.45)
     ax.axis("off")
     ax.set_aspect("equal")
-    apply_article_style(fig)
-    return writer.save_figure(fig, suffix, dpi=180)
+    apply_article_style(fig, DIAGNOSTIC_ARTICLE_STYLE)
+    return writer.save_figure_pair(fig, suffix, dpi=180)
 
 def _velocity_gradient_values(
     velocity_avg: np.ndarray,
@@ -187,7 +187,7 @@ def _colorbar(
         cax=ax, label=label,
         layout=replace(DIAGNOSTIC_ARTICLE_STYLE.colorbar_layout, orientation="horizontal"),
     )
-    apply_article_style(fig)
+    apply_article_style(fig, DIAGNOSTIC_ARTICLE_STYLE)
     return writer.save_figure(fig, suffix, dpi=150)
 
 def _annotated_vline(ax, x: float, label: str) -> None:

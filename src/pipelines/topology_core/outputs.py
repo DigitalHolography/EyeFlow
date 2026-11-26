@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import numpy as np
-from scipy import ndimage as ndi
 
 from calculations.topology import OpticDisc, segment_mask_areas_pixels
 from calculations.topology.capillary import (
@@ -28,11 +27,11 @@ from input_output.schema.serialization import (
 )
 from input_output.schema.output_payload import DatasetValue
 from input_output.writers.h5_storage import segment_mask_h5_options
+from .annulus_visualization import annulus_outline_image, circle_outline as _circle_outline
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
 INNER_R0_VESSEL_LABEL = -3
-_FOUR_CONNECTED = ndi.generate_binary_structure(2, 1)
 
 
 def _pack_segmentation_outputs(
@@ -449,34 +448,15 @@ def _with_outlines(label_map: np.ndarray, outlines: np.ndarray) -> np.ndarray:
     return image
 
 
-def _circle_outline(
-    image_shape: tuple[int, int],
-    center_xy: np.ndarray,
-    radius_pixels: float,
-) -> np.ndarray:
-    center_x, center_y = (float(value) for value in center_xy)
-    y, x = np.ogrid[: image_shape[0], : image_shape[1]]
-    circle = (y - center_y) ** 2 + (x - center_x) ** 2 <= float(radius_pixels) ** 2
-    return circle & ~ndi.binary_erosion(circle, structure=_FOUR_CONNECTED)
-
-
 def _annulus_outlines(
     image_shape: tuple[int, int],
     center_xy: np.ndarray,
     r0_radius_pixels: int,
     settings: AnnulusGeometry,
 ) -> np.ndarray:
-    scale = max(image_half_diagonal(*image_shape), 1.0)
-    radii = [float(r0_radius_pixels)]
-    radii.extend(
-        (float(settings.inner_radius_frac) + (ring_index + 1) * float(settings.ring_width_frac))
-        * scale
-        for ring_index in range(int(settings.ring_count))
-    )
-    outlines = np.zeros(image_shape, dtype=bool)
-    for radius in dict.fromkeys(radii):
-        outlines |= _circle_outline(image_shape, center_xy, radius)
-    return outlines
+    return annulus_outline_image(
+        image_shape, center_xy, settings, r0_radius_pixels=r0_radius_pixels,
+    ) > 0
 
 
 def _mask_attrs(source: str) -> dict[str, object]:

@@ -1,5 +1,7 @@
 """Local input replay, real processes, partial results and final-only publication."""
 
+from app_settings import UserSettings
+
 import json
 import multiprocessing
 from dataclasses import replace
@@ -15,7 +17,7 @@ from runtime_process_fixtures import PROCESS_DESCRIPTOR
 from input_output.output_manager import OutputManager, OutputType
 from input_output.runs.layout import HoloRunLayout
 from pipeline_engine.planning.base import PipelineDescriptor
-from pipeline_engine.data.input_service import InputService
+from pipeline_engine.io.input.service import InputService, InputPolicy
 from pipeline_engine.output.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget
 from pipeline_engine.execution.runtime import PipelineRunError, run_pipelines_to_output
@@ -35,6 +37,111 @@ def descriptor(name, run, requires=(), **kwargs):
     )
 
 
+@pytest.mark.parametrize("producer_status", [None, "pending", "running", "succeeded", "partial", "failed", "skipped"])
+def test_prefetch_eligibility_agrees_with_dependency_dispatch_and_transitive_skips(producer_status):
+    from pipeline_engine.execution.scheduler import CoordinatorScheduler
+    from pipeline_engine.planning.dag import PipelineDAG
+    from pipeline_engine.product_exchange import ProductExchangeRegistry
+
+    producer = descriptor("producer", lambda ctx: None, execution_mode="process")
+    consumer = descriptor("consumer", lambda ctx: None, ("producer",), execution_mode="process")
+    descendant = descriptor("descendant", lambda ctx: None, ("consumer",), execution_mode="process")
+    # Deliberately reverse the dependency order: eligibility is a closure, not
+    # a traversal that depends on the caller having sorted the descriptors.
+    pipelines = (descendant, consumer, producer)
+    starts, eligibility = [], []
+    scheduler = CoordinatorScheduler(
+        pipelines=pipelines, dag=PipelineDAG(pipelines), options={},
+        executor=SimpleNamespace(start=lambda pipeline: starts.append(pipeline.name) or True),
+        statuses={"producer": producer_status}, failures={}, skips={},
+        registry=ProductExchangeRegistry(), on_input_eligibility=eligibility.append,
+    )
+    scheduler.pending.remove(producer)
+    terminal = producer_status in {"succeeded", "partial", "failed", "skipped"}
+    if terminal:
+        scheduler.completed.add("producer")
+    scheduler._refresh_input_eligibility()
+    if producer_status in {"partial", "failed", "skipped"}:
+        assert eligibility == [()]
+    else:
+        assert set(eligibility[0]) == ({"consumer", "descendant"} if terminal else
+                                       {"producer", "consumer", "descendant"})
+    # Process dispatch must make the same distinction between a waiting producer,
+    # a successful one and a terminal producer that cannot satisfy this edge.
+    scheduler._start_processes()
+    scheduler._start_processes()
+    assert starts == (["consumer"] if producer_status == "succeeded" else [])
+    if producer_status in {"partial", "failed", "skipped"}:
+        assert scheduler.statuses["consumer"] == scheduler.statuses["descendant"] == "skipped"
+
+
+@pytest.mark.parametrize("producer_status", ["partial", "failed", "skipped", "succeeded"])
+@pytest.mark.parametrize("variant", [False, True])
+def test_coordinator_dependency_dispatch_uses_the_prefetch_availability_policy(monkeypatch, producer_status, variant):
+    from pipeline_engine.execution import runtime
+    from pipeline_engine.execution.protocol import InvocationOutcome
+
+    calls = []
+    monkeypatch.setattr(runtime, "_run_pipeline_descriptor", lambda pipeline, **kwargs:
+                        calls.append(pipeline.name) or InvocationOutcome(pipeline.name))
+    pipeline = descriptor("consumer", lambda ctx: None, ("producer",), run_once=True)
+    status = runtime._ExecutionStatus(shared_status={"producer": producer_status})
+    executor = SimpleNamespace(
+        invocation_id=lambda pipeline, *args: pipeline.name,
+        product_inputs=lambda *args: {},
+        acceptance=SimpleNamespace(finalize=lambda *args: None),
+    )
+    artifacts = SimpleNamespace(failures={})
+    if variant:
+        status.execution_variants = [SimpleNamespace(
+            name="moments", state={}, output_namespace="ProcessingMoments", artifact_namespace="moments", provenance={},
+        )]
+        # A branch failure overrides a successful shared ancestor.
+        status.shared_status["producer"] = "succeeded"
+        status.branch_status["moments"] = {"producer": producer_status}
+        arguments = {"variables": {}, "output_manager": SimpleNamespace(for_artifact_namespace=lambda name: None)}
+        succeeded = runtime._run_variant_pipeline(pipeline, ("producer",), arguments, status, executor, artifacts)
+        outcomes = status.branch_status["moments"]
+    else:
+        succeeded = runtime._run_shared_pipeline(pipeline, ("producer",), {}, None, status, executor, artifacts)
+        outcomes = status.shared_status
+    assert succeeded == (producer_status == "succeeded")
+    assert calls == (["consumer"] if succeeded else [])
+    assert outcomes["consumer"] == ("succeeded" if succeeded else "skipped")
+
+
+@pytest.mark.parametrize("producer_status", ["partial", "failed", "skipped"])
+def test_accepted_product_consumers_remain_eligible_after_producer_failure(producer_status):
+    from pipeline_engine.execution.scheduler import CoordinatorScheduler
+    from pipeline_engine.planning.dag import PipelineDAG
+    from pipeline_engine.product_exchange import PipelineInvocationId, ProductId, ProductRequirement, ProductExchangeRegistry
+    from pipeline_engine.stage_graph import ProductSpec, StageGraph, StageSpec
+
+    graph = StageGraph((StageSpec("produce", lambda ctx: None, products=(ProductSpec("value", exposed=True),)),))
+    producer = descriptor("producer", lambda ctx: graph, graph_factory=lambda **kwargs: graph)
+    consumer = descriptor("consumer", lambda ctx: None, execution_mode="process", product_requires=(
+        ProductRequirement(alias="input", producer_pipeline="producer", product="value"),
+    ))
+    registry = ProductExchangeRegistry()
+    registry.register_invocation(PipelineInvocationId("run", "consumer"))
+    product = ProductId(PipelineInvocationId("run", "producer"), "value")
+    registry.declare(product)
+    registry.accept(product, "accepted immutable handle", "commit")
+    starts, eligibility = [], []
+    scheduler = CoordinatorScheduler(
+        pipelines=(producer, consumer), dag=PipelineDAG((producer, consumer)), options={},
+        executor=SimpleNamespace(start=lambda pipeline: starts.append(pipeline.name) or True),
+        statuses={"producer": producer_status}, failures={}, skips={}, registry=registry,
+        on_input_eligibility=eligibility.append,
+    )
+    scheduler.pending.remove(producer)
+    scheduler.completed.add("producer")
+    scheduler._refresh_input_eligibility()
+    assert eligibility == [("consumer",)]
+    scheduler._start_processes()
+    assert starts == ["consumer"] and scheduler.statuses["consumer"] == "running"
+
+
 def test_source_is_staged_once_and_replayed_read_only(tmp_path):
     source_path = tmp_path / "source.h5"
     original = np.arange(128 * 256, dtype=np.float32).reshape(128, 256)
@@ -44,7 +151,8 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
         source["z_group/video"] = source["video"]
         source["unrequested"] = original
     with h5py.File(source_path) as source, ProductStorage() as storage:
-        service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"))
+        service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"),
+                               policy=InputPolicy(input_backend="replay"))
         first, second = service.client(), service.client()
         try:
             a, b = service.files(first)["hd"], service.files(second)["hd"]
@@ -64,6 +172,7 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
             service.close()
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_output_journal_preserves_commits_without_reverting_other_paths(tmp_path):
     with ProductStorage() as storage:
         model = OutputModel(storage, tmp_path / "result.h5")
@@ -80,26 +189,28 @@ def test_output_journal_preserves_commits_without_reverting_other_paths(tmp_path
             np.testing.assert_array_equal(output["Committed/value"][:], [1, 2])
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_reports_read_the_assembled_view_before_publication(tmp_path):
-    from input_output.reports.pdf_data import extract_parameters_from_h5
     from input_output.schema import EyeFlowOutputPaths
     from input_output.writers.h5_output import PipelineH5Output
+    from pipelines.pdf_report.data import extract_report_data
 
     with ProductStorage() as storage:
         model = OutputModel(storage, tmp_path / "future.h5")
         output = PipelineH5Output(model, processing_root="ProcessingMoments")
         output.write(
-            EyeFlowOutputPaths.active().artery_per_beat.velocity_signal,
-            np.array([1.0, 3.0], dtype=np.float32),
+            EyeFlowOutputPaths.active().artery_per_beat_filtered.velocity_signal,
+            np.array([[1.0, 3.0]], dtype=np.float32),
             unit="mm/s",
         )
-        parameters = extract_parameters_from_h5(
-            Path(model.filename), processing_root="ProcessingMoments", output_source=model
-        )
-        assert parameters["Average_Arterial_Velocity"] == {"value": 2.0, "unit": "mm/s"}
+        report = extract_report_data(output, include_bvr=False)
+        assert report.parameters["Average_Arterial_Velocity"] == {
+            "value": 2.0, "unit": "mm/s",
+        }
         assert not Path(model.filename).exists()
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_final_serialization_preserves_sparse_and_same_file_virtual_storage(tmp_path):
     from input_output.schema.output_payload import DatasetValue
     from input_output.writers.h5_output import PipelineH5Output
@@ -132,7 +243,13 @@ def test_final_serialization_preserves_sparse_and_same_file_virtual_storage(tmp_
 
 
 @pytest.mark.parametrize("crash", [False, True])
+@pytest.mark.usefixtures("inline_output_service")
 def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, crash):
+    preferences = UserSettings(values={
+        "band_ratio_frequency_scale_hz": 7.5,
+        "band_limited_harmonics": 5,
+        "number_of_radii_in_half_diagonal": 20,
+    })
     source_path = tmp_path / "HD.h5"
     marker = str(tmp_path / "continue")
     values = np.ones((8, 64, 64), dtype=np.float32)
@@ -148,6 +265,8 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
         ctx.state.set("from_main", 5)
 
     def independent(ctx):
+        assert ctx.settings.band_ratio_frequency_scale_hz == 7.5
+        preferences.band_ratio_frequency_scale_hz = 99
         deadline = monotonic() + 20
         while not Path(marker + "-started").exists():
             assert monotonic() < deadline, "Process did not start concurrently"
@@ -186,8 +305,8 @@ def test_spawn_overlaps_independent_work_and_keeps_partial_results(tmp_path, cra
                     ),
                 ],
                 holodoppler_h5=source_path,
-                doppler_vision_h5=None,
-                copy_hd_passthrough=False,
+                dopplerview_h5=None,
+                settings=preferences,
             )
     finally:
         Logger.reset_current()
@@ -243,6 +362,7 @@ def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():
     budget.release(3)
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, monkeypatch):
     from test_run_service import _write_input
 
@@ -253,12 +373,12 @@ def test_failed_final_serialization_does_not_report_a_missing_output(tmp_path, m
         input_paths=[holo],
         target_names=["producer"],
         pipelines=[descriptor("producer", lambda ctx: {"value": 1})],
-    )
+     settings=UserSettings(values={}))
 
-    def fail_publish(self):
+    def fail_publish(self, local):
         raise OSError("destination unavailable")
 
-    monkeypatch.setattr(OutputModel, "publish", fail_publish)
+    monkeypatch.setattr("input_output.writers.h5_publication.OutputPublisher.publish", fail_publish)
     result = execute_run(spec)
     assert not result.outputs
     assert len(result.failures) == 1
@@ -278,6 +398,7 @@ def test_native_initialization_failure_releases_compute_reservations(monkeypatch
     assert sum(budget.used.values()) == 0
 
 
+@pytest.mark.usefixtures("inline_output_service")
 def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypatch):
     from pipeline_engine.execution.process_executor import ProcessExecutor
 
@@ -292,8 +413,8 @@ def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypa
             output_manager=manager,
             pipelines=[PROCESS_DESCRIPTOR, descriptor("safe", lambda ctx: {"safe": 17})],
             holodoppler_h5=None,
-            doppler_vision_h5=None,
-        )
+            dopplerview_h5=None,
+         settings=UserSettings(values={}))
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         assert output["safe"][()] == 17
     assert budget.cpu_used == 0
@@ -301,6 +422,7 @@ def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize("missing_artery", [False, True])
+@pytest.mark.usefixtures("inline_output_service")
 def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
     tmp_path, missing_artery
 ):
@@ -326,8 +448,8 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
             output_manager=manager,
             pipelines=[displacement],
             holodoppler_h5=hd_path,
-            doppler_vision_h5=dv_path,
-            copy_hd_passthrough=False,
+            dopplerview_h5=dv_path,
+            settings=UserSettings(values={'copy_hd_passthrough': False}),
         )
     videos = list(manager.dir_for(OutputType.AVI).rglob("*.avi"))
     assert len(videos) == (1 if missing_artery else 2)
@@ -335,8 +457,11 @@ def test_production_displacement_uses_local_process_inputs_and_publishes_videos(
     with h5py.File(manager.path_for(OutputType.H5)) as output:
         statuses = json.loads(output.attrs["stage_status"])["displacement_map"]
         assert statuses == {
+            "reference": "succeeded",
             "prepare": "succeeded",
             "artery": "skipped" if missing_artery else "succeeded",
             "vein": "succeeded",
+            "artery_video": "skipped" if missing_artery else "succeeded",
+            "vein_video": "succeeded",
             "finalize": "succeeded",
         }

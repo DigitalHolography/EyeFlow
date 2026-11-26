@@ -16,7 +16,7 @@ class SettingsController:
 
     def ensure_default_settings(self) -> None:
         try:
-            self.app.settings_store.initialize_from_defaults()
+            self.app.settings.initialize_from_defaults()
         except OSError as exc:
             self.show_settings_warning(
                 "Settings not initialized",
@@ -29,13 +29,13 @@ class SettingsController:
         self.app._settings_warning_shown = True
         services_for(self.app).dialogs.showwarning(title, details)
 
-    def persist_ui_mode(self) -> None:
+    def save_preferences(self) -> None:
         try:
-            self.app.settings_store.save_ui_mode(self.app.ui_mode)
+            self.app.settings.save()
         except OSError as exc:
             self.show_settings_warning(
                 "Settings not saved",
-                f"Could not save UI mode preference:\n{exc}",
+                f"Could not save preferences:\n{exc}",
             )
 
     def choose_config_file(self) -> None:
@@ -66,7 +66,7 @@ class SettingsController:
             return False
 
         try:
-            self.app.settings_store.import_file(config_path)
+            self.app.settings.import_file(config_path)
         except (OSError, TypeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(
                 "Configuration not loaded",
@@ -75,7 +75,7 @@ class SettingsController:
             return False
 
         self.app.pipeline_library_controller.register()
-        self.apply_ui_mode(self.app.settings_store.load_ui_mode(), persist=False)
+        self.apply_ui_mode(self.app.settings.ui_mode, persist=False)
         services_for(self.app).dialogs.showinfo(
             "Configuration loaded",
             f"Loaded configuration from:\n{config_path}",
@@ -131,7 +131,7 @@ class SettingsController:
 
     def apply_ui_mode(self, mode: str, *, persist: bool = True) -> None:
         normalized_mode = "advanced" if mode == "advanced" else "minimal"
-        self.app.ui_mode = normalized_mode
+        self.app.settings.ui_mode = normalized_mode
         self.app.ui_mode_var.set(normalized_mode)
 
         self.app.minimal_view.pack_forget()
@@ -147,7 +147,7 @@ class SettingsController:
             force_target_size=(normalized_mode == "minimal"),
         )
         if persist:
-            self.persist_ui_mode()
+            self.save_preferences()
 
     def on_close(self) -> None:
         if getattr(self.app, "_pipeline_run_active", False):
@@ -157,7 +157,7 @@ class SettingsController:
             )
             return
 
-        self.persist_ui_mode()
+        self.save_preferences()
         self.app.destroy()
 
     def _target_window_size(
