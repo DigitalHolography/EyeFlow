@@ -4,6 +4,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+from app_settings import UserSettings
 from pipeline_engine.product_exchange.identity import PipelineInvocationId
 
 _SINK = ContextVar("eyeflow_worker_events", default=None)
@@ -61,16 +62,14 @@ class InvocationSettings:
     pipeline_options: dict
     pipeline_order: tuple[str, ...]
     pipeline_targets: tuple[str, ...]
-    velocity_workflow_selection: str
-    band_ratio_frequency_scale_hz: float
+    run_settings: UserSettings = field(default_factory=lambda: UserSettings(values={}))
 
     def context_arguments(self):
         return {
             "pipeline_options": self.pipeline_options,
             "pipeline_order": self.pipeline_order,
             "pipeline_targets": self.pipeline_targets,
-            "velocity_workflow_selection": self.velocity_workflow_selection,
-            "band_ratio_frequency_scale_hz": self.band_ratio_frequency_scale_hz,
+            "settings": self.run_settings,
             "velocity_estimation_method": None,
             "execution_variant": None,
         }

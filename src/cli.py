@@ -21,11 +21,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from app_settings import (
-    AppSettingsStore,
-    normalize_pipeline_options,
-    normalize_pipeline_visibility,
-)
+from app_settings import user_settings
 from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
@@ -71,55 +67,6 @@ def _load_pipeline_targets(
     return tuple(dict.fromkeys(selected_names))
 
 
-def _load_configured_pipeline_targets(
-    registry: dict[str, PipelineDescriptor],
-    settings_store: AppSettingsStore | None = None,
-) -> tuple[str, ...]:
-    store = settings_store or AppSettingsStore()
-    visibility, changed = normalize_pipeline_visibility(
-        registry,
-        store.load_pipeline_visibility(),
-        missing_defaults={
-            name: descriptor.default_selected
-            for name, descriptor in registry.items()
-        },
-    )
-    if changed:
-        store.save_pipeline_visibility(visibility)
-    selected_names = tuple(
-        name for name in registry if visibility.get(name, False)
-    )
-    if selected_names:
-        return selected_names
-    raise ValueError(
-        "No visible pipelines are enabled in EyeFlow settings. "
-        "Enable at least one pipeline in the GUI or provide --pipelines."
-    )
-
-
-def _load_configured_pipeline_options(
-    registry: dict[str, PipelineDescriptor],
-    settings_store: AppSettingsStore | None = None,
-) -> dict[str, tuple[str, ...]]:
-    store = settings_store or AppSettingsStore()
-    normalized, _changed = normalize_pipeline_options(
-        {
-            name: descriptor.options
-            for name, descriptor in registry.items()
-            if descriptor.options
-        },
-        store.load_pipeline_options(),
-    )
-    return {
-        pipeline_name: tuple(
-            option.name
-            for option in registry[pipeline_name].options
-            if values.get(option.name, False)
-        )
-        for pipeline_name, values in normalized.items()
-    }
-
-
 def _default_cli_output_root(data_path: Path) -> Path:
     source = data_path.expanduser().resolve()
     return source if source.is_dir() else source.parent
@@ -149,32 +96,26 @@ def run_cli(
     output_dir: Path | None = None,
     zip_outputs: bool = False,
     zip_name: str | None = None,
-    copy_hd_passthrough: bool | None = None,
     inspect_graph: Path | None = None,
     observed_output: Path | None = None,
-    input_backend: str | None = None,
 ) -> int:
     if inspect_graph is not None and zip_outputs:
         raise ValueError("Graph inspection and ZIP execution are separate operations.")
     registry = _build_pipeline_registry()
     target_registry = selectable_pipeline_registry(registry.values())
-    settings_store = AppSettingsStore()
-    Logger.configure(settings_store.path, on_log=print)
-    target_names = (
-        _load_pipeline_targets(pipelines_file, target_registry)
-        if pipelines_file is not None
-        else _load_configured_pipeline_targets(
-            target_registry,
-            settings_store=settings_store,
+    Logger.configure(user_settings.path, on_log=print)
+    if pipelines_file is not None:
+        selected = _load_pipeline_targets(pipelines_file, target_registry)
+        user_settings.pipeline_visibility.replace({name: name in selected for name in target_registry})
+    else:
+        user_settings.pipeline_visibility.normalize(target_registry.values())
+    target_names = user_settings.pipeline_visibility.selected_targets(target_registry.values())
+    if not target_names:
+        raise ValueError(
+            "No visible pipelines are enabled in EyeFlow settings. "
+            "Enable at least one pipeline in the GUI or provide --pipelines."
         )
-    )
-    pipeline_options = _load_configured_pipeline_options(
-        target_registry,
-        settings_store=settings_store,
-    )
-    band_ratio_frequency_scale_hz = (
-        settings_store.load_band_ratio_frequency_scale_hz()
-    )
+    pipeline_options = user_settings.pipeline_options.selected_options(target_registry.values())
     work_tempdir_path: Path | None = None
     clean_work_output = False
     with expand_run_inputs(data_path) as expanded_inputs:
@@ -198,15 +139,7 @@ def run_cli(
             target_names=target_names,
             pipelines=registry.values(),
             pipeline_options=pipeline_options,
-            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-            velocity_estimation_method=settings_store.load_velocity_estimation_method(),
-            input_backend=settings_store.load_input_backend() if input_backend is None else input_backend,
-            input_unknown_transport=settings_store.load_input_unknown_transport(),
-            band_limited_harmonics=settings_store.load_band_limited_harmonics(),
-            copy_hd_passthrough=(
-                settings_store.load_copy_hd_passthrough()
-                if copy_hd_passthrough is None else copy_hd_passthrough
-            ),
+            settings=user_settings,
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )
@@ -336,16 +269,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--observed-output requires --inspect-graph")
 
     try:
+        if args.copy_hd_passthrough is not None:
+            user_settings.copy_hd_passthrough = args.copy_hd_passthrough
+        if args.input_backend is not None:
+            user_settings.input_backend = args.input_backend
         return run_cli(
             args.data,
             args.pipelines,
             args.output,
             zip_outputs=args.zip,
             zip_name=args.zip_name,
-            copy_hd_passthrough=args.copy_hd_passthrough,
             inspect_graph=args.inspect_graph,
             observed_output=args.observed_output,
-            input_backend=args.input_backend,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Error: {exc}", file=sys.stderr)

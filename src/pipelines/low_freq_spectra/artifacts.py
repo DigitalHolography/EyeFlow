@@ -293,7 +293,8 @@ def _gap_spectrogram_figure(
     # Space ticks within each signed block while retaining the final bin as an
     # upper-bound label. Replace its neighbor if there is too little room.
     blocks = np.split(np.arange(frequencies_khz.size), np.flatnonzero(frequencies_khz < 0)[:1])
-    tick_step = max(1, int(np.ceil(frequencies_khz.size / 8)))
+    # The fixed-height article canvas fits about six 11-point frequency labels.
+    tick_step = max(1, int(np.ceil(frequencies_khz.size / 5)))
     positions = []
     for block in blocks:
         if not block.size:

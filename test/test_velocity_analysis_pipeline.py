@@ -7,12 +7,16 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import h5py
 import numpy as np
 import pytest
 
+from input_output.readers.h5 import RawH5SourceReader
+from input_output.schema import HolodopplerSource
 from pipeline_engine.planning.base import PIPELINE_REGISTRY
 from pipelines import load_pipeline_catalog
 from pipelines.velocity_analysis import runner as analysis_builder
+from pipelines.velocity_analysis.artifacts.figures import export, flow_maps, frequency_maps
 
 
 class _State:
@@ -50,6 +54,83 @@ def _context(options, state_values=None, scheduled=None, targeted=None):
         option_enabled=lambda name, pipeline=None: name
         in options.get(pipeline or "velocity_analysis", ()),
     )
+
+
+@pytest.mark.parametrize("source_name", ["moment0ff", "M0FF", None])
+def test_pulse_velocity_overlays_use_the_flat_field_mean(tmp_path, monkeypatch, source_name):
+    shape = (2, 4)
+    expected_mean = np.arange(8, dtype=np.float32).reshape(shape) * 3
+    volume = np.stack([expected_mean + offset for offset in range(-4, 5)])
+    volume[4, 0, 1] = np.nan
+    vessel_mask = np.zeros(shape, dtype=bool)
+    vessel_mask[1, 1] = True
+    vein_mask = np.zeros(shape, dtype=bool)
+    background_average = expected_mean[:, ::-1].copy()
+    frequency_average = expected_mean[::-1].copy() * 1000
+    velocity_values = np.ones(shape, dtype=np.float32)
+    timing = SimpleNamespace(dt_seconds=0.1)
+    source = SimpleNamespace(
+        holodoppler=SimpleNamespace(timing=timing),
+        segmentation=SimpleNamespace(vessels=SimpleNamespace(artery=vessel_mask, vein=vein_mask)),
+    )
+    velocity = SimpleNamespace(
+        continuous=lambda *args, **kwargs: np.ones(volume.shape[0]),
+        maps=SimpleNamespace(
+            background_average=background_average,
+            frms_average=frequency_average,
+            frms_background_average=frequency_average,
+            delta_frms_average=frequency_average,
+            velocity=None,
+            velocity_average_masked=velocity_values,
+            section_mask=np.ones(shape, dtype=bool),
+        ),
+    )
+    analysis = SimpleNamespace(source_data=SimpleNamespace(source=source), velocity=velocity, per_beat_result=None)
+    images = {}
+
+    def record_overlay(writer, fig, suffix, **kwargs):
+        background, overlay = fig.axes[0].images
+        images[suffix] = np.array(background.get_array())
+        if suffix.startswith("artery"):
+            np.testing.assert_array_equal(overlay.get_array()[..., 3] > 0, vessel_mask)
+        export._plt().close(fig)
+        return [tmp_path / suffix]
+
+    monkeypatch.setattr(export, "EXPORTERS", (frequency_maps._export_frequency_maps, flow_maps._export_flow_maps))
+    monkeypatch.setattr(export, "export_cross_section_profile_artifacts", lambda *_: [])
+    monkeypatch.setattr(export.FigureArtifactWriter, "path", lambda self, suffix: tmp_path / suffix)
+    def record_image(writer, image, suffix):
+        images[suffix] = image
+        return tmp_path / suffix
+
+    monkeypatch.setattr(export.FigureArtifactWriter, "save_image", record_image)
+    monkeypatch.setattr(export.FigureArtifactWriter, "save_figure_pair", record_overlay)
+    monkeypatch.setattr(frequency_maps, "_heatmap_with_colorbar", lambda *a, **kw: [])
+    monkeypatch.setattr(frequency_maps, "_image_map", lambda *a, **kw: tmp_path / "frequency.png")
+    monkeypatch.setattr(flow_maps, "_image_map", lambda *a, **kw: tmp_path / "flow.png")
+    monkeypatch.setattr(flow_maps, "_colorbar", lambda *a, **kw: tmp_path / "colorbar.png")
+    monkeypatch.setattr(flow_maps, "_histogram_plot", lambda *a: [])
+    monkeypatch.setattr(flow_maps, "_combined_plot", lambda *a: tmp_path / "combined.png")
+
+    with h5py.File(tmp_path / "hd.h5", "w") as hd:
+        if source_name is not None:
+            hd.create_dataset(source_name, data=volume)
+        adapter = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
+        ctx = SimpleNamespace(
+            inputs=SimpleNamespace(hd=SimpleNamespace(as_holodoppler=lambda: adapter)),
+            output=SimpleNamespace(available=True),
+            dag=SimpleNamespace(require=lambda name: analysis),
+            state=_State(),
+        )
+        analysis_builder._pulse_figures(ctx)
+
+    flow_background = expected_mean if source_name else background_average
+    separate_background = expected_mean if source_name else frequency_average / 1000
+    outside = images["v_map.png"][~vessel_mask]
+    np.testing.assert_allclose(outside, np.repeat((flow_background[~vessel_mask] / 21)[:, None], 3, axis=1))
+    assert np.ptp(images["v_map.png"][vessel_mask]) > 0
+    for vessel in ("artery", "vein"):
+        np.testing.assert_allclose(images[f"{vessel}_seg_map_bkg.png"], separate_background)
 
 
 @pytest.mark.parametrize("scheduled", [False, True])

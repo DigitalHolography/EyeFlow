@@ -39,7 +39,7 @@ The external aliases belong to `schema/holodoppler.py`:
 | Source | HDF5 path | Use |
 |---|---|---|
 | Zeroth and second moments | `/moment0`, `/moment2` (legacy `/M0`, `/M2`) | Moments velocity |
-| Flat-field zeroth moment | `/moment0ff` (legacy `/M0FF`) | Optional gap and spatial-gradient analyses |
+| Flat-field zeroth moment | `/moment0ff` (legacy `/M0FF`) | Optional gap and spatial-gradient analyses and vessel velocity map backgrounds |
 | LF and HF bands | `/band_<i>_<n>_<m>` | Band-ratio velocity; first and last numeric ranges |
 | Spectral video | `/spectrograms` | Optional shared spectral analysis |
 | Registration and Zernike metadata | `/registration`, `/zernike_coefs_radians` | Optional pass-through |
@@ -109,6 +109,14 @@ are `uint8` 0/1 with `original_class="bool"`, `unit="1"`, and `(x, y)` axes.
 The numerical operations and fallback parameters live in
 `calculations/topology/` and `pipelines/topology_core/`.
 
+Annular vessel measurements use `number_of_radii_in_half_diagonal` (default 42,
+including intermediate annuli). Stride is the image half-diagonal divided by
+this count, and thickness is twice the stride. Starts extend to the farthest
+image corner from the optic-disc center; outer boundaries retain full thickness.
+See [annulus sampling](annulus_sampling.md)
+for geometry, saved-configuration migration, terminal sections, diagnostic
+imagery, and the implications of correlated spatial samples.
+
 The hidden `low_freq_spectra` pipeline runs once after scheduled velocity work
 when `/spectrograms` is available. Shared products use
 `/ProcessingSpectrograms`, without workflow copies:
@@ -166,6 +174,11 @@ failure attributes identify partial results.
 
 ## Output and serialization
 
+Article figures use 11 pt typography and 0.4 pt borders. Diagnostic figures
+keep their existing typography. Velocity and BVR cardiac-phase article
+figures show the temporal mean of the displayed median beat as a dashed gray
+line when finite phases are available.
+
 `EyeFlowOutputPaths.active()` in `schema/eyeflow_output.py` owns current HDF5
 paths. The primary file is `h5/<stem>_EF.h5` under `<stem>_EF/`. Major roots are
 `/ProcessingMoments`, `/ProcessingBandRatio`, `/ProcessingSpectrograms`,
@@ -174,6 +187,33 @@ with `<stem>_`; the shared naming helper applies this once. Type directories
 (`png`, `eps`, `avi`, `mp4`, `pdf`, `html`) are created when used. Reports and figures
 are selected by their producing pipelines; use their code for current page
 layout and artifact lists.
+
+The `temporal_aggregations` pipeline is enabled by default and writes three
+PNGs per HoloDoppler image video under `png/temporal_aggregations/<dataset>/`.
+Filenames are
+`<stem>_temporal_avg.png`, `<stem>_temporal_std.png`, and
+`<stem>_temporal_entropy.png`. Moment and frequency-band images are grayscale.
+Color and directional Doppler images are RGB. Legacy moment aliases resolve
+to the canonical dataset folder. Spectral datasets are excluded.
+
+The average and sample standard deviation follow the display export in
+[HoloDoppler MATLAB](https://github.com/DigitalHolography/HoloDopplerMatlab/blob/3e5b8d4c25e396e44b5d5e14472225fcf78f9117/src/export/generate_video.m).
+EyeFlow subtracts each frame's spatial mean per channel, then applies either
+per-frame contrast stretching (moments 0–2, frequency bands, and color Doppler)
+or a shared video scale (flat-field moments and directional Doppler). Invalid
+display samples are zero. The standard deviation uses `N-1` for multiple frames
+and is zero for one frame. Each aggregate is scaled to 8-bit, with one shared
+scale across the channels of each RGB image. Images retain
+the native `(y, x)` grid of the HDF5 video. Velocity overlays independently use
+the raw flat-field mean.
+
+Temporal entropy is an EyeFlow output. It uses `-sum(p * ln(p))` in nats, with
+`p` equal to the finite source magnitudes normalized across frames at each
+pixel. All-zero finite series have zero entropy.
+
+The pipeline reads each video once in bounded, chunk-aligned frame batches.
+It uses CuPy/CUDA when available and follows `EYEFLOW_COMPUTE_BACKEND` for
+explicit CPU or CuPy selection.
 
 Spatial-gradient profiles and metrics use
 `/ProcessingWidth/SpatialGradient/<Moments|BandRatio>/<Profiles|Metrics>`.

@@ -12,17 +12,8 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from app_settings import UserSettings, user_settings
 from calculations.compute_backend import optional_cupy_backend
-from app_settings import (
-    DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    DEFAULT_COPY_HD_PASSTHROUGH,
-    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-    validate_velocity_workflow_selection,
-    validate_band_limited_harmonics_setting,
-    validate_copy_hd_passthrough,
-    validate_input_backend,
-    validate_input_unknown_transport,
-)
 from input_output import HoloRunLayout, resolve_selected_run_layouts
 from input_output.output_manager import (
     OutputManager, OutputType, output_manager_for_layout, reject_duplicate_destinations,
@@ -33,10 +24,7 @@ from input_output.runs.inputs import (
     expand_run_inputs,
 )
 from utils.logger import Logger
-from velocity_calibration import (
-    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
-    validate_band_ratio_frequency_scale_hz,
-)
+
 
 from pipeline_engine.planning.base import PipelineDescriptor, PipelineSelection
 from pipeline_engine.execution.background_artifacts import ArtifactWorkers, BackgroundArtifacts
@@ -61,12 +49,7 @@ class RunSpec:
     plan: PipelineExecutionPlan
     requests: tuple[RunRequest, ...]
     pipeline_options: Mapping[str, tuple[str, ...]]
-    band_ratio_frequency_scale_hz: float = DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-    band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING
-    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH
-    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION
-    input_backend: str = "auto"
-    input_unknown_transport: str = "coordinator"
+    settings: UserSettings
 
     @property
     def total_pipeline_units(self) -> int:
@@ -115,25 +98,12 @@ def resolve_run_spec(
     target_names: Sequence[str],
     pipelines: Iterable[PipelineDescriptor],
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
-    band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
-    band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
-    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-    input_backend: str = "auto",
-    input_unknown_transport: str = "coordinator",
+    settings: UserSettings | None = None,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
-    input_backend = validate_input_backend(input_backend)
-    input_unknown_transport = validate_input_unknown_transport(input_unknown_transport)
-    resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
-    resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
-    resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
-
-    resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
-        band_ratio_frequency_scale_hz
-    )
+    settings = (settings if settings is not None else user_settings).for_run()
     descriptors = tuple(pipelines)
     selectable = selectable_pipeline_registry(descriptors)
     hidden_targets = [name for name in target_names if name not in selectable]
@@ -190,12 +160,7 @@ def resolve_run_spec(
         plan=plan,
         requests=requests,
         pipeline_options=resolved_options,
-        band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
-        band_limited_harmonics=resolved_harmonics,
-        copy_hd_passthrough=resolved_copy_hd_passthrough,
-        velocity_estimation_method=resolved_velocity_selection,
-        input_backend=input_backend,
-        input_unknown_transport=input_unknown_transport,
+        settings=settings,
     )
 
 
@@ -323,14 +288,9 @@ def _execute_batch(
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
                 pipeline_options=spec.pipeline_options,
-                band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
-                band_limited_harmonics=spec.band_limited_harmonics,
-                copy_hd_passthrough=spec.copy_hd_passthrough,
-                input_backend=spec.input_backend,
-                input_unknown_transport=spec.input_unknown_transport,
-                velocity_estimation_method=spec.velocity_estimation_method,
+                settings=spec.settings,
                 holodoppler_h5=request.hd_h5,
-                doppler_vision_h5=request.dv_h5,
+                dopplerview_h5=request.dv_h5,
                 on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
                 background_artifacts=artifacts,

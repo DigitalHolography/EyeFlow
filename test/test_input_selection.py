@@ -1,5 +1,7 @@
 """Input selection retains each run's directory across GUI entry points."""
 
+from app_settings import UserSettings
+
 import os
 import tkinter as tk
 from pathlib import Path
@@ -9,7 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 from test_run_service import _descriptor, _write_input
 
-from app_settings import AppSettingsStore
+from app_settings import UserSettings
 from input_output.runs.inputs import batch_root as _batch_root
 from input_output.output_manager import _relative_to_batch
 from pipeline_engine.execution.run_service import (
@@ -48,7 +50,7 @@ def _app():
         _muted_fg="muted", _error_color="error", _success_color="success",
         progress_controller=Mock(),
         ui_services=SimpleNamespace(dialogs=Mock(), file_dialogs=Mock()),
-        settings_store=Mock(load_last_input_directory=Mock(return_value=None)),
+        settings=SimpleNamespace(last_input_directory=None, save=Mock()),
         settings_controller=Mock(),
     )
     app.input_controller = InputController(app)
@@ -67,7 +69,7 @@ def _check_run_selection(app, holos):
     assert app.holo_hd_status_var.get() == "Found 2/2 HD"
     assert app.holo_dv_status_var.get() == "Found 2/2 DV"
     spec = resolve_run_spec(input_paths=app.input_controller.selected_holo_paths(),
-                            target_names=["sample"], pipelines=[_descriptor()])
+                            target_names=["sample"], pipelines=[_descriptor()], settings=UserSettings(values={}))
     assert [item.input_layout.holo_path for item in spec.requests] == list(holos)
     assert [item.output_manager.layout.ef_dir for item in spec.requests] == [
         holo.parent / holo.stem / f"{holo.stem}_EF" for holo in holos
@@ -135,7 +137,8 @@ def test_multiple_folder_selection_expands_and_deduplicates_all_inputs(tmp_path)
     controller.app = app
     controller.choose_holo_folder()
     _check_run_selection(app, [first, second])
-    app.settings_store.save_last_input_directory.assert_called_once_with(first.parent.parent)
+    app.settings.save.assert_called_once_with()
+    assert app.settings.last_input_directory == first.parent.parent
     app.ui_services.dialogs.showwarning.assert_not_called()
 
 
@@ -148,7 +151,7 @@ def test_failed_native_folder_picker_preserves_selection_and_location(tmp_path):
     controller.app = app
     controller.choose_holo_folder()
     assert app.input_controller.selected_holo_paths() == [first]
-    app.settings_store.save_last_input_directory.assert_not_called()
+    app.settings.save.assert_not_called()
     app.ui_services.dialogs.showerror.assert_called_once()
 
 
@@ -239,7 +242,7 @@ def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path, la
     first, second = _inputs(tmp_path)
     settings_path = tmp_path / "settings.json"
     app = _app()
-    app.settings_store = AppSettingsStore(path=settings_path)
+    app.settings = UserSettings(path=settings_path)
     controller = RunController.__new__(RunController)
     controller.app = app
     app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
@@ -265,7 +268,7 @@ def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path, la
     )
 
     restarted = _app()
-    restarted.settings_store = AppSettingsStore(path=settings_path)
+    restarted.settings = UserSettings(path=settings_path)
     controller = RunController.__new__(RunController)
     controller.app = restarted
     restarted.ui_services.file_dialogs.askdirectories.return_value = ()
@@ -273,14 +276,14 @@ def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path, la
     assert restarted.ui_services.file_dialogs.askdirectories.call_args.kwargs["initialdir"] == (
         str(expected)
     )
-    assert restarted.settings_store.load_last_input_directory() == expected
+    assert restarted.settings.last_input_directory == expected
 
 
 @pytest.mark.parametrize("has_selection", [False, True])
 def test_unavailable_remembered_directory_falls_back(tmp_path, has_selection):
     app = _app()
-    app.settings_store = AppSettingsStore(path=tmp_path / "settings.json")
-    app.settings_store.save({"last_input_directory": str(tmp_path / "unavailable")})
+    app.settings = UserSettings(path=tmp_path / "settings.json")
+    app.settings.save({"last_input_directory": str(tmp_path / "unavailable")})
     expected = Path.cwd()
     if has_selection:
         first, _ = _inputs(tmp_path)
@@ -298,7 +301,7 @@ def test_unavailable_remembered_directory_falls_back(tmp_path, has_selection):
 def test_input_selection_still_works_when_saving_the_directory_fails(tmp_path):
     first, _ = _inputs(tmp_path)
     app = _app()
-    app.settings_store.save_last_input_directory.side_effect = OSError("read only")
+    app.settings.save.side_effect = OSError("read only")
     app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
     controller = RunController.__new__(RunController)
     controller.app = app
@@ -333,9 +336,9 @@ def test_quoted_txt_and_manual_selection_execute_the_same_independent_runs(tmp_p
     input_list = tmp_path / "inputs.txt"
     input_list.write_text(f'"{first}"\n"{second}"\n', encoding="utf-8")
     manual = resolve_run_spec(input_paths=[first, second], target_names=["sample"],
-                              pipelines=[_descriptor()])
+                              pipelines=[_descriptor()], settings=UserSettings(values={}))
     listed = resolve_run_spec(input_paths=[input_list], target_names=["sample"],
-                              pipelines=[_descriptor()])
+                              pipelines=[_descriptor()], settings=UserSettings(values={}))
     assert [request.input_layout for request in manual.requests] == [
         request.input_layout for request in listed.requests
     ]

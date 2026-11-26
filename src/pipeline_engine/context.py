@@ -14,7 +14,8 @@ from retinal_source_data import HolodopplerTiming
 
 from app_settings import (
     DEFAULT_VELOCITY_ESTIMATION_METHOD,
-    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    UserSettings,
+    user_settings,
     selected_velocity_methods,
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
@@ -25,10 +26,7 @@ from input_output.output_manager import OutputManager
 from pipeline_engine.data.scratch import RunArrayStorage
 from input_output.writers.h5 import write_root_attributes
 from utils.logger import Logger
-from velocity_calibration import (
-    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
-    validate_band_ratio_frequency_scale_hz,
-)
+
 
 from pipeline_engine.planning.base import ExecutionVariant, ProcessResult
 from pipeline_engine.execution.background_artifacts import BackgroundArtifacts
@@ -129,9 +127,9 @@ class PipelineContext:
         *,
         work_h5: h5py.File,
         holodoppler_h5: h5py.File | None,
-        doppler_vision_h5: h5py.File | None,
+        dopplerview_h5: h5py.File | None,
         holodoppler_config: Mapping[str, object] | None = None,
-        doppler_vision_config: Mapping[str, object] | None = None,
+        dopplerview_config: Mapping[str, object] | None = None,
         shared_inputs: PipelineInputs | None = None,
         preferred_input: str = "both",
         pipeline_name: str = "",
@@ -140,8 +138,7 @@ class PipelineContext:
         pipeline_order: Sequence[str] = (),
         pipeline_targets: Sequence[str] = (),
         velocity_estimation_method: str | None = DEFAULT_VELOCITY_ESTIMATION_METHOD,
-        velocity_workflow_selection: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
-        band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
+        settings: UserSettings | None = None,
         output_manager: OutputManager | None = None,
         processing_root: str | None = None,
         output_provenance: Mapping[str, Any] | None = None,
@@ -154,7 +151,7 @@ class PipelineContext:
         product_owner_id=None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
-        dv_config = dict(doppler_vision_config or {})
+        dv_config = dict(dopplerview_config or {})
         self.runtime = PipelineRuntime(work_h5, preferred_input, pipeline_name, scratch)
         self.inputs = shared_inputs or PipelineInputs(
             hd=PipelineInputSource(
@@ -162,7 +159,7 @@ class PipelineContext:
                 hd_config,
             ),
             dv=PipelineInputSource(
-                RawH5SourceReader(h5file=doppler_vision_h5, label="DV"),
+                RawH5SourceReader(h5file=dopplerview_h5, label="DV"),
                 dv_config,
             ),
         )
@@ -175,6 +172,7 @@ class PipelineContext:
             ),
         )
         self.state = PipelineState(variables)
+        self.settings = (settings if settings is not None else user_settings).for_run()
         # Pure, completed computations may be reused across execution variants.
         # This per-input memo is separate from transactional pipeline products:
         # callers own compatibility keys and must store only immutable successes.
@@ -197,7 +195,7 @@ class PipelineContext:
         self.product_owner_id = product_owner_id
         self._execution_variants: tuple[ExecutionVariant, ...] = ()
         self._execution_variant_failures: dict[str, str] = {}
-        self.velocity_workflows = selected_velocity_methods(velocity_workflow_selection)
+        self.velocity_workflows = selected_velocity_methods(self.settings.velocity_estimation_method)
         resolved_velocity_method = velocity_estimation_method
         if resolved_velocity_method is None and execution_variant is not None:
             resolved_velocity_method = execution_variant.provenance.get(
@@ -207,9 +205,6 @@ class PipelineContext:
             validate_velocity_estimation_method(str(resolved_velocity_method))
             if resolved_velocity_method is not None
             else None
-        )
-        self.band_ratio_frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
-            band_ratio_frequency_scale_hz
         )
         self.attrs = MergedAttrs(
             work_h5,

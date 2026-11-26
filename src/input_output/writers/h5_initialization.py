@@ -49,9 +49,9 @@ def initialize_output_h5(
     h5file: h5py.File,
     *,
     holodoppler_source_file: str | None = None,
-    doppler_vision_source_file: str | None = None,
+    dopplerview_source_file: str | None = None,
     holodoppler_source_h5: h5py.File | None = None,
-    doppler_vision_source_h5: h5py.File | None = None,
+    dopplerview_source_h5: h5py.File | None = None,
     copy_hd_passthrough: bool = True,
 ) -> None:
     set_attr_safe(h5file, "eyeflow_version", _project_version())
@@ -71,27 +71,27 @@ def initialize_output_h5(
                     if output_name in output_group:
                         del output_group[output_name]
                     _copy_source_object(source_h5[source_path], output_group, output_name)
-    if doppler_vision_source_file:
-        h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
-    _initialize_app_versions(h5file, doppler_vision_source_file, doppler_vision_source_h5)
-    primary_source = holodoppler_source_file or doppler_vision_source_file
+    if dopplerview_source_file:
+        h5file.attrs["dopplerview_source_file"] = dopplerview_source_file
+    _initialize_app_versions(h5file, dopplerview_source_file, dopplerview_source_h5)
+    primary_source = holodoppler_source_file or dopplerview_source_file
     if primary_source:
         h5file.attrs["source_file"] = primary_source
 
 
 def _initialize_app_versions(
     h5file: h5py.File,
-    doppler_vision_source_file: str | None,
-    doppler_vision_source_h5: h5py.File | None = None,
+    dopplerview_source_file: str | None,
+    dopplerview_source_h5: h5py.File | None = None,
 ) -> None:
     """Write application versions as one scalar JSON dataset."""
 
     versions: dict[str, object] = {}
-    if doppler_vision_source_file:
-        with _source_handle(doppler_vision_source_h5, doppler_vision_source_file) as source_h5:
+    if dopplerview_source_file:
+        with _source_handle(dopplerview_source_h5, dopplerview_source_file) as source_h5:
             source_versions = source_h5.get("app_versions")
             versions = _read_app_versions(source_versions)
-            _copy_doppler_vision_laterality(h5file, source_h5)
+            _copy_dopplerview_laterality(h5file, source_h5)
 
     versions["EF_version"] = _project_version()
     if "app_versions" in h5file:
@@ -103,7 +103,7 @@ def _initialize_app_versions(
     )
 
 
-def _copy_doppler_vision_laterality(h5file: h5py.File, source_h5: h5py.File) -> None:
+def _copy_dopplerview_laterality(h5file: h5py.File, source_h5: h5py.File) -> None:
     segmentation = EyeFlowOutputPaths.active().segmentation
     paths = (
         (DV_EYE_LATERALITY_PATH, segmentation.laterality.eye_laterality),

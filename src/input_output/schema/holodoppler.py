@@ -16,6 +16,7 @@ HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"
 HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
+HD_MOMENT_NAME_PATTERN = re.compile(r"moment[0-9]+")
 HD_BAND_LF_PATH = "band_0_3000_9000"
 HD_BAND_HF_PATH = "band_1_9000_18000"
 HD_BAND_NAME_PATTERN = re.compile(r"band_[0-9]+_([0-9]+)_([0-9]+)")
@@ -25,9 +26,11 @@ HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
 HD_MOMENT0_FLAT_FIELD_PATHS = ("moment0ff", "M0FF")
 HD_MOMENT_PATHS = {
     HD_MOMENT0_PATH: HD_MOMENT0_PATHS,
+    "moment1": ("moment1", "M1"),
     HD_MOMENT2_PATH: HD_MOMENT2_PATHS,
     "moment0ff": HD_MOMENT0_FLAT_FIELD_PATHS,
 }
+HD_RGB_VIDEO_PATHS = ("color_Doppler_image", "directional_Doppler_image")
 HD_OUTPUT_PASSTHROUGH_PATHS = (
     ("registration", "Meta/registration"),
     ("zernike_coefs_radians", "zernike_coefs_radians"),
@@ -73,6 +76,32 @@ class HolodopplerSource(TypedSource):
 
     def moment0ff(self, *, required: bool = False):
         return self.moment("moment0ff", required=required)
+
+    def image_videos(self) -> dict:
+        """Find native image videos, with canonical names for legacy moments."""
+        candidates = dict(HD_MOMENT_PATHS)
+        for path in self._reader.keys():
+            if (HD_MOMENT_NAME_PATTERN.fullmatch(path) or HD_BAND_NAME_PATTERN.fullmatch(path)
+                    or path in HD_RGB_VIDEO_PATHS):
+                candidates.setdefault(path, (path,))
+
+        videos = {}
+        seen = set()
+        for name, paths in candidates.items():
+            for path in paths:
+                video = self._reader.get(path)
+                if not is_dataset(video) or video.shape is None or video.dtype.kind not in "iuf":
+                    continue
+                if name in HD_RGB_VIDEO_PATHS:
+                    valid_shape = video.ndim == 4 and video.shape[-1] == 3
+                else:
+                    valid_shape = video.ndim == 3
+                if valid_shape and all(video.shape):
+                    if video.id not in seen:
+                        videos[name] = video
+                        seen.add(video.id)
+                    break
+        return videos
 
     def spectrograms(self, *, required: bool = False):
         """Return lazy (time, freq, y, x) power; legacy groups are unavailable."""
@@ -253,4 +282,5 @@ class HolodopplerSource(TypedSource):
         "band_low": lambda source: source.frequency_bands()[0],
         "band_high": lambda source: source.frequency_bands()[1],
         "spectrograms": spectrograms,
+        "image_videos": lambda source: tuple(source.image_videos().values()),
     }

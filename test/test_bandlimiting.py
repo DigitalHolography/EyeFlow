@@ -1,5 +1,7 @@
 """MATLAB reconstruction, signed DC preservation, and explicit harmonic semantics."""
 
+from app_settings import UserSettings
+
 import json
 from types import SimpleNamespace
 
@@ -9,7 +11,7 @@ from scipy.signal import butter, filtfilt, resample
 
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
-    AppSettingsStore,
+    UserSettings,
     validate_band_limited_harmonics_setting,
 )
 from calculations.blood_flow_velocity.signal_analysis.per_beat.runner import (
@@ -21,7 +23,6 @@ from calculations.math.bandlimiting import DEFAULT_BAND_LIMITED_HARMONICS, valid
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from pipeline_engine.execution.run_service import resolve_run_spec
-from pipelines.signal_settings import band_limited_harmonics
 from pipelines.velocity_analysis.outputs.per_beat import pack_velocity_per_beat_outputs
 
 
@@ -144,25 +145,20 @@ def test_filtered_beats_subdivide_continuous_signal_then_follow_matlab_fft_recip
 
 
 def test_shared_setting_persists_and_import_rejects_invalid_count_atomically(tmp_path):
-    store = AppSettingsStore(tmp_path / "settings.json")
-    store.save_band_limited_harmonics(7)
-    assert store.load_band_limited_harmonics() == 7
+    store = UserSettings(tmp_path / "settings.json")
+    store.band_limited_harmonics = 7
+    store.save()
+    assert store.band_limited_harmonics == 7
     imported = tmp_path / "invalid.json"
     imported.write_text(json.dumps({"band_limited_harmonics": -1}), encoding="utf-8")
     with pytest.raises(ValueError, match="harmonics"):
         store.import_file(imported)
-    assert store.load_band_limited_harmonics() == 7
-    assert (
-        band_limited_harmonics(SimpleNamespace(attrs={"band_limited_harmonics": np.int64(7)})) == 7
-    )
-    assert (
-        band_limited_harmonics(SimpleNamespace(attrs={"BandLimitedSignalHarmonicCount": 13})) == 12
-    )
+    assert store.band_limited_harmonics == 7
 
 
 @pytest.mark.parametrize("count", [-1])
 def test_run_validation_rejects_invalid_harmonics_before_resolving_inputs(count):
     with pytest.raises(ValueError, match="harmonics"):
         resolve_run_spec(
-            input_paths=[], target_names=[], pipelines=[], band_limited_harmonics=count
+            input_paths=[], target_names=[], pipelines=[], settings=UserSettings(values={'band_limited_harmonics': count})
         )

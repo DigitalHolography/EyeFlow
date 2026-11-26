@@ -24,7 +24,7 @@ from input_output.schema.doppler_view import (
     DV_CHOROID_VESSEL_MASK_PATH,
     DV_RETINAL_VESSEL_LOGITS_PATH,
 )
-from pipeline_engine import read_int_setting, ProductSpec, StageGraph, StageSpec
+from pipeline_engine import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.stage_graph import InputAccess, InputUse
 from pipeline_engine.context import require_managed_runtime
 from pipelines.vessel_inputs import load_vessel_topology_inputs
@@ -40,7 +40,6 @@ from .outputs import (
 
 TOPOLOGY_CORE_STATE = "topology_core.prepared"
 CAPILLARY_ANALYSIS_ZONES_STATE = "topology_core.capillary_analysis_zones"
-_DEFAULT_NUMBER_OF_RADII_IN_FOV = 25
 _TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT = 0.95
 
 
@@ -62,21 +61,6 @@ def _sampling(ctx):
     inputs = ctx.dag.require("inputs")
     images, segmentation = inputs.image_maps, inputs.segmentation
     vessels = segmentation.vessels
-    number_of_radii = read_int_setting(
-        ctx,
-        default=_DEFAULT_NUMBER_OF_RADII_IN_FOV,
-        keys=(
-            "number_of_radii_in_FOV",
-            "number_of_radii_in_fov",
-            "NumberOfRadiiInFOV",
-            "number_of_radii_over_FOV",
-            "number_of_radii_over_fov",
-            "NumberOfRadiiOverFOV",
-        ),
-    )
-    if number_of_radii < 1:
-        raise ValueError("number_of_radii_in_FOV must be positive.")
-
     topology_reference = (
         images.band_lf
         if inputs.velocity_estimation_method == "frequency_bands"
@@ -84,7 +68,7 @@ def _sampling(ctx):
     )
     ring_settings = segmentation.optic_disc.annulus_geometry(
         tuple(int(size) for size in topology_reference.shape[-2:]),
-        number_of_radii_in_fov=number_of_radii,
+        number_of_radii_in_half_diagonal=ctx.settings.number_of_radii_in_half_diagonal,
     )
     prepared = prepare_sampling_plans(
         {

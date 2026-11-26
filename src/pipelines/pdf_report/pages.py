@@ -71,7 +71,7 @@ def _velocity_page(report: ReportData, folder_name: str, png_dir: Path | None,
         _add_report_image(
             fig, (left, 0.68, 0.39, 0.21), png_dir, folder_name,
             "vessel_map", vessel, images,
-            f"{vessel.title()} RMS-Frequency Map",
+            f"{vessel.title()} Velocity Map",
         )
         systole_ax = fig.add_axes(
             (left, 0.485, VELOCITY_GRAPH_WIDTH, VELOCITY_GRAPH_HEIGHT)

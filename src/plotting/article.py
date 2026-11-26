@@ -29,11 +29,11 @@ class ArticleStyle:
 
     font_family: str = "Times New Roman"
     math_font_family: str = "stix"
-    label_size: float = 10
-    tick_size: float = 8
-    legend_size: float = 10
-    title_size: float = 10
-    annotation_size: float = 9
+    label_size: float = 11
+    tick_size: float = 11
+    legend_size: float = 11
+    title_size: float = 11
+    annotation_size: float = 11
     border_width: float = 0.4
     border_color: str = "black"
     signal_line_width: float = 0.8
@@ -85,8 +85,8 @@ class ArticleStyle:
 
 ARTICLE_STYLE = ArticleStyle()
 COMPACT_ARTICLE_STYLE = replace(
-    ARTICLE_STYLE, label_size=8, legend_size=8, title_size=8, annotation_size=8,
-    legend_layout=LegendLayout(loc="upper right", frameon=False, handlelength=2),
+    ARTICLE_STYLE, label_size=11, title_size=11,
+    legend_layout=LegendLayout(loc="best", frameon=False, handlelength=2),
 )
 SPECTRUM_ARTICLE_STYLE = replace(
     ARTICLE_STYLE, envelope_color="0.35", envelope_alpha=0.45,
@@ -94,13 +94,34 @@ SPECTRUM_ARTICLE_STYLE = replace(
     legend_layout=LegendLayout(loc="upper center", frameon=False, labelspacing=0.25, borderpad=0.1),
 )
 DIAGNOSTIC_ARTICLE_STYLE = replace(
-    ARTICLE_STYLE, signal_line_width=2, reference_line_width=1.5,
+    ARTICLE_STYLE, label_size=10, tick_size=8, legend_size=10, title_size=10, annotation_size=9,
+    signal_line_width=2, reference_line_width=1.5,
     legend_layout=LegendLayout(loc="best"),
     colorbar_layout=ColorbarLayout(fraction=0.046, pad=0.04),
 )
 SPECTROGRAM_ARTICLE_STYLE = replace(
     ARTICLE_STYLE, colorbar_layout=ColorbarLayout(orientation="vertical", pad=0.02),
 )
+
+
+def add_temporal_mean_reference(
+    ax, median_signal, style: ArticleStyle = COMPACT_ARTICLE_STYLE, *, label: str = "Temporal mean",
+):
+    """Draw the temporal nanmean of the displayed median beat, when defined.
+
+    The dashed gray reference differs from both solid signals and dotted zero
+    lines. Call once per displayed signal, using distinct labels if needed.
+    """
+    import numpy as np
+
+    values = np.asarray(median_signal, dtype=np.float64)
+    if not np.any(~np.isnan(values)):
+        return None
+    mean = float(np.nanmean(values))
+    if not np.isfinite(mean):
+        return None
+    return ax.axhline(mean, color="0.35", linestyle="--", linewidth=style.reference_line_width,
+                      label=label, zorder=2)
 
 
 def prepare_article_fill_layer(ax) -> None:

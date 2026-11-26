@@ -264,9 +264,9 @@ class H5WriterTests(unittest.TestCase):
                         initialize_output_h5(
                             output_h5,
                             holodoppler_source_file=str(hd_path),
-                            doppler_vision_source_file=str(dv_path),
+                            dopplerview_source_file=str(dv_path),
                             holodoppler_source_h5=hd,
-                            doppler_vision_source_h5=dv,
+                            dopplerview_source_h5=dv,
                         )
             with h5py.File(output_path, "r") as output_h5:
                 registration = output_h5["Meta/registration"]
@@ -315,8 +315,8 @@ class H5WriterTests(unittest.TestCase):
                 output = OutputModel(storage, output_path)
                 initialize_output_h5(
                     output,
-                    doppler_vision_source_file=str(dv_path),
-                    doppler_vision_source_h5=dv,
+                    dopplerview_source_file=str(dv_path),
+                    dopplerview_source_h5=dv,
                 )
                 output.publish()
 

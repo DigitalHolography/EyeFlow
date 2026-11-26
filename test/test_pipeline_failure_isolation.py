@@ -1,5 +1,7 @@
 """Failure recovery follows active DAG dependencies and retains earlier products."""
 
+from app_settings import UserSettings
+
 import json
 from types import SimpleNamespace
 
@@ -116,7 +118,7 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
     spec = resolve_run_spec(
         input_paths=[holo], target_names=["dependent", "sibling"], pipelines=descriptors,
         pipeline_options={"dependent": ("needs_product",)},
-    )
+     settings=UserSettings(values={}))
     result = execute_run(spec, on_progress=lambda: progress.append(True))
     assert result.succeeded == (variants and not fail_both)
     assert len(progress) == len(spec.plan.names)
@@ -159,7 +161,7 @@ def test_failed_variant_producer_does_not_prevent_unrelated_pipeline(tmp_path):
             _descriptor("dependent", dependent, ("producer",)),
             _descriptor("unrelated", lambda ctx: {"Unrelated/value": 42}),
         ],
-    )
+     settings=UserSettings(values={}))
     result = execute_run(spec)
     assert not result.succeeded
     with h5py.File(result.outputs[0], "r") as output:
@@ -194,7 +196,7 @@ def test_invalid_stage_graph_fails_only_its_invocation_and_publishes_partial_res
             _descriptor("dependent", never_run, ("invalid",)),
             _descriptor("independent", independent, ("source",)),
         ],
-    )
+     settings=UserSettings(values={}))
     result = execute_run(spec)
     assert not result.succeeded
     assert calls == ["source", "independent"]

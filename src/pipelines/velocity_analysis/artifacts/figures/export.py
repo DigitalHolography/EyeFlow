@@ -91,6 +91,7 @@ def export_pulse_pngs(
     per_beat_result: PerBeatAnalysisResult,
     *,
     report_images: ReportImagePaths | None = None,
+    moment0ff_average: np.ndarray | None = None,
 ) -> list[str]:
     """Export pulse-analysis PNGs for a velocity analysis run."""
 
@@ -120,6 +121,7 @@ def export_pulse_pngs(
         ),
         velocity=velocity,
         per_beat_result=per_beat_result,
+        moment0ff_average=moment0ff_average,
     )
     writer = FigureArtifactWriter(output, pulse_context.stem)
     paths: list[Path] = []

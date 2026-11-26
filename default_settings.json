@@ -8,6 +8,7 @@
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "spatial_gradient_moment0": false,
+    "temporal_aggregations": true,
     "waveform_shape_metrics": true,
     "velocity_analysis": true
   },
@@ -40,6 +41,7 @@
     }
   },
   "velocity_estimation_method": "both",
+  "number_of_radii_in_half_diagonal": 42,
   "band_ratio_frequency_scale_hz": 1.0,
   "band_limited_harmonics": 12,
   "copy_hd_passthrough": false,

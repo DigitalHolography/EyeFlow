@@ -20,6 +20,7 @@ from plotting.article import (
     ARTICLE_WIDTH_INCHES as LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
     COMPACT_ARTICLE_STYLE,
     apply_article_style,
+    add_temporal_mean_reference,
     create_article_figure,
     prepare_article_fill_layer,
 )
@@ -33,7 +34,7 @@ from pipelines.profile_outputs import profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
 BLOOD_VOLUME_RATE_ENVELOPE_GRAY = COMPACT_ARTICLE_STYLE.envelope_color
-PAGE_TWO_ARTIFACT_AXES_BOUNDS = (0.20, 0.22, 0.75, 0.75)
+PAGE_TWO_ARTIFACT_AXES_BOUNDS = (0.25, 0.25, 0.70, 0.70)
 
 
 def pack_gradient_edge_outputs(
@@ -364,6 +365,7 @@ def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
         linestyle="-",
         linewidth=COMPACT_ARTICLE_STYLE.signal_line_width,
     )
+    add_temporal_mean_reference(ax, median, label="_nolegend_")
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$")

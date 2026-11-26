@@ -63,8 +63,12 @@ options. The pipeline declarations, not this sketch, are the current graph.
 
 ## Settings and outputs
 
-`AppSettingsStore` owns persisted settings and import validation; the GUI and
-CLI use the same store. `velocity_estimation_method` selects
+The GUI and CLI share the process-wide `user_settings` instance. It loads lazily
+and keeps validated settings and pipeline selections in memory. Call `save()`
+to persist edits and `reload()` to read external changes. Import validates and
+persists a replacement before updating existing views. `AppSettingsStore`
+owns JSON persistence and validation. Each run captures a settings snapshot
+and passes it to pipeline contexts and workers. `velocity_estimation_method` selects
 `doppler_moments`, `bandratio`, or `both` (default). The legacy
 `frequency_bands` value is accepted as a setting alias. Calibration passes
 through the run spec to the velocity context. The GUI has no method selector.

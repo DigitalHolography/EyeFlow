@@ -206,7 +206,8 @@ def _flow_rgb(
     velocity_avg: np.ndarray,
     velocity_map: np.ndarray | None = None,
 ) -> np.ndarray:
-    background = _rescale(ctx.moment0_average)
+    background = ctx.moment0ff_average
+    background = _rescale(ctx.moment0_average if background is None else background)
     rgb = np.dstack([background, background, background])
     value = _velocity_gradient_values(velocity_avg, ctx.section_mask, velocity_map)
     artery_color = _matlab_vessel_colormap("artery")(value)[..., :3]

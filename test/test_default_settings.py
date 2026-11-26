@@ -38,6 +38,8 @@ class DefaultSettingsTests(unittest.TestCase):
         }
         self.assertEqual(expected_options, configured_options)
         self.assertTrue(settings["pipeline_visibility"]["blood_volume_rate"])
+        self.assertTrue(settings["pipeline_visibility"]["temporal_aggregations"])
+        self.assertTrue(visible["temporal_aggregations"].default_selected)
         self.assertEqual(
             {"gradient_edges": False, "masked_edges": True},
             settings["pipeline_options"]["blood_volume_rate"],
@@ -60,6 +62,10 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
         self.assertEqual(12, settings["band_limited_harmonics"])
         self.assertFalse(settings["copy_hd_passthrough"])
+        self.assertEqual(42, settings["number_of_radii_in_half_diagonal"])
+        self.assertNotIn("annulus_size", settings)
+        self.assertNotIn("annulus_stride", settings)
+        self.assertNotIn("number_of_radii_in_FOV", settings)
 
     def test_renamed_pipeline_options_are_migrated(self) -> None:
         options, changed = normalize_pipeline_options(

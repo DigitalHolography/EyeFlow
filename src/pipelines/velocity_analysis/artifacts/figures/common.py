@@ -54,6 +54,7 @@ class PulseFigureContext:
     section_mask: np.ndarray
     velocity: RetinalVelocity
     per_beat_result: PerBeatAnalysisResult
+    moment0ff_average: np.ndarray | None = None
 
     @property
     def artery_section_mask(self) -> np.ndarray:

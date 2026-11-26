@@ -117,7 +117,7 @@ def resolve_execution_graph(spec, *, observed_output=None):
         targets=list(spec.plan.targets),
         pipelines=pipelines,
         variant_discovery=dict(
-            producers=producers, requested=spec.velocity_estimation_method, successful=None
+            producers=producers, requested=spec.settings.velocity_estimation_method, successful=None
         ),
         edges=edges,
         observations=None,
@@ -135,7 +135,7 @@ def resolve_execution_graph(spec, *, observed_output=None):
                 observed_options != expected_options
                 or list(h5.attrs.get("pipeline_targets", ())) != list(spec.plan.targets)
                 or list(h5.attrs.get("velocity_estimation_methods", ()))
-                != list(selected_velocity_methods(spec.velocity_estimation_method))
+                != list(selected_velocity_methods(spec.settings.velocity_estimation_method))
             ):
                 raise ValueError("Observed run has different selected targets or options.")
             observed = {

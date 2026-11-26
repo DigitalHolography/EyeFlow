@@ -75,11 +75,11 @@ def test_total_masked_edges_flow_uses_centered_periodic_nine_point_window() -> N
 
 def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     topology = SimpleNamespace(
-        valid_segments=np.ones((1, 1), dtype=bool),
+        valid_segments=np.ones((5, 2), dtype=bool),
     )
     profiles = np.broadcast_to(
         np.asarray([0.0, 1.0, 4.0, 9.0, 16.0, 25.0], dtype=np.float32),
-        (1, 1, 3, 6),
+        (5, 2, 3, 6),
     ).copy()
     velocity_segments = SimpleNamespace(
         profile=SimpleNamespace(
@@ -96,7 +96,7 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         profiles,
         cycle_boundaries,
         index_base=0,
-        valid_segments=np.ones((1, 1), dtype=bool),
+        valid_segments=np.ones((5, 2), dtype=bool),
     )
     edge_shape = profile_dataset_value.data.shape[1:]
     edges = {}
@@ -217,8 +217,14 @@ def test_blood_volume_rate_figure_plots_median_and_one_sd_over_beats() -> None:
     assert ax.get_xlabel() == r"Cardiac Phase $t/T$"
     assert ax.get_ylabel() == r"$Q(t)$ ($\mathrm{mm^3.s^{-1}}$)"
     assert ax.get_xlim() == (0.0, 1.0)
-    assert len(ax.lines) == 2
-    zero_line, median_line = ax.lines
+    assert len(ax.lines) == 3
+    zero_line, median_line, mean_line = ax.lines
+    np.testing.assert_allclose(mean_line.get_ydata(), [3.0, 3.0])
+    assert mean_line.get_linestyle() == "--"
+    assert mean_line.get_color() == "0.35"
+    assert mean_line.get_linewidth() == 0.4
+    assert ax.get_legend() is None
+    assert ax.get_legend_handles_labels() == ([], [])
     np.testing.assert_allclose(zero_line.get_ydata(), [0.0, 0.0])
     assert zero_line.get_color() == "black"
     assert zero_line.get_linestyle() == ":"

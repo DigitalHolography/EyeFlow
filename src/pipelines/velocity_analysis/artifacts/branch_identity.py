@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy import ndimage as ndi
 
-from calculations.topology import AnnulusGeometry, BranchIdentityStages, annulus_mask
+from calculations.topology import AnnulusGeometry, BranchIdentityStages
 from input_output.writers.png import FigureArtifactWriter
+from pipelines.topology_core.annulus_visualization import annulus_outline_image
 
 
 def export_branch_identity_stage_pngs(
@@ -98,7 +98,9 @@ def _labels_with_ring_overlay(
     settings: AnnulusGeometry,
 ) -> np.ndarray:
     image = _label_image(labels)
-    image[_ring_boundaries(labels.shape, optic_disc_center, settings)] = (255, 255, 255)
+    outlines = annulus_outline_image(labels.shape, optic_disc_center, settings)
+    selected = outlines > 0
+    image[selected] = outlines[selected, None]
     return image
 
 
@@ -111,9 +113,7 @@ def _labels_with_substack_boxes(
 ) -> np.ndarray:
     """Overlay the actual rotating substacks on the stage-12 label image.
 
-    Box colors identify the ring. Pixels shared by two or more box outlines
-    are magenta, making exact box overlap visible instead of hiding it under
-    the later box drawn.
+    All box outlines use standard gray, including shared edges.
     """
     image = _labels_with_ring_overlay(labels, optic_disc_center, ring_settings)
     centers = np.asarray(segment_centers_xy, dtype=np.float32)
@@ -126,8 +126,7 @@ def _labels_with_substack_boxes(
     ):
         return image
 
-    box_counts = np.zeros(labels.shape, dtype=np.uint8)
-    box_colors = np.zeros((*labels.shape, 3), dtype=np.uint8)
+    boundary = np.zeros(labels.shape, dtype=bool)
     for ring_index in range(
         min(centers.shape[0], int(ring_settings.ring_count))
     ):
@@ -144,53 +143,13 @@ def _labels_with_substack_boxes(
             )
             if x_start >= x_stop or y_start >= y_stop:
                 continue
-            boundary = np.zeros(labels.shape, dtype=bool)
             boundary[y_start, x_start:x_stop] = True
             boundary[y_stop - 1, x_start:x_stop] = True
             boundary[y_start:y_stop, x_start] = True
             boundary[y_start:y_stop, x_stop - 1] = True
-            box_counts[boundary] = np.minimum(box_counts[boundary] + 1, 255)
-            box_colors[boundary] = _ring_box_color(ring_index)
 
-    single_box = box_counts == 1
-    overlapping_boxes = box_counts > 1
-    image[single_box] = box_colors[single_box]
-    image[overlapping_boxes] = (255, 0, 255)
+    image[boundary] = (128, 128, 128)
     return image
-
-
-def _ring_box_color(ring_index: int) -> tuple[int, int, int]:
-    colors = (
-        (255, 255, 0),
-        (0, 255, 255),
-        (255, 128, 0),
-        (0, 255, 0),
-        (255, 64, 192),
-        (64, 192, 255),
-        (255, 64, 64),
-        (128, 255, 64),
-        (192, 64, 255),
-        (64, 255, 192),
-    )
-    return colors[ring_index % len(colors)]
-
-
-def _ring_boundaries(
-    image_shape: tuple[int, int],
-    optic_disc_center,
-    settings: AnnulusGeometry,
-) -> np.ndarray:
-    boundaries = np.zeros(image_shape, dtype=bool)
-    for ring_index in range(settings.ring_count):
-        ring_inner = settings.inner_radius_frac + ring_index * settings.ring_width_frac
-        ring = annulus_mask(
-            image_shape,
-            optic_disc_center,
-            ring_inner,
-            ring_inner + settings.ring_width_frac,
-        )
-        boundaries |= ring & ~ndi.binary_erosion(ring)
-    return boundaries
 
 
 def _topography_image(topography: np.ndarray) -> np.ndarray:
