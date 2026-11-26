@@ -56,6 +56,19 @@ def histogram_matrix(video: np.ndarray, mask: np.ndarray, bins: int = 256) -> Hi
     return HistogramData(counts, vmin, vmax, count_max if count_max > 0 else 1.0)
 
 
+def temporal_mean_image(video) -> np.ndarray:
+    """Average finite intensities across frames in native (y, x) order."""
+    total = np.zeros(video.shape[1:], dtype=np.float64)
+    count = np.zeros(video.shape[1:], dtype=np.int64)
+    for _, chunk in video_chunks(video):
+        finite = np.isfinite(chunk)
+        total += np.sum(chunk, axis=0, dtype=np.float64, where=finite)
+        count += np.count_nonzero(finite, axis=0)
+    image = np.full(video.shape[1:], np.nan, dtype=np.float32)
+    np.divide(total, count, out=image, where=count > 0)
+    return image
+
+
 def video_chunks(video, frame_chunk_size: int = 8):
     for start in range(0, int(video.shape[0]), frame_chunk_size):
         stop = min(start + frame_chunk_size, int(video.shape[0]))

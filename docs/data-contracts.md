@@ -39,7 +39,7 @@ The external aliases belong to `schema/holodoppler.py`:
 | Source | HDF5 path | Use |
 |---|---|---|
 | Zeroth and second moments | `/moment0`, `/moment2` (legacy `/M0`, `/M2`) | Moments velocity |
-| Flat-field zeroth moment | `/moment0ff` (legacy `/M0FF`) | Optional gap and spatial-gradient analyses |
+| Flat-field zeroth moment | `/moment0ff` (legacy `/M0FF`) | Optional gap and spatial-gradient analyses and vessel velocity map backgrounds |
 | LF and HF bands | `/band_<i>_<n>_<m>` | Band-ratio velocity; first and last numeric ranges |
 | Spectral video | `/spectrograms` | Optional shared spectral analysis |
 | Registration and Zernike metadata | `/registration`, `/zernike_coefs_radians` | Optional pass-through |

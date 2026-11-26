@@ -15,7 +15,7 @@ from calculations.blood_flow_velocity import (
 from calculations.topology import AnnulusGeometry
 from data_manager import InvocationResource
 from input_output import EyeFlowOutputPaths
-from pipeline_engine import ProductSpec, StageGraph, StageSpec
+from pipeline_engine import InputAccess, InputUse, ProductSpec, StageGraph, StageSpec
 from pipeline_engine.context import require_managed_runtime
 from pipelines.topology_core.runner import prepared_topologies
 from pipelines.velocity.models import RetinalVelocity
@@ -33,6 +33,7 @@ from .artifacts import (
     export_pulse_pngs,
     export_rotated_mean_pngs,
 )
+from .artifacts.figures.signal_inputs import temporal_mean_image
 from .models import VelocityAnalysis, VelocitySegmentResult
 from .outputs import (
     pack_velocity_per_beat_inputs,
@@ -85,7 +86,10 @@ def velocity_analysis_graph(*, options=(), selection=None, segments_required=Non
         stages.append(StageSpec("segment_figures", _segment_figures, requires=("inputs", "segments"), artifact=True))
         stages.append(StageSpec("signal_figures", _signal_figures, requires=("waveform_inputs",), artifact=True))
     if pulse_figures:
-        stages.append(StageSpec("pulse_figures", _pulse_figures, requires=("analysis", "waveform_inputs", "continuous"), artifact=True))
+        stages.append(StageSpec(
+            "pulse_figures", _pulse_figures, requires=("analysis", "waveform_inputs", "continuous"),
+            artifact=True, inputs=(InputUse("hd.moment0ff", InputAccess.SEQUENTIAL, optional=True),),
+        ))
     if "segment_velocity_maps" in options:
         stages.append(StageSpec("map_videos", _map_videos, requires=("analysis", "maps"), artifact=True))
     return StageGraph(tuple(stages))
@@ -470,10 +474,30 @@ def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None
         from input_output.writers.png import REPORT_IMAGES_STATE
 
         report_images = {}
+        moment0ff_average = _moment0ff_background(ctx, analysis.velocity.maps.section_mask.shape)
         export_pulse_pngs(
-            ctx.output, analysis, per_beat_result, report_images=report_images
+            ctx.output, analysis, per_beat_result,
+            report_images=report_images, moment0ff_average=moment0ff_average,
         )
         ctx.state.set(REPORT_IMAGES_STATE, report_images)
+
+
+def _moment0ff_background(ctx, spatial_shape: tuple[int, int]) -> np.ndarray | None:
+    try:
+        volume = ctx.inputs.hd.as_holodoppler().moment0ff()
+        if volume is None:
+            return None
+        if volume.shape[1:] != spatial_shape or not volume.shape[0]:
+            raise ValueError(f"expected nonempty frames with spatial shape {spatial_shape}, got {volume.shape}")
+        if volume.dtype.kind not in "iuf":
+            raise TypeError(f"expected real numeric intensities, got {volume.dtype}")
+        background = temporal_mean_image(volume)
+        if not np.isfinite(background).any():
+            raise ValueError("no finite intensities")
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        Logger.log_warning(f"Cannot use HD moment0ff for vessel-map backgrounds: {exc}")
+        return None
+    return background
 
 
 @contextmanager

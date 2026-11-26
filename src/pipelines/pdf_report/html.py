@@ -102,7 +102,7 @@ def _velocity_column(
     return f"""
 <article class="vessel-column">
   <h3>{vessel_title}</h3>
-  {_artifact_figure(f"{vessel_title} RMS-Frequency Map", vessel_map)}
+  {_artifact_figure(f"{vessel_title} Velocity Map", vessel_map)}
   {_uri_figure(f"{vessel_title} Systole Indices", systole_uri)}
   {_uri_figure(f"{vessel_title} Per-Beat Velocity", velocity_uri)}
 </article>
