@@ -188,6 +188,33 @@ with `<stem>_`; the shared naming helper applies this once. Type directories
 are selected by their producing pipelines; use their code for current page
 layout and artifact lists.
 
+The `temporal_aggregations` pipeline is enabled by default and writes three
+PNGs per HoloDoppler image video under `png/temporal_aggregations/<dataset>/`.
+Filenames are
+`<stem>_temporal_avg.png`, `<stem>_temporal_std.png`, and
+`<stem>_temporal_entropy.png`. Moment and frequency-band images are grayscale.
+Color and directional Doppler images are RGB. Legacy moment aliases resolve
+to the canonical dataset folder. Spectral datasets are excluded.
+
+The average and sample standard deviation follow the display export in
+[HoloDoppler MATLAB](https://github.com/DigitalHolography/HoloDopplerMatlab/blob/3e5b8d4c25e396e44b5d5e14472225fcf78f9117/src/export/generate_video.m).
+EyeFlow subtracts each frame's spatial mean per channel, then applies either
+per-frame contrast stretching (moments 0–2, frequency bands, and color Doppler)
+or a shared video scale (flat-field moments and directional Doppler). Invalid
+display samples are zero. The standard deviation uses `N-1` for multiple frames
+and is zero for one frame. Each aggregate is scaled to 8-bit, with one shared
+scale across the channels of each RGB image. Images retain
+the native `(y, x)` grid of the HDF5 video. Velocity overlays independently use
+the raw flat-field mean.
+
+Temporal entropy is an EyeFlow output. It uses `-sum(p * ln(p))` in nats, with
+`p` equal to the finite source magnitudes normalized across frames at each
+pixel. All-zero finite series have zero entropy.
+
+The pipeline reads each video once in bounded, chunk-aligned frame batches.
+It uses CuPy/CUDA when available and follows `EYEFLOW_COMPUTE_BACKEND` for
+explicit CPU or CuPy selection.
+
 Spatial-gradient profiles and metrics use
 `/ProcessingWidth/SpatialGradient/<Moments|BandRatio>/<Profiles|Metrics>`.
 Displacement products use `/ProcessingWidth/Displacement` with separate

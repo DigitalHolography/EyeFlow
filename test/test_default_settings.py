@@ -38,6 +38,8 @@ class DefaultSettingsTests(unittest.TestCase):
         }
         self.assertEqual(expected_options, configured_options)
         self.assertTrue(settings["pipeline_visibility"]["blood_volume_rate"])
+        self.assertTrue(settings["pipeline_visibility"]["temporal_aggregations"])
+        self.assertTrue(visible["temporal_aggregations"].default_selected)
         self.assertEqual(
             {"gradient_edges": False, "masked_edges": True},
             settings["pipeline_options"]["blood_volume_rate"],

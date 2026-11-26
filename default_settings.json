@@ -8,6 +8,7 @@
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "spatial_gradient_moment0": false,
+    "temporal_aggregations": true,
     "waveform_shape_metrics": true,
     "velocity_analysis": true
   },
