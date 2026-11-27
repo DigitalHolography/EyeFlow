@@ -12,6 +12,9 @@ from input_output.writers.png import ReportImagePaths
 
 ANALYSIS_ARTIFACTS = {
     "histogram": lambda vessel: Path(f"histogramVelocity{vessel}.png"),
+    "velocity_colorbar": lambda vessel: (
+        Path(f"colorbar_v_{vessel.title()}.png")
+    ),
     "branch_identity": lambda vessel: (
         Path("branch_identity")
         / f"{vessel}_13_substack_boxes_on_labels_with_rings.png"
@@ -55,7 +58,7 @@ def load_analysis_artifact(
     kind: str,
     vessel: str,
 ) -> np.ndarray | None:
-    """Load a page-two artifact from its canonical PNG subfolder."""
+    """Load a report artifact from its canonical PNG subfolder."""
     if png_dir is None:
         return None
     suffix = ANALYSIS_ARTIFACTS[kind](vessel)

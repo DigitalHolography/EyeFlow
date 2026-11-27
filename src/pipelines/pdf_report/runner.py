@@ -6,7 +6,6 @@ import numpy as np
 
 from input_output.output_manager import OutputType
 from input_output.reports import write_html_report, write_pdf_report
-from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.png import REPORT_IMAGES_STATE
 from pipeline_engine import ProductSpec, StageGraph, StageSpec
 from pipeline_engine.context import require_managed_runtime
@@ -49,10 +48,7 @@ def _pdf_report(ctx) -> None:
         ctx.state.get(REPORT_IMAGES_STATE, {}),
     )
     path = write_pdf_report(
-        prefixed_artifact_path(
-            manager.layout.ef_dir / OutputType.PDF.value / "velocityBvrReport.pdf",
-            folder_name,
-        ),
+        manager.layout.ef_dir / OutputType.PDF.value / f"{folder_name}.pdf",
         pages,
     )
     ctx.log(f"Velocity/BVR PDF report generated: {path}")
@@ -69,10 +65,7 @@ def _html_report(ctx) -> None:
         ctx.state.get(REPORT_IMAGES_STATE, {}),
     )
     path = write_html_report(
-        prefixed_artifact_path(
-            manager.layout.ef_dir / OutputType.HTML.value / "velocityBvrReport.html",
-            folder_name,
-        ),
+        manager.layout.ef_dir / OutputType.HTML.value / f"{folder_name}.html",
         document,
     )
     ctx.log(f"Velocity/BVR HTML report generated: {path}")

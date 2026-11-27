@@ -12,6 +12,7 @@ matplotlib.use("Agg", force=True)
 from input_output.output_manager import OutputManager, OutputType
 from input_output.reports import write_html_report
 from input_output.runs.layout import HoloRunLayout
+from pipelines.pdf_report.assets import load_analysis_artifact
 from pipelines.pdf_report.data import (
     ReportData,
     SystoleReportData,
@@ -19,6 +20,22 @@ from pipelines.pdf_report.data import (
     VolumeRateReportData,
 )
 from pipelines.pdf_report.html import build_velocity_bvr_html
+
+
+def test_html_velocity_legend_uses_existing_colorbar_artifact(tmp_path) -> None:
+    image = np.zeros((4, 12, 3), dtype=np.uint8)
+
+    with patch(
+        "pipelines.pdf_report.assets.load_first_image", return_value=image,
+    ) as load_first_image:
+        actual = load_analysis_artifact(
+            tmp_path, "scan", "velocity_colorbar", "artery"
+        )
+
+    assert actual is image
+    assert load_first_image.call_args.args == (
+        (tmp_path / "scan_colorbar_v_Artery.png",),
+    )
 
 
 def test_html_report_copies_current_content_without_pdf_dependency() -> None:
@@ -81,27 +98,41 @@ def test_html_report_copies_current_content_without_pdf_dependency() -> None:
     assert "Vein Mask-Derived Blood-Volume Rate" in document
     assert "Minimum filtered velocity" in document
     assert "Lumen diameter SD" in document
-    assert document.count('class="paired-graphs"') == 2
-    assert "grid-template-columns: minmax(0, 3fr) minmax(0, 2fr)" in document
-    artery_pair = document.split('class="paired-graphs">', 1)[1].split(
-        "</div>", 1
+    assert 'class="paired-graphs"' not in document
+    artery_velocity = document.split('<article class="vessel-column">', 1)[1].split(
+        "</article>", 1
     )[0]
-    assert "Artery Velocity Distribution over Time" in artery_pair
-    assert "Artery Branch Identity and Sampling Regions" in artery_pair
-    assert "Artery Lumen-Diameter Distribution" not in artery_pair
+    assert artery_velocity.index("Artery Velocity Map") < artery_velocity.index(
+        "Artery Velocity Distribution over Time"
+    )
+    assert artery_velocity.index("Artery Velocity Distribution over Time") < (
+        artery_velocity.index("Artery velocity legend")
+    )
+    assert artery_velocity.index("Artery velocity legend") < artery_velocity.index(
+        "Artery Systole Indices"
+    )
+    artery_analysis = document.split('id="vessel-analysis"', 1)[1].split(
+        '<article class="vessel-column">', 1
+    )[1].split("</article>", 1)[0]
+    assert "Artery Velocity Distribution over Time" not in artery_analysis
+    assert "Artery Branch Identity and Sampling Regions" in artery_analysis
+    assert artery_analysis.index(
+        "Artery Branch Identity and Sampling Regions"
+    ) < artery_analysis.index("Artery Lumen-Diameter Distribution")
     assert "72.5 bpm" in document
     assert "mm.s⁻¹" in document
     assert "mm³.s⁻¹" in document
-    assert document.count('src="data:image/png;base64,') == 14
+    assert document.count('class="graph-legend"') == 2
+    assert document.count('src="data:image/png;base64,') == 16
     assert ".pdf" not in document.lower()
     assert "<iframe" not in document.lower()
 
 
 def test_html_writer_uses_the_dedicated_output_folder(tmp_path) -> None:
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
-    path = manager.path_for(OutputType.HTML, "velocityBvrReport.html")
+    path = manager.layout.ef_dir / OutputType.HTML.value / "scan.html"
 
     written = write_html_report(path, "<!doctype html><title>scan</title>")
 
-    assert written == manager.layout.ef_dir / "html" / "scan_velocityBvrReport.html"
+    assert written == manager.layout.ef_dir / "html" / "scan.html"
     assert written.read_text(encoding="utf-8") == "<!doctype html><title>scan</title>"

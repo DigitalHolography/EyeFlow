@@ -225,8 +225,8 @@ schema instead of compatibility literals.
 The `pdf_report` target produces only the moments velocity/BVR presentation.
 It automatically requests mask-derived geometry and BVR, but not optional
 spatial-gradient edges. The two-page PDF is written to
-`pdf/<stem>_velocityBvrReport.pdf`; the independently generated, self-contained
-HTML flow is written to `html/<stem>_velocityBvrReport.html`. Report-native
+`pdf/<stem>.pdf`; the independently generated, self-contained HTML flow is
+written to `html/<stem>.html`. Report-native
 graphs use matching PNG/EPS artifact pairs. The report pipeline does not own
 spectral or displacement/spatial-gradient reports.
 

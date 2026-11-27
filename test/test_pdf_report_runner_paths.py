@@ -98,10 +98,10 @@ def test_report_callbacks_use_shared_pdf_and_html_folders(tmp_path) -> None:
         _html_report(ctx)
 
     assert write_pdf.call_args.args[0] == (
-        manager.layout.ef_dir / "pdf" / "scan_velocityBvrReport.pdf"
+        manager.layout.ef_dir / "pdf" / "scan.pdf"
     )
     assert write_html.call_args.args[0] == (
-        manager.layout.ef_dir / "html" / "scan_velocityBvrReport.html"
+        manager.layout.ef_dir / "html" / "scan.html"
     )
     assert write_pdf.call_args.args[1] == []
     assert write_html.call_args.args[1] == "<html></html>"
@@ -225,7 +225,7 @@ def test_renders_two_page_pdf_with_optional_products(tmp_path) -> None:
             PipelineH5Output(h5file, processing_root="ProcessingMoments")
         )
     pdf_path = write_pdf_report(
-        tmp_path / "pdf" / "scan_velocityBvrReport.pdf",
+        tmp_path / "pdf" / "scan.pdf",
         build_velocity_bvr_pages(report, "scan", None, {}),
     )
 

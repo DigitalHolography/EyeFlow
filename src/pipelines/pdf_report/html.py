@@ -97,12 +97,20 @@ def _velocity_column(
     vessel_map = load_velocity_artifact(
         png_dir, folder_name, "vessel_map", vessel, report_images
     )
+    velocity_distribution = load_analysis_artifact(
+        png_dir, folder_name, "histogram", vessel
+    )
+    velocity_colorbar = load_analysis_artifact(
+        png_dir, folder_name, "velocity_colorbar", vessel
+    )
     systole_uri = _systole_plot_uri(report, vessel)
     velocity_uri = _velocity_plot_uri(report, vessel)
     return f"""
 <article class="vessel-column">
   <h3>{vessel_title}</h3>
   {_artifact_figure(f"{vessel_title} Velocity Map", vessel_map)}
+  {_artifact_figure(f"{vessel_title} Velocity Distribution over Time", velocity_distribution)}
+  {_legend_figure(f"{vessel_title} velocity legend", velocity_colorbar)}
   {_uri_figure(f"{vessel_title} Systole Indices", systole_uri)}
   {_uri_figure(f"{vessel_title} Per-Beat Velocity", velocity_uri)}
 </article>
@@ -116,23 +124,21 @@ def _analysis_column(
     vessel: str,
 ) -> str:
     vessel_title = vessel.title()
-    figures = tuple(
+    figures = "".join(
         _artifact_figure(
             f"{vessel_title} {title}",
             load_analysis_artifact(png_dir, folder_name, kind, vessel),
         )
         for kind, title in ANALYSIS_GRAPH_TITLES.items()
+        if kind != "histogram"
     )
-    paired_figures = "".join(figures[:2])
-    remaining_figures = "".join(figures[2:])
     summary = _summary_block(
         f"{vessel_title} Summary", analysis_summary_rows(report, vessel)
     )
     return f"""
 <article class="vessel-column">
   <h3>{vessel_title}</h3>
-  <div class="paired-graphs">{paired_figures}</div>
-  {remaining_figures}
+  {figures}
   <section class="summary-card">{summary}</section>
 </article>
 """
@@ -171,6 +177,21 @@ def _artifact_figure(title: str, image) -> str:
     if image is None:
         return _unavailable_figure(title)
     return _uri_figure(title, image_png_data_uri(image))
+
+
+def _legend_figure(title: str, image) -> str:
+    safe_title = escape(title)
+    if image is None:
+        return f"""
+<figure class="graph-legend unavailable">
+  <div role="img" aria-label="{safe_title} unavailable">Legend unavailable</div>
+</figure>
+"""
+    return f"""
+<figure class="graph-legend">
+  <img src="{image_png_data_uri(image)}" alt="{safe_title}">
+</figure>
+"""
 
 
 def _uri_figure(title: str, uri: str) -> str:
@@ -255,13 +276,6 @@ main > section + section {
   border-radius: 8px;
   background: #fff;
 }
-.paired-graphs {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 14px;
-}
-.paired-graphs .graph-card { min-width: 0; }
-.paired-graphs .graph-card figcaption { font-size: 0.85rem; }
 .graph-card figcaption {
   margin-bottom: 12px;
   font-weight: 600;
@@ -272,6 +286,22 @@ main > section + section {
   min-height: 160px;
   max-height: 480px;
   object-fit: contain;
+}
+.graph-legend {
+  margin: -12px 0 22px;
+  padding-inline: 14px;
+}
+.graph-legend img {
+  display: block;
+  width: 100%;
+  max-height: 100px;
+  object-fit: contain;
+}
+.graph-legend.unavailable div {
+  padding: 12px;
+  color: #777;
+  text-align: center;
+  background: #f4f4f4;
 }
 .graph-card.unavailable div {
   display: grid;
@@ -303,9 +333,6 @@ main > section + section {
 .summary-block td { font-weight: 700; text-align: right; }
 @media (max-width: 850px) {
   .vessel-grid, .summary-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 520px) {
-  .paired-graphs { grid-template-columns: 1fr; }
 }
 """
 
